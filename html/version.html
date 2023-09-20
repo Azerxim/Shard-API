@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+	<!--=======================-->
+	<!--====== HTML HEAD ======-->
+	<!--=======================-->
+	<head>
+		<meta name="author" content="Azerxim">
+		<meta http-equiv="Content-type" content="text/html;charset=UTF-8"/>
+		<meta name="description" content="Spinelle Auth"/>
+		<meta name="keywords" content=""/>
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="robots" content="noindex, nofollow">
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<meta name="language" content="French">
+		<link rel="shortcut icon" href="//spinelle.eu/images/favicon.ico"/>
+
+        <title>Spinelle Auth</title>
+
+        <!--====== Style CSS ======-->
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/main.css">
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/display.css">
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/colors.css">
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/responsive.css">
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/msgbox.css">
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/markdown.css">
+
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/bulma.td.css">
+
+        <link rel="stylesheet" href="https://css.topazdev.fr/v7/fontawesome/css/all.css">
+        <script defer src="https://css.topazdev.fr/v7/fontawesome/js/all.js"></script>
+
+        <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+        <script src="https://www.jsdelivr.com/package/npm/@creativebulma/bulma-tagsinput/dist/js/bulma-tagsinput.min.js"></script>
+
+        <script src="https://www.topazdev.fr/modules/script/bt-apparition.js"></script>
+        <script src="https://www.topazdev.fr/modules/script/bt-apparition-class.js"></script>
+        <script src="https://www.topazdev.fr/modules/script/notif-delete.js"></script>
+
+    </head>
+    <body>
+        <nav class="navbar is-TD-ultradarkblue" style="z-index: 10;" role="navigation" aria-label="main navigation">
+            <div class="navbar-brand">
+                <!-- Desktop -->
+                <div class="flex-center-vertical gap-5 is-hidden-touch">
+                    <a class="navbar-item" href="https://topazdev.fr">
+                        <img src="https://dl.topazdev.fr/stock/images/web/topazdev-smoothwhite.png" alt="TopazDev">
+                    </a>
+                    <a class="navbar-item" href="https://spinelle.eu">
+                        <img src="https://dl.topazdev.fr/stock/images/web/spinelle_galaxie_white.png" alt="Spinelle Galaxie">
+                    </a>
+                </div>
+                <!-- Touch -->
+                <div class="flex-center-full gap-5 is-hidden-desktop" style="width: 100%;">
+                    <a class="navbar-item" href="https://topazdev.fr">
+                        <img src="https://dl.topazdev.fr/stock/images/web/topazdev-smoothwhite.png" alt="TopazDev">
+                    </a>
+                    <a class="navbar-item" href="https://spinelle.eu">
+                        <img src="https://dl.topazdev.fr/stock/images/web/spinelle_galaxie_white.png" alt="Spinelle Galaxie">
+                    </a>
+                </div>
+          
+                <!-- Navbar burger -->
+                <a role="button" class="navbar-burger" data-target="navMenu" aria-label="menu" aria-expanded="false">
+                    <span aria-hidden="true"></span>
+                    <span aria-hidden="true"></span>
+                    <span aria-hidden="true"></span>
+                </a>
+            </div>
+          
+            <div class="navbar-menu" id="navMenu">
+                <div class="navbar-start">
+                    
+                    <a class="navbar-item" href="/docs">
+                        <span>Docs</span>
+                    </a>
+          
+                </div>
+            
+                <div class="navbar-end">
+                    <!-- <hr/> -->
+                    <div class="navbar-item">
+                        <div class="buttons">
+                            <!-- <a class="button is-TD-ultradarkblue" href="/contact">
+                                <i class="fa-solid fa-info"></i>
+                            </a> -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </nav>
+          
+        <script>
+            document.addEventListener('DOMContentLoaded', () => {
+                // Get all "navbar-burger" elements
+                const $navbarBurgers = Array.prototype.slice.call(document.querySelectorAll('.navbar-burger'), 0);
+            
+                // Check if there are any navbar burgers
+                if ($navbarBurgers.length > 0) {
+            
+                    // Add a click event on each of them
+                    $navbarBurgers.forEach( el => {
+                        el.addEventListener('click', () => {
+                
+                            // Get the target from the "data-target" attribute
+                            const target = el.dataset.target;
+                            const $target = document.getElementById(target);
+                
+                            // Toggle the "is-active" class on both the "navbar-burger" and the "navbar-menu"
+                            el.classList.toggle('is-active');
+                            $target.classList.toggle('is-active');
+                        });
+                    });
+                }
+            });
+        </script>
+
+        <div class="flex-center-full fd-col gap-20" style="padding: 10px;">
+            <h1 class="is-size-1">{{ api }}</h1>
+            <img src="https://dl.topazdev.fr/stock/images/web/galaxie.png" alt="logo"/>
+            <span class="is-size-2">{{ version }}</span>
+        </div>
+
+    </body>
+</html>

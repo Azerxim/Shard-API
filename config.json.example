@@ -1,0 +1,9 @@
+{
+	"version": "VERSION",
+	"api": {
+		"name": "NAME API",
+		"version": "VERSION",
+		"ip": "0.0.0.0",
+		"key": "API SECURITY KEY"
+	}
+}
