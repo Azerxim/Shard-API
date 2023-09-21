@@ -63,18 +63,9 @@ def html_main(request: Request):
     return templates.TemplateResponse("version.html", {"request": request, "version": ge.CONFIG['api']['version'], "api": ge.CONFIG['api']['name']})
 
 
-@app.get("/version/", response_class=HTMLResponse)
-def app_version(request: Request):
-    # return {'api': ge.CONFIG['api']['name'], 'version': ge.CONFIG['api']['version']}
-    return templates.TemplateResponse("version.html", {"request": request, "version": ge.CONFIG['api']['version'], "api": ge.CONFIG['api']['name']})
-
-@app.get("/error-404", response_class=HTMLResponse)
-def app_error(request: Request):
-    return templates.TemplateResponse("error-404.html", {"request": request})
-
-@app.get("/error", response_class=HTMLResponse)
-def error(request: Request, text: str):
-    return templates.TemplateResponse("error.html", {"request": request, "text": text})
+@app.get("/version/")
+def app_version():
+    return {'api': ge.CONFIG['api']['name'], 'version': ge.CONFIG['api']['version']}
 
 
 @app.post("/user/create/", tags=["Users"])
@@ -82,7 +73,6 @@ def create_user(platform: str, mail: str, pseudo: str, mdp: str, id_platform: st
     db_user = crud.user_exist(db, platform, mail, pseudo, mdp)
     if db_user:
         raise HTTPException(status_code=400, detail=f"L'utilisateur existe déja avec la plateforme {platform}")
-        #return RedirectResponse(url=f"/error?text=L'utilisateur existe déja avec la plateforme {platform}", status_code=status.HTTP_303_SEE_OTHER)
     return crud.create_user(
         db=db, 
         v_platform = platform, 
@@ -98,12 +88,45 @@ def create_user(platform: str, mail: str, pseudo: str, mdp: str, id_platform: st
 def read_user(UserID: int, db: Session = Depends(get_db)):
     db_user = crud.get_user(db=db, ID=UserID)
     if db_user is None:
-        raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    return db_user
+        func = {'error': 404, 'user': db_user}
+    else:
+        func = {'error': 0, 'user': db_user}
+    return JSONResponse(content=jsonable_encoder(func))
 
 
 @app.get("/users/read/", response_model=List[schemas.TableAuth], tags=["Users"])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     users = crud.get_users(db=db, skip=skip, limit=limit)
-    func = {'error': 0, 'skip': skip, 'limit': limit, 'users': users}
+    if users is None:
+        func = {'error': 404, 'skip': skip, 'limit': limit, 'users': users}
+    else:
+        func = {'error': 0, 'skip': skip, 'limit': limit, 'users': users}
     return JSONResponse(content=jsonable_encoder(func))
+
+
+# --------------------------------------
+# ---------------- HTML ----------------
+# --------------------------------------
+
+# ==== ERROR ====
+@app.get("/error-404", response_class=HTMLResponse)
+def app_error(request: Request):
+    return templates.TemplateResponse("error-404.html", {"request": request})
+
+@app.get("/error", response_class=HTMLResponse)
+def error(request: Request, text: str):
+    return templates.TemplateResponse("error.html", {"request": request, "text": text})
+
+
+# ==== READ ====
+@app.get("/html/users/read/", response_class=HTMLResponse, tags=["HTML"])
+def html_read_users(request: Request, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    users = crud.get_users(db=db, skip=skip, limit=limit)
+    return templates.TemplateResponse("users.html", {"request": request, "users": users})
+
+@app.get("/html/user/read/{UserID}", response_class=HTMLResponse, tags=["HTML"])
+def html_read_user(request: Request, UserID: int, db: Session = Depends(get_db)):
+    user = crud.get_user(db=db, ID=UserID)
+    if user is None:
+        return templates.TemplateResponse("error.html", {"request": request, "text": "Utilisateur non trouvé"})
+    return templates.TemplateResponse("user.html", {"request": request, "user": user})

@@ -48,7 +48,6 @@ def create_user(db: Session, v_platform: str, v_mail: str, v_pseudo: str, v_mdp:
             boucleID = False
         else:
             id += 1
-    # print(f'ID: {id}')
     db_user = models.TableAuth(
         idAuth = id,
         platform = v_platform,
@@ -56,7 +55,7 @@ def create_user(db: Session, v_platform: str, v_mail: str, v_pseudo: str, v_mdp:
         password = v_mdp,
         mail = v_mail,
         statut = "Standard",
-        image_url = "https://www.topazdev.fr/images/image_profil_white.png",
+        image_url = v_img_platform,
         arrival = str(dt.date.today()),
 
         platform_discord_id = "",
@@ -91,7 +90,6 @@ def create_user(db: Session, v_platform: str, v_mail: str, v_pseudo: str, v_mdp:
         db_user.platform_microsoft_mail = v_mail
         db_user.platform_microsoft_image_url = v_img_platform
     
-    # print(f'DB user: {db_user}')
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
