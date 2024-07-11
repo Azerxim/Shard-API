@@ -1,0 +1,422 @@
+/*========= Couleurs ==========
+
+$TD-dark: #27292f;
+$TD-ultragrey: #4F4F4F;
+$TD-grey: #828282;
+$TD-lightgrey: #BDBDBD;
+$TD-lightwhite: #E0E0E0;
+$TD-smoothwhite: #F2F2F2;
+
+$TD-lightwhite2: #d1d7d8;
+$TD-white: #ffffff;
+
+$TD-lime: #62ac19;
+$TD-green: #219653;
+$TD-green2: #27AE60;
+$TD-lightgreen: #6FCF97;
+$TD-ultralightgreen: #B2FFC3;
+
+$TD-ultradarkblue: #2E3144;
+$TD-darkblue: #2f3195;
+$TD-blue: #008ed7;
+$TD-lightblue: #93cbeb;
+$TD-cyan: #167b8c;
+
+$TD-ultrapurple: #6821a0;
+$TD-purple: #9B51E0;
+$TD-lightpurple: #BB6BD9;
+$TD-ultramagenta: #93278F;
+$TD-magenta: #ac31a3;
+
+$TD-bordeaux: #740048;
+$TD-spinelle: #8A0036;
+$TD-darkspinelle: #6A001D;
+
+$TD-red: #d32300;
+$TD-lightred: #EB5757;
+$TD-ultraorange: #E44D26;
+$TD-orange: #e36501;
+$TD-lightorange: #F2994A;
+
+$TD-yellow: #F0C300;
+$TD-lightyellow: #F2C94C;
+
+$TD-brown: #633d20;
+$TD-black: #000000;
+
+*/
+
+/*=====================================
+=============== Colors ================
+=======================================*/
+
+.dark{
+  color: #27292f;
+}
+
+.ultragrey{
+  color: #4F4F4F;
+}
+
+.grey{
+  color: #828282;
+}
+
+.lightgrey{
+  color: #BDBDBD;
+}
+
+.lightwhite{
+  color: #E0E0E0;
+}
+
+.smoothwhite{
+  color: #F2F2F2;
+}
+
+/*---------*/
+
+.lightwhite2{
+  color: #d1d7d8;
+}
+
+.white{
+  color: #ffffff;
+}
+
+/*---------*/
+
+.lime{
+  color: #62ac19;
+}
+
+.green{
+  color: #219653;
+}
+
+.green2{
+  color: #27AE60;
+}
+
+.lightgreen{
+  color: #6FCF97;
+}
+
+.ultralightgreen{
+  color: #B2FFC3;
+}
+
+/*---------*/
+
+.ultradarkblue{
+  color: #2E3144;
+}
+
+.darkblue{
+  color: #2f3195;
+}
+
+.blue{
+  color: #008ed7;
+}
+
+.lightblue{
+  color: #93cbeb;
+}
+
+.cyan{
+  color: #167b8c;
+}
+
+/*---------*/
+
+.ultrapurple{
+  color: #6821a0;
+}
+
+.purple{
+  color: #9B51E0;
+}
+
+.lightpurple{
+  color: #BB6BD9;
+}
+
+.ultramagenta{
+  color: #93278F;
+}
+
+.magenta{
+  color: #ac31a3;
+}
+
+/*---------*/
+
+.bordeaux{
+  color: #740048;
+}
+
+.spinelle{
+  color: #8A0036;
+}
+
+.darkspinelle{
+  color: #6A001D;
+}
+
+/*---------*/
+
+.red{
+  color: #d32300;
+}
+
+.lightred{
+  color: #EB5757;
+}
+
+.ultraorange{
+  color: #E44D26;
+}
+
+.orange{
+  color: #e36501;
+}
+
+.lightorange{
+  color: #F2994A;
+}
+
+/*---------*/
+
+.yellow{
+  color: #F0C300;
+}
+
+.lightyellow{
+  color: #F2C94C;
+}
+
+/*---------*/
+
+.brown{
+  color: #633d20;
+}
+
+.black{
+  color: #000000;
+}
+
+/*---------*/
+
+.spinelle{
+	color: #8A0036;
+}
+
+.darkspinelle{
+	color: #6A001D;
+}
+
+.bordeau{
+	color: #740048;
+}
+
+/*=====================================
+========== Background Color ===========
+=======================================*/
+
+.bg-dark{
+  background-color: #27292f;
+}
+
+.bg-ultragrey{
+  background-color: #4F4F4F;
+}
+
+.bg-grey{
+  background-color: #828282;
+}
+
+.bg-lightgrey{
+  background-color: #BDBDBD;
+}
+
+.bg-lightwhite{
+  background-color: #E0E0E0;
+}
+
+.bg-smoothwhite{
+  background-color: #F2F2F2;
+}
+
+/*---------*/
+
+.bg-lightwhite2{
+  background-color: #d1d7d8;
+}
+
+.bg-white{
+  background-color: #ffffff;
+}
+
+/*---------*/
+
+.bg-lime{
+  background-color: #62ac19;
+}
+
+.bg-green{
+  background-color: #219653;
+}
+
+.bg-green2{
+  background-color: #27AE60;
+}
+
+.bg-lightgreen{
+  background-color: #6FCF97;
+}
+
+.bg-ultralightgreen{
+  background-color: #B2FFC3;
+}
+
+/*---------*/
+
+.bg-ultradarkblue{
+  background-color: #2E3144;
+}
+
+.bg-darkblue{
+  background-color: #2f3195;
+}
+
+.bg-blue{
+  background-color: #008ed7;
+}
+
+.bg-lightblue{
+  background-color: #93cbeb;
+}
+
+.bg-cyan{
+  background-color: #167b8c;
+}
+
+/*---------*/
+
+.bg-ultrapurple{
+  background-color: #6821a0;
+}
+
+.bg-purple{
+  background-color: #9B51E0;
+}
+
+.bg-lightpurple{
+  background-color: #BB6BD9;
+}
+
+.bg-ultramagenta{
+  background-color: #93278F;
+}
+
+.bg-magenta{
+  background-color: #ac31a3;
+}
+
+/*---------*/
+
+.bg-bordeaux{
+  background-color: #740048;
+}
+
+.bg-spinelle{
+  background-color: #8A0036;
+}
+
+.bg-darkspinelle{
+  background-color: #6A001D;
+}
+
+/*---------*/
+
+.bg-red{
+  background-color: #d32300;
+}
+
+.bg-lightred{
+  background-color: #EB5757;
+}
+
+.bg-ultraorange{
+  background-color: #E44D26;
+}
+
+.bg-orange{
+  background-color: #e36501;
+}
+
+.bg-lightorange{
+  background-color: #F2994A;
+}
+
+/*---------*/
+
+.bg-yellow{
+  background-color: #F0C300;
+}
+
+.bg-lightyellow{
+  background-color: #F2C94C;
+}
+
+/*---------*/
+
+.bg-brown{
+  background-color: #633d20;
+}
+
+.bg-black{
+  background-color: #000000;
+}
+
+/*---------*/
+
+.bg-spinelle{
+	background-color: #8A0036;
+}
+
+.bg-darkspinelle{
+	background-color: #6A001D;
+}
+
+.bg-bordeau{
+	background-color: #740048;
+}
+
+/*=====================================
+=========== Background BLur ===========
+=======================================*/
+.bg-blurwhite-25{
+  background-color: rgba(255, 255, 255, 0.25);
+}
+
+.bg-blurwhite-50{
+  background-color: rgba(255, 255, 255, 0.5);
+}
+
+.bg-blurwhite-75{
+  background-color: rgba(255, 255, 255, 0.75);
+}
+
+.bg-blurdark-25{
+  background-color: rgba(46, 49, 68, 0.25);
+}
+
+.bg-blurdark-50{
+  background-color: rgba(46, 49, 68, 0.5);
+}
+
+.bg-blurdark-75{
+  background-color: rgba(46, 49, 68, 0.75);
+}

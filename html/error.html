@@ -12,34 +12,17 @@
 		<meta name="robots" content="noindex, nofollow">
 		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
 		<meta name="language" content="French">
-		<link rel="shortcut icon" href="//spinelle.eu/images/favicon.ico"/>
+		<link rel="shortcut icon" href="{{url_for('assets',path='/images/favicon.ico')}}"/>
 
         <title>Spinelle Auth</title>
 
-        <!--====== Style CSS ======-->
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/main.css">
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/display.css">
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/colors.css">
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/responsive.css">
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/msgbox.css">
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/markdown.css">
-
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/bulma.td.css">
-
-        <link rel="stylesheet" href="https://css.topazdev.fr/v7/fontawesome/css/all.css">
-        <script defer src="https://css.topazdev.fr/v7/fontawesome/js/all.js"></script>
-
-        <script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
-        <script src="https://www.jsdelivr.com/package/npm/@creativebulma/bulma-tagsinput/dist/js/bulma-tagsinput.min.js"></script>
-
-        <script src="https://www.topazdev.fr/modules/script/bt-apparition.js"></script>
-        <script src="https://www.topazdev.fr/modules/script/bt-apparition-class.js"></script>
-        <script src="https://www.topazdev.fr/modules/script/notif-delete.js"></script>
+        {% include 'modules/css.html' %}
+        {% include 'modules/scripts.html' %}
 
     </head>
     <body>
         
-        {% include 'menu/general.html' %}
+        {% include 'modules/menu.html' %}
 
         <div class="flex-center-full fd-col gap-20 ultradarkblue" style="width: 100%; margin: 20px;">
             <div class="flex-center-vertical fd-row fw-on gap-20">
@@ -50,7 +33,7 @@
             <h3 class="is-size-4">{{ text }}</h3>
         </div>
 
-        {% include 'menu/footer.html' %}
+        {% include 'modules/footer.html' %}
 
     </body>
 </html>

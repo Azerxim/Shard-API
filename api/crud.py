@@ -3,44 +3,172 @@ from sqlalchemy.sql import func
 from sqlalchemy import text
 import time as t, datetime as dt
 from operator import itemgetter
+import hashlib
+
 from . import models, schemas
+from core import utils
 
 
+################# Security #####################
 
-# -------------------------------------------------------------------------------
-def user_exist(db: Session, platform: str, mail: str, pseudo: str, id: str):
-    if platform == "Discord":
-        db_user_id = db.query(models.TableAuth).filter(models.TableAuth.platform_discord_id == id).first()
-        db_user_mail = db.query(models.TableAuth).filter(models.TableAuth.platform_discord_mail == mail).first()
-    elif platform == "Github":
-        db_user_id = db.query(models.TableAuth).filter(models.TableAuth.platform_github_id == id).first()
-        db_user_mail = db.query(models.TableAuth).filter(models.TableAuth.platform_github_mail == mail).first()
-    elif platform == "Microsoft":
-        db_user_id = db.query(models.TableAuth).filter(models.TableAuth.platform_microsoft_id == id).first()
-        db_user_mail = db.query(models.TableAuth).filter(models.TableAuth.platform_microsoft_mail == mail).first()
-    else:
-        db_user_id = db.query(models.TableAuth).filter(models.TableAuth.idAuth == id).first()
-        db_user_mail = db.query(models.TableAuth).filter(models.TableAuth.mail == mail).first()
+def hash_password(password: str):
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-    if not db_user_id and not db_user_mail:
-        return False
-    return True
+def secu_decode_token(db: Session, token):
+    user = secu_get_user_from_username(db, token)
+    return user
 
+def secu_get_user_from_username(db: Session, username: str):
+    return db.query(models.SecurityUsers).filter(models.SecurityUsers.username == username).first()
+
+def secu_get_user_from_email(db: Session, email: str):
+    return db.query(models.SecurityUsers).filter(models.SecurityUsers.email == email).first()
+
+def loadsecurity(db: Session, json):
+    # Gestion du password vide
+    if json['password']=="":
+        print(f"{utils.bcolors.red}ERROR{utils.bcolors.end}:    Security load error, password null")
+        return {"result": 'error'}
+    try:
+        user = secu_get_user_from_username(db, json['username'])     
+        user_dict = models.SecurityUsers(
+            username = json['username'],
+            full_name = json['full_name'],
+            hashed_password = hash_password(json['password'])
+        )
+        if not user:
+            db.add(user_dict)
+            db.commit()
+            db.refresh(user_dict)
+            print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     Security user created")
+            return {"result": 'created'}
+        else:
+            db.query(models.SecurityUsers).filter(models.SecurityUsers.username == user_dict.username).update({'full_name': user_dict.full_name, 'hashed_password': user_dict.hashed_password})
+            print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     Security user modified")
+            return {"result": 'modified'}
+    except:
+        print(f"{utils.bcolors.red}ERROR{utils.bcolors.end}:    Security load error")
+        return {"result": 'error'}
+
+
+################# USER #####################
 
 # -------------------------------------------------------------------------------
 def get_user(db: Session, ID: int):
-    return db.query(models.TableAuth).filter(models.TableAuth.idAuth == ID).first()
+    result = db.query(models.Users).filter(models.Users.id == ID).first()
+    if result is not None:
+        user = schemas.rUsers(
+            id=result.id,
+            username=result.username,
+            full_name=result.full_name,
+            email=result.email,
+            arrival=result.arrival,
+            disabled=result.disabled
+        )
+        return user
+    return None
 
 
 # -------------------------------------------------------------------------------
 def get_users(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.TableAuth).offset(skip).limit(limit).all()
+    result = db.query(models.Users).offset(skip).limit(limit).all()
+    users = []
+    for one in result:
+        user = schemas.rUsers(
+            id=one.id,
+            username=one.username,
+            full_name=one.full_name,
+            email=one.email,
+            arrival=one.arrival,
+            disabled=one.disabled
+        )
+        users.append(user)
+    return users
+
+
+# -------------------------------------------------------------------------------
+def user_exist(db: Session, email: str, username: str):
+    db_user_name = db.query(models.Users).filter(models.Users.username == username).first()
+    db_user_mail = db.query(models.Users).filter(models.Users.email == email).first()
+
+    if db_user_name:
+        return True, db_user_name
+    elif db_user_mail:
+        return True, db_user_mail
+    else:
+        return False, None
+
+# -------------------------------------------------------------------------------
+def user_exist_platform(db: Session, user: schemas.Users, platform):
+    db_user_name = db.query(models.Users).filter(models.Users.username == user.username).first()
+    db_user_mail = db.query(models.Users).filter(models.Users.email == user.email).first()
+
+    if db_user_name:
+        return True, db_user_name
+    elif db_user_mail:
+        return True, db_user_mail
+    else:
+        return False, None
+
+
+# -------------------------------------------------------------------------------
+def check_user_from_name(db: Session, username, password):
+    result = db.query(models.Users).filter(models.Users.username == username).first()
+    if result is not None:
+        user = schemas.rUsers(
+            id=result.id,
+            username=result.username,
+            full_name=result.full_name,
+            email=result.email,
+            arrival=result.arrival,
+            disabled=result.disabled
+        )
+        if result.hashed_password == hash_password(password) and result.platform == utils.CONFIG['api']['platform']:
+            return True, user
+        return False, user
+    return False, None
+
+
+# -------------------------------------------------------------------------------
+def check_user_from_email(db: Session, email, password):
+    result = db.query(models.Users).filter(models.Users.email == email).first()
+    if result is not None:
+        user = schemas.rUsers(
+            id=result.id,
+            username=result.username,
+            full_name=result.full_name,
+            email=result.email,
+            arrival=result.arrival,
+            disabled=result.disabled
+        )
+        if result.hashed_password == hash_password(password) and result.platform == utils.CONFIG['api']['platform']:
+            return True, user
+        return False, user
+    return False, None
+
+
+# -------------------------------------------------------------------------------
+def check_user_all(db: Session, username, email, password):
+    result = db.query(models.Users).filter(models.Users.username == username).filter(models.Users.email == email).first()
+    if result is not None:
+        user = schemas.rUsers(
+            id=result.id,
+            username=result.username,
+            full_name=result.full_name,
+            email=result.email,
+            arrival=result.arrival,
+            disabled=result.disabled
+        )
+        if result.hashed_password == hash_password(password) and result.platform == utils.CONFIG['api']['platform']:
+            return True, user
+        return False, user
+    return False, None
 
 
 # ===============================================================================
 # Création
 # ===============================================================================
-def create_user(db: Session, v_platform: str, v_mail: str, v_pseudo: str, v_mdp: str, v_id_platform: str, v_img_platform: str):
+def create_user(db: Session, v_user: schemas.iUsers):
     id = 1
     boucleID = True
     while boucleID:
@@ -48,49 +176,53 @@ def create_user(db: Session, v_platform: str, v_mail: str, v_pseudo: str, v_mdp:
             boucleID = False
         else:
             id += 1
-    db_user = models.TableAuth(
-        idAuth = id,
-        platform = v_platform,
-        pseudo = v_pseudo,
-        password = v_mdp,
-        mail = v_mail,
-        statut = "Standard",
-        image_url = v_img_platform,
-        arrival = str(dt.date.today()),
-
-        platform_discord_id = "",
-        platform_discord_mail = "",
-        platform_discord_image_url = "",
-
-        platform_github_id = "",
-        platform_github_mail = "",
-        platform_github_image_url = "",
-        
-        platform_microsoft_id = "",
-        platform_microsoft_mail = "",
-        platform_microsoft_image_url = "",
-
-        param_visible = 1,
-        param_maillist = 1,
-        param_beta = 0
+    db_user = models.Users(
+        id = id,
+        username = v_user.username,
+        full_name = v_user.full_name,
+        email = v_user.email,
+        hashed_password = hash_password(v_user.password),
+        platform = utils.CONFIG['api']['platform'],
+        arrival = dt.datetime.today(),
+        disabled = 0
     )
-
-    if v_platform == "Discord":
-        db_user.platform_discord_id = v_id_platform
-        db_user.platform_discord_mail = v_mail
-        db_user.platform_discord_image_url = v_img_platform
-
-    elif v_platform == "Github":
-        db_user.platform_github_id = v_id_platform
-        db_user.platform_github_mail = v_mail
-        db_user.platform_github_image_url = v_img_platform
-
-    elif v_platform == "Microsoft":
-        db_user.platform_microsoft_id = v_id_platform
-        db_user.platform_microsoft_mail = v_mail
-        db_user.platform_microsoft_image_url = v_img_platform
     
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
     return db_user
+
+
+def create_user_platform(db: Session, v_user: schemas.iUsers, platform: str):
+    # Platform ID est stocker dans le password et hash dans la DB
+    id = 1
+    boucleID = True
+    while boucleID:
+        if not get_user(db, id):
+            boucleID = False
+        else:
+            id += 1
+    db_user = models.Users(
+        id = id,
+        username = v_user.username,
+        full_name = v_user.full_name,
+        email = v_user.email,
+        hashed_password = hash_password(v_user.password),
+        platform = platform,
+        arrival = dt.datetime.today(),
+        disabled = 0
+    )
+    
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+# ===============================================================================
+# Suppression
+# ===============================================================================
+def delete_user(db: Session, v_userid: int):
+    script = f'DELETE FROM `Users` WHERE `id` = "{v_userid}"'
+    db.execute(script)
+    db.commit()
+    return False

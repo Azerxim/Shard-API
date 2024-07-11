@@ -12,11 +12,16 @@ def install(package, version = None):
 
 # Base
 install("pip")
+install("requests")
 
 # API
-install("fastapi[all]", "0.95.0")
-install("uvicorn", "0.25.0")
-install("jinja2", "3.1.2")
+install("fastapi[all]", "0.111.0")
+install("uvicorn", "0.29.0")
+install("jinja2", "3.1.3")
+install("pyjwt", "2.8.0")
 
 # Base de données
-install("SQLAlchemy", "1.4.51")
+install("SQLAlchemy", "1.4.52")
+
+# OAuth2
+install("starlette-discord", "0.2.1")

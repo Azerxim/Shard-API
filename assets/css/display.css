@@ -1,0 +1,309 @@
+/*---------------------
+Display Flex
+-----------------------*/
+.flex{
+  display: flex;
+}
+
+.flex-center {
+  display: flex;
+  justify-content: center;
+}
+
+.flex-center-full {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.flex-center-vertical {
+  display: flex;
+  align-items: center;
+}
+
+.flex-end {
+  display: flex;
+  justify-content: flex-end;
+  align-items: flex-end;
+}
+
+.fd-row{
+  flex-direction: row;
+}
+
+.fd-col{
+  flex-direction: column;
+}
+
+.fd-rowr{
+  flex-direction: row-reverse;
+}
+
+.fd-colr{
+  flex-direction: column-reverse;
+}
+
+.fw-on{
+  flex-wrap: wrap;
+}
+
+.fw-off{
+  flex-wrap: nowrap;
+}
+
+.fw-reverse{
+  flex-wrap: wrap-reverse;
+}
+
+.jc-start {
+	justify-content: flex-start;
+}
+
+.jc-end {
+	justify-content: flex-end;
+}
+
+.jc-center {
+	justify-content: center;
+}
+
+.jc-sa {
+	justify-content: space-around;
+}
+
+.jc-sb {
+	justify-content: space-between;
+}
+
+.jc-se {
+	justify-content: space-evenly;
+}
+
+/*---------------------
+Display Dynamic
+-----------------------*/
+
+@media screen and (max-width: 768px) {
+  .dynamic-flex {
+    display: flex;
+    justify-content: center;
+    flex-direction: column;
+  }
+}
+
+@media screen and (min-width: 768px) {
+  .dynamic-flex {
+    display: flex;
+    justify-content: left;
+    flex-direction: row;
+  }
+}
+
+@media screen and (max-width: 1087px) {
+  .dynamic-size {
+    width: 100%;
+  }
+}
+
+@media screen and (min-width: 1087px) {
+  .dynamic-size {
+    width: 49.85%;
+  }
+}
+
+@media screen and (max-width: 1087px) {
+  .dynamic-fw {
+    flex-wrap: wrap;
+  }
+}
+
+@media screen and (min-width: 1087px) {
+  .dynamic-fw {
+    flex-wrap: nowrap;
+  }
+}
+
+@media screen and (max-width: 1087px) {
+  .dynamic-fd {
+    flex-direction: column;
+  }
+}
+
+@media screen and (min-width: 1087px) {
+  .dynamic-fd {
+    flex-direction: row;
+  }
+}
+
+@media screen and (max-width: 1087px) {
+  .dynamic-fdr {
+    flex-direction: row;
+  }
+}
+
+@media screen and (min-width: 1087px) {
+  .dynamic-fdr {
+    flex-direction: column;
+  }
+}
+
+/*---------------------
+Display Gap
+-----------------------*/
+.gap-1{
+  gap: 1px;
+}
+
+.gap-2{
+  gap: 2px;
+}
+
+.gap-4{
+  gap: 4px;
+}
+
+.gap-5{
+  gap: 5px;
+}
+
+.gap-6{
+  gap: 6px;
+}
+
+.gap-8{
+  gap: 8px;
+}
+
+.gap-10{
+  gap: 10px;
+}
+
+.gap-15{
+  gap: 15px;
+}
+
+.gap-20{
+  gap: 20px;
+}
+
+.gap-25{
+  gap: 25px;
+}
+
+.gap-30{
+  gap: 30px;
+}
+
+.gap-40{
+  gap: 40px;
+}
+
+.gap-50{
+  gap: 50px;
+}
+
+/*---------------------
+Border Radius
+-----------------------*/
+.br-1{
+  border-radius: 1px;
+}
+
+.br-2{
+  border-radius: 2px;
+}
+
+.br-4{
+  border-radius: 4px;
+}
+
+.br-5{
+  border-radius: 5px;
+}
+
+.br-6{
+  border-radius: 6px;
+}
+
+.br-8{
+  border-radius: 8px;
+}
+
+.br-10{
+  border-radius: 10px;
+}
+
+.br-15{
+  border-radius: 15px;
+}
+
+.br-20{
+  border-radius: 20px;
+}
+
+.br-25{
+  border-radius: 25px;
+}
+
+.br-30{
+  border-radius: 30px;
+}
+
+.br-40{
+  border-radius: 40px;
+}
+
+.br-50{
+  border-radius: 50px;
+}
+
+/*---------------------
+Display Float
+-----------------------*/
+.float-l{
+  float: left;
+}
+
+.float-r{
+	float: right;
+}
+
+/*---------------------
+Centrage
+-----------------------*/
+.centrage {
+  text-align: center;
+  align-content: center;
+}
+
+.centragebox {
+  margin-left: auto;
+  margin-right: auto;
+}
+
+
+/*---------------------
+Ombres
+-----------------------*/
+.shadow{
+  text-shadow: 0.5px 0 0 #000, -0.5px 0 0 #000, 0 0.5px 0 #000, 0 -0.5px 0 #000, 0.5px 0.5px #000, -0.5px -0.5px 0 #000, 0.5px -0.5px 0 #000, -0.5px 0.5px 0 #000;
+}
+
+.shadow_white{
+  text-shadow: 0.5px 0 0 #fff, -0.5px 0 0 #fff, 0 0.5px 0 #fff, 0 -0.5px 0 #fff, 0.5px 0.5px #fff, -0.5px -0.5px 0 #fff, 0.5px -0.5px 0 #fff, -0.5px 0.5px 0 #fff;
+}
+
+.slim_shadow{
+  text-shadow: 0.2px 0 0 #000, -0.2px 0 0 #000, 0 0.2px 0 #000, 0 -0.2px 0 #000, 0.2px 0.2px #000, -0.2px -0.2px 0 #000, 0.2px -0.2px 0 #000, -0.2px 0.2px 0 #000;
+}
+
+.slim_shadow_white{
+  text-shadow: 0.2px 0 0 #fff, -0.2px 0 0 #fff, 0 0.2px 0 #fff, 0 -0.2px 0 #fff, 0.2px 0.2px #fff, -0.2px -0.2px 0 #fff, 0.2px -0.2px 0 #fff, -0.2px 0.2px 0 #fff;
+}
+
+/*---------------------
+Liens
+-----------------------*/
+.invlink{
+  text-decoration: none;
+}

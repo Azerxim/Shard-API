@@ -1,28 +1,24 @@
-from typing import List
-
-import time as t, datetime as dt
-
-from fastapi import Depends, FastAPI, HTTPException, Security, Request, status
-from fastapi.security.api_key import APIKeyHeader, APIKey
-from sqlalchemy.orm import Session
+from typing import List, Annotated
+from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy.orm import Session
 
+import time as t, datetime as dt
+from starlette_discord import DiscordOAuthClient
+
+from core import file as f, utils
 from . import crud, models, schemas
-from . import gestion as ge
 from .database import SessionLocal, engine
 
 
 models.Base.metadata.create_all(bind=engine)
-
-# initialisation des variables.
-SECRET_KEY = ge.SECRET_KEY
-SECRET_KEY_NAME = "access_token"
-
 app = FastAPI()
 
-# Dependency
+################# Dependency ###################
 def get_db():
     db = SessionLocal()
     try:
@@ -33,64 +29,117 @@ def get_db():
 ################# Templates ####################
 
 templates = Jinja2Templates(directory="html")
+app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 
 ################# Security #####################
 
-api_key_header = APIKeyHeader(name=SECRET_KEY_NAME)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-async def get_api_key(api_key_header: str = Security(api_key_header)):
-    if api_key_header == SECRET_KEY:
-        return api_key_header
-    else:
-        raise HTTPException(status_code=403, detail="Could not validate credentials")
+async def secu_get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
+    user = crud.secu_decode_token(db, token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+async def secu_get_current_active_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_user)]):
+    if current_user.disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return JSONResponse(content=jsonable_encoder(current_user))
+
+@app.post("/token", tags=["Security"])
+async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
+    user_dict = crud.secu_get_user_from_username(db, form_data.username)
+    if not user_dict:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    hashed_password = crud.hash_password(form_data.password)
+    if not hashed_password == user_dict.hashed_password:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+
+    return {"access_token": user_dict.username, "token_type": "bearer"}
+
+@app.get("/security/me", tags=["Security"])
+async def read_securityusers_me(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder(current_user))
+
+@app.get("/security/load", tags=["Security"])
+async def security_load(db: Session = Depends(get_db)):
+    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
+    result = crud.loadsecurity(db, utils.SECURITY)
+    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
+    return JSONResponse(content=jsonable_encoder(result))
 
 
 ################### API ########################
+
 @app.on_event("startup")
 async def startup_event():
-    print(f"{ge.bcolors.green}INFO{ge.bcolors.end}:     -------------------")
-    print(f"{ge.bcolors.green}INFO{ge.bcolors.end}:     {ge.bcolors.purple}{ge.CONFIG['api']['name']}{ge.bcolors.end}")
-    print(f"{ge.bcolors.green}INFO{ge.bcolors.end}:     Version {ge.bcolors.lightblue}{ge.CONFIG['api']['version']}{ge.bcolors.end}")
-    print(f"{ge.bcolors.green}INFO{ge.bcolors.end}:     -------------------")
+    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
+    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     {utils.bcolors.purple}{utils.CONFIG['api']['name']}{utils.bcolors.end}")
+    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     Version {utils.bcolors.lightblue}{utils.CONFIG['api']['version']}{utils.bcolors.end}")
+    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
 
 
 @app.get("/", response_class=HTMLResponse)
 def html_main(request: Request):
-    # path = "html/index.html"
-    # html_content = open(path).read()
-    # return HTMLResponse(content=html_content, status_code=200)
-    return templates.TemplateResponse("version.html", {"request": request, "version": ge.CONFIG['api']['version'], "api": ge.CONFIG['api']['name']})
+    return templates.TemplateResponse("version.html", {"request": request, "version": utils.CONFIG['api']['version'], "api": utils.CONFIG['api']['name']})
 
 
 @app.get("/version/")
 def app_version():
-    return {'api': ge.CONFIG['api']['name'], 'version': ge.CONFIG['api']['version']}
+    result = {'api': utils.CONFIG['api']['name'], 'version': utils.CONFIG['api']['version']}
+    return JSONResponse(content=jsonable_encoder(result))
 
 
+################### API ########################
 @app.post("/user/create/", tags=["Users"])
-def create_user(platform: str, mail: str, pseudo: str, mdp: str, id_platform: str, img_platform: str, db: Session = Depends(get_db), api_key: APIKey = Depends(get_api_key)):
-    db_user = crud.user_exist(db, platform, mail, pseudo, mdp)
-    if db_user:
-        raise HTTPException(status_code=400, detail=f"L'utilisateur existe déja avec la plateforme {platform}")
+def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.iUsers, db: Session = Depends(get_db)):
+    (db_check, db_user) = crud.user_exist(db, user.email, user.username)
+    if db_check:
+        raise HTTPException(status_code=400, detail=f"L'utilisateur existe déja avec la plateforme {db_user.platform}")
     return crud.create_user(
-        db=db, 
-        v_platform = platform, 
-        v_mail = mail, 
-        v_pseudo = pseudo, 
-        v_mdp = mdp, 
-        v_id_platform = id_platform, 
-        v_img_platform = img_platform
+        db=db,
+        v_user = user
     )
 
 
-@app.get("/user/read/{UserID}", response_model=schemas.TableAuth, tags=["Users"])
+@app.delete("/user/delete/", tags=["Users"])
+def delete_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], UserID: int, db: Session = Depends(get_db)):
+    crud.delete_user(db=db, v_userid=UserID)
+    return True
+
+
+@app.get("/user/login", tags=["Users"])
+def login_user(password: str, username: str = "", email: str = "", db: Session = Depends(get_db)):
+    if username == "" and email == "":
+        func = {'error': 404, 'text': "Il manque les informations de login (username et/ou email)"}
+    else:
+        if username != "" and email != "":
+            (check, user) = crud.check_user_all(db=db, email=email, username=username, password=password)
+        elif email != "":
+            (check, user) = crud.check_user_from_email(db=db, email=email, password=password)
+        else:
+            (check, user) = crud.check_user_from_name(db=db, username=username, password=password)
+        if check:
+            func = {'error': 200, 'user': user}
+        elif user is None:
+            func = {'error': 204, 'user': user, 'text': "Aucun utilisateur n'a été trouvé"}
+        else:
+            func = {'error': 204, 'user': user, 'text': "Mot de passe incorrect"}
+    return JSONResponse(content=jsonable_encoder(func))
+
+
+@app.get("/user/read/{UserID}", response_model=schemas.Users, tags=["Users"])
 def read_user(UserID: int, db: Session = Depends(get_db)):
     db_user = crud.get_user(db=db, ID=UserID)
     if db_user is None:
         func = {'error': 404, 'user': db_user}
     else:
-        func = {'error': 0, 'user': db_user}
+        func = {'error': 200, 'user': db_user}
     return JSONResponse(content=jsonable_encoder(func))
 
 
@@ -100,7 +149,7 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     if users is None:
         func = {'error': 404, 'skip': skip, 'limit': limit, 'users': users}
     else:
-        func = {'error': 0, 'skip': skip, 'limit': limit, 'users': users}
+        func = {'error': 200, 'skip': skip, 'limit': limit, 'users': users}
     return JSONResponse(content=jsonable_encoder(func))
 
 
@@ -130,3 +179,52 @@ def html_read_user(request: Request, UserID: int, db: Session = Depends(get_db))
     if user is None:
         return templates.TemplateResponse("error.html", {"request": request, "text": "Utilisateur non trouvé"})
     return templates.TemplateResponse("user.html", {"request": request, "user": user})
+
+
+################# OAuth2 #####################
+
+discord_client = DiscordOAuthClient(utils.DISCORD_ID, utils.DISCORD_SECRET, utils.DISCORD_REDIRECT, ("identify", "guilds", "email", "connections"))
+
+@app.get("/oauth2/login", tags=["Oauth2"])
+async def oauth2_login(platform: str, url: str = ""):
+    platform = platform.lower()
+    if platform == "discord":
+        response = RedirectResponse("/oauth2/discord/login", status_code=302)
+    else:
+        return RedirectResponse("/error?text=La plateforme de connexion est inconnu", status_code=302)
+    response.set_cookie(key="SpinelleAuth", value=f"{platform}|{url}")
+    return response
+
+
+@app.get("/oauth2/discord/login", tags=["Oauth2"])
+async def oauth2_discord_login():
+    return discord_client.redirect()
+
+
+@app.get("/oauth2/discord/callback", tags=["Oauth2"])
+async def oauth2_discord_callback(code: str, request: Request, db: Session = Depends(get_db)):
+    async with discord_client.session(code) as session:
+        platform_user = await session.identify()
+        # guilds = await session.guilds()
+        # connections = await session.connections()
+
+    user = schemas.iUsers(
+        username=platform_user.username,
+        full_name=platform_user.username,
+        email=platform_user.email,
+        password=str(platform_user.id)
+    )
+    (db_check, db_user) = crud.user_exist_platform(db, user, "discord")
+    if db_check:
+        return RedirectResponse(f"/error?text=L'utilisateur existe déja avec la plateforme {db_user.platform}", status_code=302)
+    crud.create_user_platform(db=db, v_user=user, platform="discord")
+
+    cookies = request.cookies.get("SpinelleAuth")
+    cookie = cookies.split('|')
+    if cookie[1] is None:
+        response = RedirectResponse("/error?text=URL de retour n'a pas été trouvée", status_code=302)
+    response = RedirectResponse(cookie[1], status_code=302)
+    response.delete_cookie(key="SpinelleAuth")
+    return response
+
+

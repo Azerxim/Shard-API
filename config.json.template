@@ -1,0 +1,23 @@
+{
+	"version": "2",
+	"api": {
+		"platform": "PLATFORM NAME API",
+		"name": "NAME API",
+		"version": "VERSION",
+		"ip": "0.0.0.0",
+		"key": "API SECURITY KEY"
+	},
+	"database": "database",
+	"security": {
+		"username": "admin",
+		"full_name": "Admin",
+		"password": "admin"
+	},
+	"platform": {
+		"discord": {
+			"id": "DISCORD CLIENT ID",
+			"secret": "DISCORD CLIENT SECRET",
+			"redirect": "REDIRECT URI"
+		}
+	} 
+}

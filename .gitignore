@@ -156,3 +156,4 @@ cython_debug/
 config.json
 *.db
 .vscode/
+/html/_work
