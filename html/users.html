@@ -25,7 +25,7 @@
         {% include 'modules/menu.html' %}
 
         <div class="container">
-            <div class="content is-medium" style="margin-top: 3em;">
+            <div class="content is-medium flex fd-col gap-10" style="margin-top: 3em;">
                 {% for user in users %}
                 <a href="/html/user/read/{{user.id}}" class="flex fd-col gap-5 bg-smoothwhite ultradarkblue" style="border-radius: 20px; padding: 20px;">
                     <div class="flex-center-vertical fd-row gap-10 jc-sb">
