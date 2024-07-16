@@ -89,9 +89,13 @@ async def startup_event():
     print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
 
 # -----------------------------------------------
-@app.get("/", response_class=HTMLResponse)
-def html_main(request: Request):
-    return templates.TemplateResponse("version.html", {"request": request, "version": utils.CONFIG['api']['version'], "api": utils.CONFIG['api']['name']})
+# @app.get("/", response_class=HTMLResponse)
+# def html_main(request: Request):
+#     return templates.TemplateResponse("version.html", {"request": request, "version": utils.CONFIG['api']['version'], "api": utils.CONFIG['api']['name']})
+@app.get("/")
+def app_main():
+    result = {'api': utils.CONFIG['api']['name'], 'version': utils.CONFIG['api']['version']}
+    return JSONResponse(content=jsonable_encoder(result))
 
 # -----------------------------------------------
 @app.get("/version/")
@@ -111,6 +115,14 @@ def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_
         db=db,
         v_user = user
     )
+
+# -----------------------------------------------
+@app.put("/user/update/", tags=["Users"])
+def update_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.iUsers, db: Session = Depends(get_db)):
+    (db_check, db_user) = crud.user_exist(db, user.email, user.username)
+    if not db_check:
+        raise HTTPException(status_code=400, detail=f"L'utilisateur {user.username} ({user.email}) n'existe pas")
+    return False
 
 # -----------------------------------------------
 @app.delete("/user/delete/", tags=["Users"])
