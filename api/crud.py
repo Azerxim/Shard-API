@@ -57,13 +57,14 @@ def loadsecurity(db: Session, json):
 def get_user(db: Session, ID: int):
     result = db.query(models.Users).filter(models.Users.id == ID).first()
     if result is not None:
-        user = schemas.rUsers(
+        user = schemas.rUser(
             id=result.id,
             username=result.username,
             full_name=result.full_name,
             email=result.email,
             arrival=result.arrival,
-            disabled=result.disabled
+            disabled=result.disabled,
+            platform=result.platform
         )
         return user
     return None
@@ -74,13 +75,14 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
     result = db.query(models.Users).offset(skip).limit(limit).all()
     users = []
     for one in result:
-        user = schemas.rUsers(
+        user = schemas.rUser(
             id=one.id,
             username=one.username,
             full_name=one.full_name,
             email=one.email,
             arrival=one.arrival,
-            disabled=one.disabled
+            disabled=one.disabled,
+            platform=one.platform
         )
         users.append(user)
     return users
@@ -99,31 +101,32 @@ def user_exist(db: Session, email: str, username: str):
         return False, None
 
 # -------------------------------------------------------------------------------
-def user_exist_platform(db: Session, user: schemas.Users, platform):
-    db_user_name = db.query(models.Users).filter(models.Users.username == user.username).first()
-    db_user_mail = db.query(models.Users).filter(models.Users.email == user.email).first()
+# def user_exist_platform(db: Session, user: schemas.Users, platform):
+#     db_user_name = db.query(models.Users).filter(models.Users.username == user.username).first()
+#     db_user_mail = db.query(models.Users).filter(models.Users.email == user.email).first()
 
-    if db_user_name:
-        return True, db_user_name
-    elif db_user_mail:
-        return True, db_user_mail
-    else:
-        return False, None
+#     if db_user_name:
+#         return True, db_user_name
+#     elif db_user_mail:
+#         return True, db_user_mail
+#     else:
+#         return False, None
 
 
 # -------------------------------------------------------------------------------
 def check_user_from_name(db: Session, username, password):
     result = db.query(models.Users).filter(models.Users.username == username).first()
     if result is not None:
-        user = schemas.rUsers(
+        user = schemas.rUser(
             id=result.id,
             username=result.username,
             full_name=result.full_name,
             email=result.email,
             arrival=result.arrival,
-            disabled=result.disabled
+            disabled=result.disabled,
+            platform=result.platform
         )
-        if result.hashed_password == hash_password(password) and result.platform == utils.CONFIG['api']['platform']:
+        if result.hashed_password == hash_password(password):
             return True, user
         return False, user
     return False, None
@@ -133,15 +136,16 @@ def check_user_from_name(db: Session, username, password):
 def check_user_from_email(db: Session, email, password):
     result = db.query(models.Users).filter(models.Users.email == email).first()
     if result is not None:
-        user = schemas.rUsers(
+        user = schemas.rUser(
             id=result.id,
             username=result.username,
             full_name=result.full_name,
             email=result.email,
             arrival=result.arrival,
-            disabled=result.disabled
+            disabled=result.disabled,
+            platform=result.platform
         )
-        if result.hashed_password == hash_password(password) and result.platform == utils.CONFIG['api']['platform']:
+        if result.hashed_password == hash_password(password):
             return True, user
         return False, user
     return False, None
@@ -151,15 +155,16 @@ def check_user_from_email(db: Session, email, password):
 def check_user_all(db: Session, username, email, password):
     result = db.query(models.Users).filter(models.Users.username == username).filter(models.Users.email == email).first()
     if result is not None:
-        user = schemas.rUsers(
+        user = schemas.rUser(
             id=result.id,
             username=result.username,
             full_name=result.full_name,
             email=result.email,
             arrival=result.arrival,
-            disabled=result.disabled
+            disabled=result.disabled,
+            platform=result.platform
         )
-        if result.hashed_password == hash_password(password) and result.platform == utils.CONFIG['api']['platform']:
+        if result.hashed_password == hash_password(password):
             return True, user
         return False, user
     return False, None
@@ -168,7 +173,7 @@ def check_user_all(db: Session, username, email, password):
 # ===============================================================================
 # Création
 # ===============================================================================
-def create_user(db: Session, v_user: schemas.iUsers):
+def create_user(db: Session, v_user: schemas.iUser):
     id = 1
     boucleID = True
     while boucleID:
@@ -193,30 +198,30 @@ def create_user(db: Session, v_user: schemas.iUsers):
     return db_user
 
 
-def create_user_platform(db: Session, v_user: schemas.iUsers, platform: str):
-    # Platform ID est stocker dans le password et hash dans la DB
-    id = 1
-    boucleID = True
-    while boucleID:
-        if not get_user(db, id):
-            boucleID = False
-        else:
-            id += 1
-    db_user = models.Users(
-        id = id,
-        username = v_user.username,
-        full_name = v_user.full_name,
-        email = v_user.email,
-        hashed_password = hash_password(v_user.password),
-        platform = platform,
-        arrival = dt.datetime.today(),
-        disabled = 0
-    )
+# def create_user_platform(db: Session, v_user: schemas.iUser, platform: str):
+#     # Platform ID est stocker dans le password et hash dans la DB
+#     id = 1
+#     boucleID = True
+#     while boucleID:
+#         if not get_user(db, id):
+#             boucleID = False
+#         else:
+#             id += 1
+#     db_user = models.Users(
+#         id = id,
+#         username = v_user.username,
+#         full_name = v_user.full_name,
+#         email = v_user.email,
+#         hashed_password = hash_password(v_user.password),
+#         platform = platform,
+#         arrival = dt.datetime.today(),
+#         disabled = 0
+#     )
     
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+#     db.add(db_user)
+#     db.commit()
+#     db.refresh(db_user)
+#     return db_user
 
 # ===============================================================================
 # Suppression
@@ -226,3 +231,27 @@ def delete_user(db: Session, v_userid: int):
     db.execute(script)
     db.commit()
     return False
+
+
+# ===============================================================================
+# Update
+# ===============================================================================
+def update_user(db: Session, src_user: schemas.Users, v_user: schemas.uUser):
+    db_user_name = db.query(models.Users).filter(models.Users.username == v_user.username).first()
+    db_user_mail = db.query(models.Users).filter(models.Users.email == v_user.email).first()
+
+    if (not db_user_name) and (v_user.username != ""):
+        src_user.username = v_user.username
+
+    if (v_user.full_name != ""):
+        src_user.full_name = v_user.full_name
+
+    if (not db_user_mail) and (v_user.email != "" and "@" in v_user.email):
+        src_user.email = v_user.email
+
+    if (v_user.disabled is True) or (v_user.disabled is False):
+        src_user.disabled = v_user.disabled
+
+    db.commit()
+    db.refresh(src_user)
+    return src_user

@@ -44,21 +44,24 @@ class Users(BaseModel):
     arrival: datetime.datetime
     disabled: bool | None = None
 
-# Interface pour les requetes utilisateur
-class iUsers(BaseModel):
+class User(BaseModel):
     username: str
     full_name: str
     email: str | None = None
+
+# Interface pour les requetes utilisateur
+class iUser(User):
     password: str
 
-# Retour données utilisateur
-class rUsers(BaseModel):
-    id: int
-    username: str
-    full_name: str
-    email: str
-    arrival: datetime.datetime
+# Update utilisateur
+class uUser(User):
     disabled: bool | None = None
+
+# Retour données utilisateur
+class rUser(uUser):
+    id: int
+    platform: str
+    arrival: datetime.datetime
 
 
 ################# Security #####################

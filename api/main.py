@@ -2,7 +2,7 @@ from typing import List, Annotated
 from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -30,6 +30,11 @@ def get_db():
 
 templates = Jinja2Templates(directory="html")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
+
+favicon_path = 'assets/images/favicon.ico'
+@app.get('/favicon.ico', include_in_schema=False)
+async def favicon():
+    return FileResponse(favicon_path)
 
 
 ################# Security ######################
@@ -92,6 +97,7 @@ async def startup_event():
 # @app.get("/", response_class=HTMLResponse)
 # def html_main(request: Request):
 #     return templates.TemplateResponse("version.html", {"request": request, "version": utils.CONFIG['api']['version'], "api": utils.CONFIG['api']['name']})
+
 @app.get("/")
 def app_main():
     result = {'api': utils.CONFIG['api']['name'], 'version': utils.CONFIG['api']['version']}
@@ -107,22 +113,26 @@ def app_version():
 ################### API #########################
 
 @app.post("/user/create/", tags=["Users"])
-def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.iUsers, db: Session = Depends(get_db)):
+def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.iUser, db: Session = Depends(get_db)):
     (db_check, db_user) = crud.user_exist(db, user.email, user.username)
     if db_check:
         raise HTTPException(status_code=400, detail=f"L'utilisateur existe déja avec la plateforme {db_user.platform}")
     return crud.create_user(
         db=db,
-        v_user = user
+        v_user=user
     )
 
 # -----------------------------------------------
 @app.put("/user/update/", tags=["Users"])
-def update_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.iUsers, db: Session = Depends(get_db)):
+def update_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.uUser, db: Session = Depends(get_db)):
     (db_check, db_user) = crud.user_exist(db, user.email, user.username)
     if not db_check:
         raise HTTPException(status_code=400, detail=f"L'utilisateur {user.username} ({user.email}) n'existe pas")
-    return False
+    return crud.update_user(
+        db=db,
+        src_user=db_user,
+        v_user=user
+    )
 
 # -----------------------------------------------
 @app.delete("/user/delete/", tags=["Users"])
@@ -131,7 +141,7 @@ def delete_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_
     return True
 
 # -----------------------------------------------
-@app.get("/user/login", tags=["Users"])
+@app.get("/user/login/", tags=["Users"])
 def login_user(password: str, username: str = "", email: str = "", db: Session = Depends(get_db)):
     if username == "" and email == "":
         func = {'error': 404, 'text': "Il manque les informations de login (username et/ou email)"}
@@ -151,7 +161,7 @@ def login_user(password: str, username: str = "", email: str = "", db: Session =
     return JSONResponse(content=jsonable_encoder(func))
 
 # -----------------------------------------------
-@app.get("/user/read/{UserID}", response_model=schemas.Users, tags=["Users"])
+@app.get("/user/read/{UserID}", tags=["Users"])
 def read_user(UserID: int, db: Session = Depends(get_db)):
     db_user = crud.get_user(db=db, ID=UserID)
     if db_user is None:
@@ -161,7 +171,7 @@ def read_user(UserID: int, db: Session = Depends(get_db)):
     return JSONResponse(content=jsonable_encoder(func))
 
 # -----------------------------------------------
-@app.get("/users/read/", response_model=List[schemas.TableAuth], tags=["Users"])
+@app.get("/users/read/", tags=["Users"])
 def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     users = crud.get_users(db=db, skip=skip, limit=limit)
     if users is None:
@@ -175,25 +185,25 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 
 # ==== ERROR ====
 # -----------------------------------------------
-@app.get("/error-404", response_class=HTMLResponse)
+@app.get("/error-404", response_class=HTMLResponse, include_in_schema=False)
 def app_error(request: Request):
     return templates.TemplateResponse("error-404.html", {"request": request})
 
 # -----------------------------------------------
-@app.get("/error", response_class=HTMLResponse)
+@app.get("/error", response_class=HTMLResponse, include_in_schema=False)
 def error(request: Request, text: str):
     return templates.TemplateResponse("error.html", {"request": request, "text": text})
 
 
 # ==== READ ====
 # -----------------------------------------------
-@app.get("/html/users/read/", response_class=HTMLResponse, tags=["HTML"])
+@app.get("/html/users/read/", response_class=HTMLResponse, tags=["HTML"], include_in_schema=False)
 def html_read_users(request: Request, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     users = crud.get_users(db=db, skip=skip, limit=limit)
     return templates.TemplateResponse("users.html", {"request": request, "users": users})
 
 # -----------------------------------------------
-@app.get("/html/user/read/{UserID}", response_class=HTMLResponse, tags=["HTML"])
+@app.get("/html/user/read/{UserID}", response_class=HTMLResponse, tags=["HTML"], include_in_schema=False)
 def html_read_user(request: Request, UserID: int, db: Session = Depends(get_db)):
     user = crud.get_user(db=db, ID=UserID)
     if user is None:
@@ -203,58 +213,58 @@ def html_read_user(request: Request, UserID: int, db: Session = Depends(get_db))
 
 ################# OAuth2 ########################
 
-discord_client = DiscordOAuthClient(utils.DISCORD_ID, utils.DISCORD_SECRET, utils.DISCORD_REDIRECT, ("identify", "guilds", "email", "connections"))
+# discord_client = DiscordOAuthClient(utils.DISCORD_ID, utils.DISCORD_SECRET, utils.DISCORD_REDIRECT, ("identify", "guilds", "email", "connections"))
 
-# -----------------------------------------------
-@app.get("/oauth2/login/", tags=["Oauth2"])
-async def oauth2_login(platform: str, url: str = ""):
-    platform = platform.lower()
-    if platform == "discord":
-        response = RedirectResponse(f"/oauth2/{platform}", status_code=302)
-    else:
-        return RedirectResponse("/error?text=La plateforme de connexion est inconnu", status_code=302)
-    response.set_cookie(key="SpinelleOauth2", value=f"{platform}|{url}")
-    return response
+# # -----------------------------------------------
+# @app.get("/oauth2/login/", tags=["Oauth2"])
+# async def oauth2_login(platform: str, url: str = ""):
+#     platform = platform.lower()
+#     if platform == "discord":
+#         response = RedirectResponse(f"/oauth2/{platform}", status_code=302)
+#     else:
+#         return RedirectResponse("/error?text=La plateforme de connexion est inconnu", status_code=302)
+#     response.set_cookie(key="SpinelleOauth2", value=f"{platform}|{url}")
+#     return response
 
-# -----------------------------------------------
-@app.get("/oauth2/create/", tags=["Oauth2"])
-async def oauth2_create(platform: str, user: schemas.iUsers, request: Request, db: Session = Depends(get_db)):
-    crud.create_user_platform(db=db, v_user=user, platform=platform)
+# # -----------------------------------------------
+# @app.get("/oauth2/create/", tags=["Oauth2"])
+# async def oauth2_create(platform: str, user: schemas.iUser, request: Request, db: Session = Depends(get_db)):
+#     crud.create_user_platform(db=db, v_user=user, platform=platform)
 
-    cookies = request.cookies.get("SpinelleOauth2")
-    cookie = cookies.split('|')
-    if cookie[1] is None:
-        response = RedirectResponse("/error?text=URL de retour n'a pas été trouvée", status_code=302)
-    response = RedirectResponse(cookie[1], status_code=302)
-    response.delete_cookie(key="SpinelleOauth2")
-    return response
+#     cookies = request.cookies.get("SpinelleOauth2")
+#     cookie = cookies.split('|')
+#     if cookie[1] is None:
+#         response = RedirectResponse("/error?text=URL de retour n'a pas été trouvée", status_code=302)
+#     response = RedirectResponse(cookie[1], status_code=302)
+#     response.delete_cookie(key="SpinelleOauth2")
+#     return response
 
 
-# ==== DISCORD ====
-# -----------------------------------------------
-@app.get("/oauth2/discord/", tags=["Oauth2"])
-async def oauth2_discord():
-    return discord_client.redirect()
+# # ==== DISCORD ====
+# # -----------------------------------------------
+# @app.get("/oauth2/discord/", tags=["Oauth2"])
+# async def oauth2_discord():
+#     return discord_client.redirect()
 
-# -----------------------------------------------
-@app.get("/oauth2/discord/callback", tags=["Oauth2"])
-async def oauth2_discord_callback(code: str, request: Request, db: Session = Depends(get_db)):
-    async with discord_client.session(code) as session:
-        platform_user = await session.identify()
-        # guilds = await session.guilds()
-        # connections = await session.connections()
+# # -----------------------------------------------
+# @app.get("/oauth2/discord/callback", tags=["Oauth2"])
+# async def oauth2_discord_callback(code: str, request: Request, db: Session = Depends(get_db)):
+#     async with discord_client.session(code) as session:
+#         platform_user = await session.identify()
+#         # guilds = await session.guilds()
+#         # connections = await session.connections()
 
-    user = schemas.iUsers(
-        username=platform_user.username,
-        full_name=platform_user.username,
-        email=platform_user.email,
-        password=str(platform_user.id)
-    )
-    (db_check, db_user) = crud.user_exist_platform(db, user, "discord")
-    if db_check:
-        return RedirectResponse(f"/error?text=L'utilisateur existe déja avec la plateforme {db_user.platform}", status_code=302)
-    else:
-        headers = {'Location': '/oauth2/discord/create/?platform=discord'}
-        response = Response(content=user, headers=headers, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
+#     user = schemas.iUser(
+#         username=platform_user.username,
+#         full_name=platform_user.username,
+#         email=platform_user.email,
+#         password=str(platform_user.id)
+#     )
+#     (db_check, db_user) = crud.user_exist_platform(db, user, "discord")
+#     if db_check:
+#         return RedirectResponse(f"/error?text=L'utilisateur existe déja avec la plateforme {db_user.platform}", status_code=302)
+#     else:
+#         headers = {'Location': '/oauth2/discord/create/?platform=discord'}
+#         response = Response(content=user, headers=headers, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
     
-    return response
+#     return response
