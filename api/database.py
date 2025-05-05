@@ -2,7 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-from core import utils
+from . import utils
 
 
 SQLALCHEMY_DATABASE_URL = f"sqlite:///./{utils.DATABASE}.db"

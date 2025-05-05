@@ -10,7 +10,8 @@ from sqlalchemy.orm import Session
 import time as t, datetime as dt
 from starlette_discord import DiscordOAuthClient
 
-from core import file as f, utils
+from . import utils
+from topazdevsdk import file as f, colors
 from . import crud, models, schemas
 from .database import SessionLocal, engine
 
@@ -78,9 +79,9 @@ async def read_securityusers_me(current_user: Annotated[schemas.SecurityUsers, D
 # -----------------------------------------------
 @app.get("/security/load", tags=["Security"])
 async def security_load(db: Session = Depends(get_db)):
-    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
+    print(f"{colors.BColors.bcolors.GREEN}INFO{colors.BColors.END}:     -------------------")
     result = crud.loadsecurity(db, utils.SECURITY)
-    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     return JSONResponse(content=jsonable_encoder(result))
 
 
@@ -88,10 +89,10 @@ async def security_load(db: Session = Depends(get_db)):
 
 @app.on_event("startup")
 async def startup_event():
-    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
-    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     {utils.bcolors.purple}{utils.CONFIG['api']['name']}{utils.bcolors.end}")
-    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     Version {utils.bcolors.lightblue}{utils.CONFIG['api']['version']}{utils.bcolors.end}")
-    print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     -------------------")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     {colors.BColors.PURPLE}{utils.CONFIG['api']['name']}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Version {colors.BColors.LIGHTBLUE}{utils.CONFIG['api']['version']}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
 
 # -----------------------------------------------
 # @app.get("/", response_class=HTMLResponse)

@@ -6,7 +6,7 @@ from operator import itemgetter
 import hashlib
 
 from . import models, schemas
-from core import utils
+from . import utils
 
 
 ################# Security #####################

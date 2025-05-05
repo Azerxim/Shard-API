@@ -13,6 +13,7 @@ def install(package, version = None):
 # Base
 install("pip")
 install("requests")
+install("topazdevsdk")
 
 # API
 install("fastapi[all]", "0.111.0")
