@@ -79,7 +79,7 @@ async def read_securityusers_me(current_user: Annotated[schemas.SecurityUsers, D
 # -----------------------------------------------
 @app.get("/security/load", tags=["Security"])
 async def security_load(db: Session = Depends(get_db)):
-    print(f"{colors.BColors.bcolors.GREEN}INFO{colors.BColors.END}:     -------------------")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     result = crud.loadsecurity(db, utils.SECURITY)
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     return JSONResponse(content=jsonable_encoder(result))
@@ -119,6 +119,17 @@ def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_
     if db_check:
         raise HTTPException(status_code=400, detail=f"L'utilisateur existe déja avec la plateforme {db_user.platform}")
     return crud.create_user(
+        db=db,
+        v_user=user
+    )
+
+# -----------------------------------------------
+@app.post("/user/create/discord/", tags=["Users"])
+def create_user_discord(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.iDiscordUser, db: Session = Depends(get_db)):
+    (db_check, db_user) = crud.user_exist(db, user.email, user.username)
+    if db_check:
+        raise HTTPException(status_code=400, detail=f"L'utilisateur existe déja avec la plateforme {db_user.platform}")
+    return crud.create_user_discord(
         db=db,
         v_user=user
     )

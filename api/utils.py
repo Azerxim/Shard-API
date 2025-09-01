@@ -1,5 +1,5 @@
 import os
-from ..core import file
+from topazdevsdk import file
 
 # CONFIGURATION
 path = f"{os.path.realpath(os.path.dirname(__file__))}/../config.json"

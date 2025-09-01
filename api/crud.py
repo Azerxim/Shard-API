@@ -6,6 +6,7 @@ from operator import itemgetter
 import hashlib
 
 from . import models, schemas
+from topazdevsdk import colors
 from . import utils
 
 
@@ -27,7 +28,7 @@ def secu_get_user_from_email(db: Session, email: str):
 def loadsecurity(db: Session, json):
     # Gestion du password vide
     if json['password']=="":
-        print(f"{utils.bcolors.red}ERROR{utils.bcolors.end}:    Security load error, password null")
+        print(f"{colors.BColors.RED}ERROR{colors.BColors.END}:    Security load error, password null")
         return {"result": 'error'}
     try:
         user = secu_get_user_from_username(db, json['username'])     
@@ -40,14 +41,14 @@ def loadsecurity(db: Session, json):
             db.add(user_dict)
             db.commit()
             db.refresh(user_dict)
-            print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     Security user created")
+            print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Security user created")
             return {"result": 'created'}
         else:
             db.query(models.SecurityUsers).filter(models.SecurityUsers.username == user_dict.username).update({'full_name': user_dict.full_name, 'hashed_password': user_dict.hashed_password})
-            print(f"{utils.bcolors.green}INFO{utils.bcolors.end}:     Security user modified")
+            print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Security user modified")
             return {"result": 'modified'}
     except:
-        print(f"{utils.bcolors.red}ERROR{utils.bcolors.end}:    Security load error")
+        print(f"{colors.BColors.RED}ERROR{colors.BColors.END}:    Security load error")
         return {"result": 'error'}
 
 
@@ -64,7 +65,11 @@ def get_user(db: Session, ID: int):
             email=result.email,
             arrival=result.arrival,
             disabled=result.disabled,
-            platform=result.platform
+            platform=result.platform,
+            platform_discord_id=result.platform_discord_id,
+            platform_discord_name=result.platform_discord_name,
+            platform_discord_mail=result.platform_discord_mail,
+            platform_discord_image_url=result.platform_discord_image_url
         )
         return user
     return None
@@ -82,7 +87,11 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
             email=one.email,
             arrival=one.arrival,
             disabled=one.disabled,
-            platform=one.platform
+            platform=one.platform,
+            platform_discord_id=one.platform_discord_id,
+            platform_discord_name=one.platform_discord_name,
+            platform_discord_mail=one.platform_discord_mail,
+            platform_discord_image_url=one.platform_discord_image_url
         )
         users.append(user)
     return users
@@ -189,7 +198,41 @@ def create_user(db: Session, v_user: schemas.iUser):
         hashed_password = hash_password(v_user.password),
         platform = utils.CONFIG['api']['platform'],
         arrival = dt.datetime.today(),
-        disabled = 0
+        disabled = 0,
+        platform_discord_id = None,
+        platform_discord_name = None,
+        platform_discord_mail = None,
+        platform_discord_image_url = None
+    )
+    
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+
+def create_user_discord(db: Session, v_user: schemas.iDiscordUser):
+    id = 1
+    boucleID = True
+    while boucleID:
+        if not get_user(db, id):
+            boucleID = False
+        else:
+            id += 1
+    db_user = models.Users(
+        id = id,
+        username = v_user.username,
+        full_name = v_user.full_name,
+        email = v_user.email,
+        hashed_password = hash_password(v_user.password),
+        platform = 'discord',
+        arrival = dt.datetime.today(),
+        disabled = 0,
+
+        platform_discord_id = v_user.platform_discord_id,
+        platform_discord_name = v_user.platform_discord_name,
+        platform_discord_mail = v_user.platform_discord_mail,
+        platform_discord_image_url = v_user.platform_discord_image_url
     )
     
     db.add(db_user)
@@ -251,6 +294,18 @@ def update_user(db: Session, src_user: schemas.Users, v_user: schemas.uUser):
 
     if (v_user.disabled is True) or (v_user.disabled is False):
         src_user.disabled = v_user.disabled
+
+    if (v_user.platform_discord_id != ""):
+        src_user.platform_discord_id = v_user.platform_discord_id
+
+    if (v_user.platform_discord_name != ""):
+        src_user.platform_discord_name = v_user.platform_discord_name
+
+    if (v_user.platform_discord_mail != ""):
+        src_user.platform_discord_mail = v_user.platform_discord_mail
+
+    if (v_user.platform_discord_image_url != ""):
+        src_user.platform_discord_image_url = v_user.platform_discord_image_url
 
     db.commit()
     db.refresh(src_user)

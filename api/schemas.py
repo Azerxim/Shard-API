@@ -3,35 +3,6 @@ from pydantic import BaseModel
 import datetime
 
 
-class TableAuth(BaseModel):
-    idAuth: int
-    platform: str
-    pseudo: str
-    password: str
-    mail: str
-    statut: str
-    image_url: str
-    arrival: str
-
-    # platform_discord_id: str
-    # platform_discord_name: str
-    # platform_discord_mail: str
-    # platform_discord_image_url: str
-
-    # platform_github_id: str
-    # platform_github_name: str
-    # platform_github_mail: str
-    # platform_github_image_url: str
-    
-    # platform_microsoft_id: str
-    # platform_microsoft_name: str
-    # platform_microsoft_mail: str
-    # platform_microsoft_image_url: str
-
-    class Config:
-        from_attributes = False
-
-
 ################# Users ########################
 # Utilisateur dans la base de données
 class Users(BaseModel):
@@ -44,17 +15,37 @@ class Users(BaseModel):
     arrival: datetime.datetime
     disabled: bool | None = None
 
-class User(BaseModel):
+# Utilisateur discord dans la base de données
+class DiscordUser(BaseModel):
     username: str
     full_name: str
     email: str | None = None
 
+    platform_discord_id: str | None = None
+    platform_discord_name: str | None = None
+    platform_discord_mail: str | None = None
+    platform_discord_image_url: str | None = None
+
+# Utilisateur full dans la base de données
+class FullUser(BaseModel):
+    username: str
+    full_name: str
+    email: str | None = None
+
+    platform_discord_id: str | None = None
+    platform_discord_name: str | None = None
+    platform_discord_mail: str | None = None
+    platform_discord_image_url: str | None = None
+
 # Interface pour les requetes utilisateur
-class iUser(User):
+class iUser(FullUser):
+    password: str
+
+class iDiscordUser(FullUser):
     password: str
 
 # Update utilisateur
-class uUser(User):
+class uUser(FullUser):
     disabled: bool | None = None
 
 # Retour données utilisateur
