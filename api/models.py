@@ -15,15 +15,11 @@ class Users(Base):
     username = Column(String, primary_key=True)
     full_name = Column(String)
     email = Column(String)
+    image_url = Column(String)
     hashed_password = Column(String)
     platform = Column(String)
     arrival = Column(DateTime)
     disabled = Column(Boolean)
-
-    platform_discord_id = Column(String)
-    platform_discord_name = Column(String)
-    platform_discord_mail = Column(String)
-    platform_discord_image_url = Column(String)
 
 
 ################# Security #####################

@@ -18,9 +18,5 @@ if file.exist(f"{os.path.realpath(os.path.dirname(__file__))}/../config.json"):
 	SECURITY = CONFIG['security']
 	DATABASE = CONFIG['database']
 	API_IP = CONFIG['api']['ip']
-	DISCORD_ID = CONFIG['platform']['discord']['id']
-	DISCORD_SECRET = CONFIG['platform']['discord']['secret']
-	DISCORD_REDIRECT = CONFIG['platform']['discord']['redirect']
 else:
-    SECRET_KEY = 0
     API_IP = "127.0.0.1"

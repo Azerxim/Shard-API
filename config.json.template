@@ -12,12 +12,5 @@
 		"username": "admin",
 		"full_name": "Admin",
 		"password": "admin"
-	},
-	"platform": {
-		"discord": {
-			"id": "DISCORD CLIENT ID",
-			"secret": "DISCORD CLIENT SECRET",
-			"redirect": "REDIRECT URI"
-		}
-	} 
+	}
 }

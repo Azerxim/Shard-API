@@ -10,21 +10,11 @@ class Users(BaseModel):
     username: str
     full_name: str
     email: str | None = None
+    image_url: str | None = None
     hashed_password: str
     platform: str
     arrival: datetime.datetime
     disabled: bool | None = None
-
-# Utilisateur discord dans la base de données
-class DiscordUser(BaseModel):
-    username: str
-    full_name: str
-    email: str | None = None
-
-    platform_discord_id: str | None = None
-    platform_discord_name: str | None = None
-    platform_discord_mail: str | None = None
-    platform_discord_image_url: str | None = None
 
 # Utilisateur full dans la base de données
 class FullUser(BaseModel):
@@ -32,21 +22,14 @@ class FullUser(BaseModel):
     full_name: str
     email: str | None = None
 
-    platform_discord_id: str | None = None
-    platform_discord_name: str | None = None
-    platform_discord_mail: str | None = None
-    platform_discord_image_url: str | None = None
-
 # Interface pour les requetes utilisateur
 class iUser(FullUser):
-    password: str
-
-class iDiscordUser(FullUser):
     password: str
 
 # Update utilisateur
 class uUser(FullUser):
     disabled: bool | None = None
+    image_url: str | None = None
 
 # Retour données utilisateur
 class rUser(uUser):

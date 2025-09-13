@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from sqlalchemy import text
+from sqlalchemy import text, update
 import time as t, datetime as dt
 from operator import itemgetter
 import hashlib
@@ -66,10 +66,7 @@ def get_user(db: Session, ID: int):
             arrival=result.arrival,
             disabled=result.disabled,
             platform=result.platform,
-            platform_discord_id=result.platform_discord_id,
-            platform_discord_name=result.platform_discord_name,
-            platform_discord_mail=result.platform_discord_mail,
-            platform_discord_image_url=result.platform_discord_image_url
+            image_url=result.image_url
         )
         return user
     return None
@@ -88,10 +85,7 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
             arrival=one.arrival,
             disabled=one.disabled,
             platform=one.platform,
-            platform_discord_id=one.platform_discord_id,
-            platform_discord_name=one.platform_discord_name,
-            platform_discord_mail=one.platform_discord_mail,
-            platform_discord_image_url=one.platform_discord_image_url
+            image_url=one.image_url
         )
         users.append(user)
     return users
@@ -109,18 +103,6 @@ def user_exist(db: Session, email: str, username: str):
     else:
         return False, None
 
-# -------------------------------------------------------------------------------
-# def user_exist_platform(db: Session, user: schemas.Users, platform):
-#     db_user_name = db.query(models.Users).filter(models.Users.username == user.username).first()
-#     db_user_mail = db.query(models.Users).filter(models.Users.email == user.email).first()
-
-#     if db_user_name:
-#         return True, db_user_name
-#     elif db_user_mail:
-#         return True, db_user_mail
-#     else:
-#         return False, None
-
 
 # -------------------------------------------------------------------------------
 def check_user_from_name(db: Session, username, password):
@@ -131,6 +113,7 @@ def check_user_from_name(db: Session, username, password):
             username=result.username,
             full_name=result.full_name,
             email=result.email,
+            image_url=result.image_url,
             arrival=result.arrival,
             disabled=result.disabled,
             platform=result.platform
@@ -150,6 +133,7 @@ def check_user_from_email(db: Session, email, password):
             username=result.username,
             full_name=result.full_name,
             email=result.email,
+            image_url=result.image_url,
             arrival=result.arrival,
             disabled=result.disabled,
             platform=result.platform
@@ -169,6 +153,7 @@ def check_user_all(db: Session, username, email, password):
             username=result.username,
             full_name=result.full_name,
             email=result.email,
+            image_url=result.image_url,
             arrival=result.arrival,
             disabled=result.disabled,
             platform=result.platform
@@ -195,14 +180,11 @@ def create_user(db: Session, v_user: schemas.iUser):
         username = v_user.username,
         full_name = v_user.full_name,
         email = v_user.email,
+        image_url = None,
         hashed_password = hash_password(v_user.password),
         platform = utils.CONFIG['api']['platform'],
         arrival = dt.datetime.today(),
-        disabled = 0,
-        platform_discord_id = None,
-        platform_discord_name = None,
-        platform_discord_mail = None,
-        platform_discord_image_url = None
+        disabled = 0
     )
     
     db.add(db_user)
@@ -210,61 +192,6 @@ def create_user(db: Session, v_user: schemas.iUser):
     db.refresh(db_user)
     return db_user
 
-
-def create_user_discord(db: Session, v_user: schemas.iDiscordUser):
-    id = 1
-    boucleID = True
-    while boucleID:
-        if not get_user(db, id):
-            boucleID = False
-        else:
-            id += 1
-    db_user = models.Users(
-        id = id,
-        username = v_user.username,
-        full_name = v_user.full_name,
-        email = v_user.email,
-        hashed_password = hash_password(v_user.password),
-        platform = 'discord',
-        arrival = dt.datetime.today(),
-        disabled = 0,
-
-        platform_discord_id = v_user.platform_discord_id,
-        platform_discord_name = v_user.platform_discord_name,
-        platform_discord_mail = v_user.platform_discord_mail,
-        platform_discord_image_url = v_user.platform_discord_image_url
-    )
-    
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
-
-
-# def create_user_platform(db: Session, v_user: schemas.iUser, platform: str):
-#     # Platform ID est stocker dans le password et hash dans la DB
-#     id = 1
-#     boucleID = True
-#     while boucleID:
-#         if not get_user(db, id):
-#             boucleID = False
-#         else:
-#             id += 1
-#     db_user = models.Users(
-#         id = id,
-#         username = v_user.username,
-#         full_name = v_user.full_name,
-#         email = v_user.email,
-#         hashed_password = hash_password(v_user.password),
-#         platform = platform,
-#         arrival = dt.datetime.today(),
-#         disabled = 0
-#     )
-    
-#     db.add(db_user)
-#     db.commit()
-#     db.refresh(db_user)
-#     return db_user
 
 # ===============================================================================
 # Suppression
@@ -280,33 +207,17 @@ def delete_user(db: Session, v_userid: int):
 # Update
 # ===============================================================================
 def update_user(db: Session, src_user: schemas.Users, v_user: schemas.uUser):
-    db_user_name = db.query(models.Users).filter(models.Users.username == v_user.username).first()
-    db_user_mail = db.query(models.Users).filter(models.Users.email == v_user.email).first()
-
-    if (not db_user_name) and (v_user.username != ""):
-        src_user.username = v_user.username
-
-    if (v_user.full_name != ""):
-        src_user.full_name = v_user.full_name
-
-    if (not db_user_mail) and (v_user.email != "" and "@" in v_user.email):
-        src_user.email = v_user.email
-
-    if (v_user.disabled is True) or (v_user.disabled is False):
-        src_user.disabled = v_user.disabled
-
-    if (v_user.platform_discord_id != ""):
-        src_user.platform_discord_id = v_user.platform_discord_id
-
-    if (v_user.platform_discord_name != ""):
-        src_user.platform_discord_name = v_user.platform_discord_name
-
-    if (v_user.platform_discord_mail != ""):
-        src_user.platform_discord_mail = v_user.platform_discord_mail
-
-    if (v_user.platform_discord_image_url != ""):
-        src_user.platform_discord_image_url = v_user.platform_discord_image_url
-
-    db.commit()
-    db.refresh(src_user)
-    return src_user
+    db_user_name = db.query(models.Users).filter(models.Users.username == src_user.username).first()
+    
+    if db_user_name:
+        db.execute(update(models.Users).where(models.Users.id == src_user.id).values(
+            username = v_user.username,
+            full_name = v_user.full_name,
+            email = v_user.email,
+            image_url = v_user.image_url,
+            disabled = v_user.disabled
+        ))
+        db.commit()
+        db.refresh(db_user_name)
+        return get_user(db=db, ID=src_user.id)
+    return {"error": 404, "text": "User not found"}

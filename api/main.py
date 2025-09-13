@@ -124,17 +124,6 @@ def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_
     )
 
 # -----------------------------------------------
-@app.post("/user/create/discord/", tags=["Users"])
-def create_user_discord(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.iDiscordUser, db: Session = Depends(get_db)):
-    (db_check, db_user) = crud.user_exist(db, user.email, user.username)
-    if db_check:
-        raise HTTPException(status_code=400, detail=f"L'utilisateur existe déja avec la plateforme {db_user.platform}")
-    return crud.create_user_discord(
-        db=db,
-        v_user=user
-    )
-
-# -----------------------------------------------
 @app.put("/user/update/", tags=["Users"])
 def update_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.uUser, db: Session = Depends(get_db)):
     (db_check, db_user) = crud.user_exist(db, user.email, user.username)
@@ -167,9 +156,9 @@ def login_user(password: str, username: str = "", email: str = "", db: Session =
         if check:
             func = {'error': 200, 'user': user}
         elif user is None:
-            func = {'error': 204, 'user': user, 'text': "Aucun utilisateur n'a été trouvé"}
+            func = {'error': 204, 'user': {}, 'text': "Aucun utilisateur n'a été trouvé"}
         else:
-            func = {'error': 204, 'user': user, 'text': "Mot de passe incorrect"}
+            func = {'error': 204, 'user': {}, 'text': "Mot de passe incorrect"}
     return JSONResponse(content=jsonable_encoder(func))
 
 # -----------------------------------------------
@@ -221,62 +210,3 @@ def html_read_user(request: Request, UserID: int, db: Session = Depends(get_db))
     if user is None:
         return templates.TemplateResponse("error.html", {"request": request, "text": "Utilisateur non trouvé"})
     return templates.TemplateResponse("user.html", {"request": request, "user": user})
-
-
-################# OAuth2 ########################
-
-# discord_client = DiscordOAuthClient(utils.DISCORD_ID, utils.DISCORD_SECRET, utils.DISCORD_REDIRECT, ("identify", "guilds", "email", "connections"))
-
-# # -----------------------------------------------
-# @app.get("/oauth2/login/", tags=["Oauth2"])
-# async def oauth2_login(platform: str, url: str = ""):
-#     platform = platform.lower()
-#     if platform == "discord":
-#         response = RedirectResponse(f"/oauth2/{platform}", status_code=302)
-#     else:
-#         return RedirectResponse("/error?text=La plateforme de connexion est inconnu", status_code=302)
-#     response.set_cookie(key="SpinelleOauth2", value=f"{platform}|{url}")
-#     return response
-
-# # -----------------------------------------------
-# @app.get("/oauth2/create/", tags=["Oauth2"])
-# async def oauth2_create(platform: str, user: schemas.iUser, request: Request, db: Session = Depends(get_db)):
-#     crud.create_user_platform(db=db, v_user=user, platform=platform)
-
-#     cookies = request.cookies.get("SpinelleOauth2")
-#     cookie = cookies.split('|')
-#     if cookie[1] is None:
-#         response = RedirectResponse("/error?text=URL de retour n'a pas été trouvée", status_code=302)
-#     response = RedirectResponse(cookie[1], status_code=302)
-#     response.delete_cookie(key="SpinelleOauth2")
-#     return response
-
-
-# # ==== DISCORD ====
-# # -----------------------------------------------
-# @app.get("/oauth2/discord/", tags=["Oauth2"])
-# async def oauth2_discord():
-#     return discord_client.redirect()
-
-# # -----------------------------------------------
-# @app.get("/oauth2/discord/callback", tags=["Oauth2"])
-# async def oauth2_discord_callback(code: str, request: Request, db: Session = Depends(get_db)):
-#     async with discord_client.session(code) as session:
-#         platform_user = await session.identify()
-#         # guilds = await session.guilds()
-#         # connections = await session.connections()
-
-#     user = schemas.iUser(
-#         username=platform_user.username,
-#         full_name=platform_user.username,
-#         email=platform_user.email,
-#         password=str(platform_user.id)
-#     )
-#     (db_check, db_user) = crud.user_exist_platform(db, user, "discord")
-#     if db_check:
-#         return RedirectResponse(f"/error?text=L'utilisateur existe déja avec la plateforme {db_user.platform}", status_code=302)
-#     else:
-#         headers = {'Location': '/oauth2/discord/create/?platform=discord'}
-#         response = Response(content=user, headers=headers, status_code=status.HTTP_307_TEMPORARY_REDIRECT)
-    
-#     return response
