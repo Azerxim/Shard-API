@@ -1,0 +1,203 @@
+.markdown section{
+  color: black;
+}
+
+
+.markdown h1{
+  color: black;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 40px;
+  font-family: cursive;
+}
+
+
+.markdown h2{
+  color: black;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 30px;
+  font-family: cursive;
+}
+
+
+.markdown h3{
+  color: black;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 25px;
+  font-family: cursive;
+}
+
+
+.markdown h4{
+  color: black;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 20px;
+  font-family: cursive;
+}
+
+
+.markdown h5{
+  color: black;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 15px;
+  font-family: cursive;
+}
+
+
+.markdown p{
+  color: black;
+  text-align: left;
+  margin: 0 25px;
+  font-size: 15px;
+}
+
+
+.markdown ul{
+  color: black;
+  text-align: left;
+  margin: 10px 10px;
+  overflow: visible;
+  font-size: 15px;
+}
+
+
+.markdown li{
+  color: black;
+  text-align: left;
+  margin: 5px 40px;
+  list-style-type: disc;
+  font-size: 15px;
+}
+
+
+.markdown ol{
+  color: black;
+  text-align: left;
+  margin: 10px 20px;
+  font-size: 15px;
+}
+
+
+.markdown code {
+    background-color: #eee;
+    border-radius: 3px;
+    font-family: courier, monospace;
+    padding: 0 3px;
+    font-size: 15px;
+}
+
+
+/*White*/
+
+.markdownWhite section{
+  color: white;
+}
+
+
+.markdownWhite h1{
+  color: white;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 40px;
+  font-family: cursive;
+}
+
+
+.markdownWhite h2{
+  color: white;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 30px;
+  font-family: cursive;
+}
+
+
+.markdownWhite h3{
+  color: white;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 25px;
+  font-family: cursive;
+}
+
+
+.markdownWhite h4{
+  color: white;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 20px;
+  font-family: cursive;
+}
+
+
+.markdownWhite h5{
+  color: white;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+  margin: 15px 25px;
+  font-size: 15px;
+  font-family: cursive;
+}
+
+
+.markdownWhite strong{
+  color: white;
+  text-align: left;
+  text-shadow: 0 0 0 #000;
+}
+
+
+.markdownWhite p{
+  color: white;
+  text-align: left;
+  margin: 0 25px;
+  font-size: 15px;
+}
+
+
+.markdownWhite ul{
+  color: white;
+  text-align: left;
+  margin: 10px 10px;
+  overflow: visible;
+  font-size: 15px;
+}
+
+
+.markdownWhite li{
+  color: white;
+  text-align: left;
+  margin: 5px 40px;
+  list-style-type: disc;
+  font-size: 15px;
+}
+
+
+.markdownWhite ol{
+  color: white;
+  text-align: left;
+  margin: 10px 20px;
+  font-size: 15px;
+}
+
+
+.markdownWhite code {
+    background-color: #eee;
+    border-radius: 3px;
+    font-family: courier, monospace;
+    padding: 0 3px;
+    font-size: 15px;
+}

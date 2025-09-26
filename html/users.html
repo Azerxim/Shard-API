@@ -6,7 +6,7 @@
 	<head>
 		<meta name="author" content="Azerxim">
 		<meta http-equiv="Content-type" content="text/html;charset=UTF-8"/>
-		<meta name="description" content="Spinelle Auth"/>
+		<meta name="description" content="{{ api }} - Utilisateurs"/>
 		<meta name="keywords" content=""/>
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 		<meta name="robots" content="noindex, nofollow">
@@ -14,7 +14,7 @@
 		<meta name="language" content="French">
 		<link rel="shortcut icon" href="{{url_for('assets',path='/images/favicon.ico')}}"/>
 
-        <title>Spinelle Auth</title>
+        <title>{{ api }} - Utilisateurs</title>
 
         {% include 'modules/css.html' %}
         {% include 'modules/scripts.html' %}
@@ -30,8 +30,8 @@
                 <a href="/html/user/read/{{user.id}}" class="flex fd-col gap-5 bg-smoothwhite ultradarkblue" style="border-radius: 20px; padding: 20px;">
                     <div class="flex-center-vertical fd-row gap-10 jc-sb">
                         <div class="flex-center-vertical fd-row fw-on gap-10">
-                            <img src="{{ user.image_url }}" alt="Image de profil" onerror="this.src='//topazdev.fr/images/profil_white.png'" class="bg-ultradarkblue" style="width: 50px; border-radius: 50%; margin: 5px 0px;"/>
-                            <span>{{ user.full_name }}</span>
+                            <img src="{{ user.image_url }}" alt="Image de profil" onerror="this.src='/assets/images/profil_white.png'" class="bg-ultradarkblue" style="width: 50px; border-radius: 50%; margin: 5px 0px;"/>
+                            <span>{{ user.pseudo }}</span>
                         </div>
                         <div class="flex-center-vertical fd-row fw-on gap-10">
                             <i class="fa-regular fa-calendar"></i>

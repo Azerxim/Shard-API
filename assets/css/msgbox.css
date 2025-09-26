@@ -1,0 +1,67 @@
+.alert {
+  padding: 20px;
+  background-color: #f44336;
+  color: white;
+  opacity: 1;
+  transition: opacity 0.6s;
+  margin-bottom: 5px;
+}
+
+.alert.success {background-color: #4CAF50;}
+.alert.info {background-color: #2196F3;}
+.alert.warning {background-color: #ff9800;}
+
+.alert.TD-dark {background-color: #27292f;}
+.alert.TD-ultragrey {background-color: #4F4F4F;}
+.alert.TD-grey {background-color: #828282;}
+.alert.TD-lightgrey {background-color: #BDBDBD;}
+.alert.TD-lightwhite {background-color: #E0E0E0;}
+.alert.TD-smoothwhite {background-color: #F2F2F2;}
+
+.alert.TD-lightwhite2 {background-color: #d1d7d8;}
+.alert.TD-white {background-color: #ffffff;}
+
+.alert.TD-lime {background-color: #62ac19;}
+.alert.TD-green {background-color: #219653;}
+.alert.TD-green2 {background-color: #27AE60;}
+.alert.TD-lightgreen {background-color: #6FCF97;}
+.alert.TD-ultralightgreen {background-color: #B2FFC3;}
+
+.alert.TD-ultradarkblue {background-color: #2E3144;}
+.alert.TD-darkblue {background-color: #2f3195;}
+.alert.TD-blue {background-color: #008ed7;}
+.alert.TD-lightblue {background-color: #93cbeb;}
+.alert.TD-cyan {background-color: #167b8c;}
+
+.alert.TD-ultrapurple {background-color: #6821a0;}
+.alert.TD-purple {background-color: #9B51E0;}
+.alert.TD-lightpurple {background-color: #BB6BD9;}
+.alert.TD-ultramagenta {background-color: #93278F;}
+.alert.TD-magenta {background-color: #ac31a3;}
+
+.alert.TD-red {background-color: #d32300;}
+.alert.TD-lightred {background-color: #EB5757;}
+.alert.TD-ultraorange {background-color: #E44D26;}
+.alert.TD-orange {background-color: #e36501;}
+.alert.TD-lightorange {background-color: #F2994A;}
+
+.alert.TD-yellow {background-color: #F0C300;}
+.alert.TD-lightyellow {background-color: #F2C94C;}
+
+.alert.TD-brown {background-color: #633d20;}
+.alert.TD-black {background-color: #000000;}
+
+.closebtn {
+  margin-left: 15px;
+  color: white;
+  font-weight: bold;
+  float: right;
+  font-size: 22px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.closebtn:hover {
+  color: black;
+}

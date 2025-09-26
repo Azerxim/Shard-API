@@ -6,7 +6,7 @@
 	<head>
 		<meta name="author" content="Azerxim">
 		<meta http-equiv="Content-type" content="text/html;charset=UTF-8"/>
-		<meta name="description" content="Spinelle Auth"/>
+		<meta name="description" content="{{ api }}"/>
 		<meta name="keywords" content=""/>
 		<meta name="viewport" content="width=device-width, initial-scale=1">
 		<meta name="robots" content="noindex, nofollow">
@@ -14,7 +14,7 @@
 		<meta name="language" content="French">
 		<link rel="shortcut icon" href="{{url_for('assets',path='/images/favicon.ico')}}"/>
 
-        <title>Spinelle Auth</title>
+        <title>{{ api }}</title>
 
         {% include 'modules/css.html' %}
         {% include 'modules/scripts.html' %}
@@ -25,11 +25,11 @@
         {% include 'modules/menu.html' %}
         <div class="container">
             <div class="content is-medium">
-                <div class="flex-center-full fd-col gap-20" style="padding: 10px;">
+                <div class="flex-center-full fd-col gap-40" style="padding: 10px;">
                     <div class="flex-center-full fd-col gap-10">
                         <h1 class="is-size-1">{{ api }}</h1>
-                        <img src="https://dl.topazdev.fr/stock/images/web/galaxie.png" alt="logo"/>
-                        <span class="is-size-2">{{ version }}</span>
+                        <!-- <img src="/assets/images/galaxie.png" alt="logo"/> -->
+                        <span class="is-size-2">Version {{ version }}</span>
                     </div>
                     
                     <a href="/html/users/read/" class="button is-TD-ultradarkblue" style="width: 100%;">

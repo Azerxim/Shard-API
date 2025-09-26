@@ -4,38 +4,69 @@ import datetime
 
 
 ################# Users ########################
+# Plateforme de connexion externe de l'utilisateur
+class UserPlatforms(BaseModel):
+    id: int
+    user_id: int
+    platform: str
+    uid: str
+
+    class Config:
+        from_attributes = True
+
 # Utilisateur dans la base de données
 class Users(BaseModel):
     id: int
     username: str
-    full_name: str
     email: str | None = None
-    image_url: str | None = None
     hashed_password: str
-    platform: str
+    pseudo: str
+    image_url: str | None = None
     arrival: datetime.datetime
-    disabled: bool | None = None
+    is_disabled: bool | None = None
+    is_admin: bool | None = None
 
-# Utilisateur full dans la base de données
-class FullUser(BaseModel):
+    platforms: List[UserPlatforms] = []
+
+# Interface pour la creation d'un utilisateur
+class createUser(BaseModel):
     username: str
-    full_name: str
     email: str | None = None
+    password: str
+    pseudo: str
 
-# Interface pour les requetes utilisateur
-class iUser(FullUser):
+# Interface pour le login d'un utilisateur
+class loginUser(BaseModel):
+    username: str | None = None
+    email: str | None = None
     password: str
 
-# Update utilisateur
-class uUser(FullUser):
-    disabled: bool | None = None
-    image_url: str | None = None
-
-# Retour données utilisateur
-class rUser(uUser):
+# Interface pour la mise à jour d'un utilisateur
+class updateUser(BaseModel):
     id: int
-    platform: str
+    username: str | None = None
+    email: str | None = None
+    password: str | None = None
+    pseudo: str | None = None
+    image_url: str | None = None
+    is_disabled: bool | None = None
+    is_admin: bool | None = None
+
+# Interface de retour d'un utilisateur
+class readUser(BaseModel):
+    id: int
+    username: str
+    email: str | None = None
+    pseudo: str
+    image_url: str | None = None
     arrival: datetime.datetime
+    is_disabled: bool | None = None
+    is_admin: bool | None = None
+
+    platforms: List[UserPlatforms] = []
+
+    class Config:
+        from_attributes = True
 
 
 ################# Security #####################

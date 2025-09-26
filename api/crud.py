@@ -5,96 +5,67 @@ import time as t, datetime as dt
 from operator import itemgetter
 import hashlib
 
-from . import models, schemas
+from . import models, schemas, crud_security as crudSecu
 from topazdevsdk import colors
 from . import utils
-
-
-################# Security #####################
-
-def hash_password(password: str):
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-def secu_decode_token(db: Session, token):
-    user = secu_get_user_from_username(db, token)
-    return user
-
-def secu_get_user_from_username(db: Session, username: str):
-    return db.query(models.SecurityUsers).filter(models.SecurityUsers.username == username).first()
-
-def secu_get_user_from_email(db: Session, email: str):
-    return db.query(models.SecurityUsers).filter(models.SecurityUsers.email == email).first()
-
-def loadsecurity(db: Session, json):
-    # Gestion du password vide
-    if json['password']=="":
-        print(f"{colors.BColors.RED}ERROR{colors.BColors.END}:    Security load error, password null")
-        return {"result": 'error'}
-    try:
-        user = secu_get_user_from_username(db, json['username'])     
-        user_dict = models.SecurityUsers(
-            username = json['username'],
-            full_name = json['full_name'],
-            hashed_password = hash_password(json['password'])
-        )
-        if not user:
-            db.add(user_dict)
-            db.commit()
-            db.refresh(user_dict)
-            print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Security user created")
-            return {"result": 'created'}
-        else:
-            db.query(models.SecurityUsers).filter(models.SecurityUsers.username == user_dict.username).update({'full_name': user_dict.full_name, 'hashed_password': user_dict.hashed_password})
-            print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Security user modified")
-            return {"result": 'modified'}
-    except:
-        print(f"{colors.BColors.RED}ERROR{colors.BColors.END}:    Security load error")
-        return {"result": 'error'}
-
 
 ################# USER #####################
 
 # -------------------------------------------------------------------------------
 def get_user(db: Session, ID: int):
-    result = db.query(models.Users).filter(models.Users.id == ID).first()
+    return db.query(models.Users).filter(models.Users.id == ID).first()
+
+# -------------------------------------------------------------------------------
+def get_users(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Users).offset(skip).limit(limit).all()
+
+# -------------------------------------------------------------------------------
+def get_read_user(db: Session, ID: int):
+    result = get_user(db=db, ID=ID)
     if result is not None:
-        user = schemas.rUser(
+        user = schemas.readUser(
             id=result.id,
             username=result.username,
-            full_name=result.full_name,
             email=result.email,
+            pseudo=result.pseudo,
+            image_url=result.image_url,
             arrival=result.arrival,
-            disabled=result.disabled,
-            platform=result.platform,
-            image_url=result.image_url
+            is_disabled=result.is_disabled,
+            is_admin=result.is_admin,
         )
         return user
     return None
 
 
 # -------------------------------------------------------------------------------
-def get_users(db: Session, skip: int = 0, limit: int = 100):
-    result = db.query(models.Users).offset(skip).limit(limit).all()
+def get_read_users(db: Session, skip: int = 0, limit: int = 100):
+    result = get_users(db=db, skip=skip, limit=limit)
     users = []
     for one in result:
-        user = schemas.rUser(
+        user = schemas.readUser(
             id=one.id,
             username=one.username,
-            full_name=one.full_name,
             email=one.email,
+            pseudo=one.pseudo,
+            image_url=one.image_url,
             arrival=one.arrival,
-            disabled=one.disabled,
-            platform=one.platform,
-            image_url=one.image_url
+            is_disabled=one.is_disabled,
+            is_admin=one.is_admin,
         )
         users.append(user)
     return users
 
 
 # -------------------------------------------------------------------------------
-def user_exist(db: Session, email: str, username: str):
-    db_user_name = db.query(models.Users).filter(models.Users.username == username).first()
-    db_user_mail = db.query(models.Users).filter(models.Users.email == email).first()
+def user_exist(db: Session, email: str = "", username: str = ""):
+    if username != "" and username is not None:
+        db_user_name = db.query(models.Users).filter(models.Users.username == username).first()
+    else:
+        db_user_name = None
+    if email != "" and email is not None:
+        db_user_mail = db.query(models.Users).filter(models.Users.email == email).first()
+    else:
+        db_user_mail = None
 
     if db_user_name:
         return True, db_user_name
@@ -108,17 +79,17 @@ def user_exist(db: Session, email: str, username: str):
 def check_user_from_name(db: Session, username, password):
     result = db.query(models.Users).filter(models.Users.username == username).first()
     if result is not None:
-        user = schemas.rUser(
+        user = schemas.readUser(
             id=result.id,
             username=result.username,
-            full_name=result.full_name,
             email=result.email,
+            pseudo=result.pseudo,
             image_url=result.image_url,
             arrival=result.arrival,
-            disabled=result.disabled,
-            platform=result.platform
+            is_disabled=result.is_disabled,
+            is_admin=result.is_admin,
         )
-        if result.hashed_password == hash_password(password):
+        if result.hashed_password == crudSecu.hash_password(password):
             return True, user
         return False, user
     return False, None
@@ -128,17 +99,17 @@ def check_user_from_name(db: Session, username, password):
 def check_user_from_email(db: Session, email, password):
     result = db.query(models.Users).filter(models.Users.email == email).first()
     if result is not None:
-        user = schemas.rUser(
+        user = schemas.readUser(
             id=result.id,
             username=result.username,
-            full_name=result.full_name,
             email=result.email,
+            pseudo=result.pseudo,
             image_url=result.image_url,
             arrival=result.arrival,
-            disabled=result.disabled,
-            platform=result.platform
+            is_disabled=result.is_disabled,
+            is_admin=result.is_admin,
         )
-        if result.hashed_password == hash_password(password):
+        if result.hashed_password == crudSecu.hash_password(password):
             return True, user
         return False, user
     return False, None
@@ -148,17 +119,17 @@ def check_user_from_email(db: Session, email, password):
 def check_user_all(db: Session, username, email, password):
     result = db.query(models.Users).filter(models.Users.username == username).filter(models.Users.email == email).first()
     if result is not None:
-        user = schemas.rUser(
+        user = schemas.readUser(
             id=result.id,
             username=result.username,
-            full_name=result.full_name,
             email=result.email,
+            pseudo=result.pseudo,
             image_url=result.image_url,
             arrival=result.arrival,
-            disabled=result.disabled,
-            platform=result.platform
+            is_disabled=result.is_disabled,
+            is_admin=result.is_admin,
         )
-        if result.hashed_password == hash_password(password):
+        if result.hashed_password == crudSecu.hash_password(password):
             return True, user
         return False, user
     return False, None
@@ -167,24 +138,16 @@ def check_user_all(db: Session, username, email, password):
 # ===============================================================================
 # Création
 # ===============================================================================
-def create_user(db: Session, v_user: schemas.iUser):
-    id = 1
-    boucleID = True
-    while boucleID:
-        if not get_user(db, id):
-            boucleID = False
-        else:
-            id += 1
+def create_user(db: Session, v_user: schemas.createUser):
     db_user = models.Users(
-        id = id,
-        username = v_user.username,
-        full_name = v_user.full_name,
+        username = v_user.username.lower(),
         email = v_user.email,
+        hashed_password = crudSecu.hash_password(v_user.password),
+        pseudo = v_user.pseudo,
         image_url = None,
-        hashed_password = hash_password(v_user.password),
-        platform = utils.CONFIG['api']['platform'],
         arrival = dt.datetime.today(),
-        disabled = 0
+        is_disabled = 0,
+        is_admin = 0
     )
     
     db.add(db_user)
@@ -206,18 +169,28 @@ def delete_user(db: Session, v_userid: int):
 # ===============================================================================
 # Update
 # ===============================================================================
-def update_user(db: Session, src_user: schemas.Users, v_user: schemas.uUser):
-    db_user_name = db.query(models.Users).filter(models.Users.username == src_user.username).first()
-    
-    if db_user_name:
-        db.execute(update(models.Users).where(models.Users.id == src_user.id).values(
-            username = v_user.username,
-            full_name = v_user.full_name,
-            email = v_user.email,
-            image_url = v_user.image_url,
-            disabled = v_user.disabled
+def update_user(db: Session, userID: int, v_user: schemas.updateUser):
+    # Vérification de l'existence de l'utilisateur
+    db_user = get_user(db, userID)
+
+    if db_user:
+        # Vérification des modifications
+        if user_exist(db, v_user.username)[0]:
+            v_user.username = None
+        if user_exist(db, v_user.email)[0]:
+            v_user.email = None
+
+        # Mise à jour des informations
+        db.execute(update(models.Users).where(models.Users.id == userID).values(
+            username = (v_user.username if v_user.username is not None else db_user.username),
+            email = (v_user.email if v_user.email is not None else db_user.email),
+            hashed_password = (crudSecu.hash_password(v_user.password) if v_user.password is not None else db_user.hashed_password),
+            pseudo = (v_user.pseudo if v_user.pseudo is not None else db_user.pseudo),
+            image_url = (v_user.image_url if v_user.image_url is not None else db_user.image_url),
+            is_disabled = (v_user.is_disabled if v_user.is_disabled is not None else db_user.is_disabled),
+            is_admin = (v_user.is_admin if v_user.is_admin is not None else db_user.is_admin)
         ))
         db.commit()
-        db.refresh(db_user_name)
-        return get_user(db=db, ID=src_user.id)
+        db.refresh(db_user)
+        return get_read_user(db=db, ID=userID)
     return {"error": 404, "text": "User not found"}
