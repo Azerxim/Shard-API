@@ -134,6 +134,34 @@ def check_user_all(db: Session, username, email, password):
         return False, user
     return False, None
 
+################# Bibliothèque #####################
+
+# Journaux
+def get_journaux(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Journaux).offset(skip).limit(limit).all()
+
+def get_journal(db: Session, ID: int):
+    return db.query(models.Journaux).filter(models.Journaux.id == ID).first()
+
+def get_journaux_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100):
+    return db.query(models.Journaux).filter(models.Journaux.user_id == userID).offset(skip).limit(limit).all()
+
+def get_journaux_count(db: Session):
+    return db.query(func.count(models.Journaux.id)).scalar()
+
+# Livres
+def get_livres(db: Session, skip: int = 0, limit: int = 100):
+    return db.query(models.Livres).offset(skip).limit(limit).all()
+
+def get_livre(db: Session, ID: int):
+    return db.query(models.Livres).filter(models.Livres.id == ID).first()
+
+def get_livres_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100):
+    return db.query(models.Livres).filter(models.Livres.user_id == userID).offset(skip).limit(limit).all()
+
+def get_livres_count(db: Session):
+    return db.query(func.count(models.Livres.id)).scalar()
+
 
 # ===============================================================================
 # Création
@@ -155,14 +183,78 @@ def create_user(db: Session, v_user: schemas.createUser):
     db.refresh(db_user)
     return db_user
 
+def create_journal(db: Session, v_journal: schemas.Journal):
+    db_journal = models.Journaux(
+        user_id = v_journal.user_id,
+        author = v_journal.author,
+        title = v_journal.title,
+        description = v_journal.description,
+        cover_url = v_journal.cover_url,
+        cover_icon = v_journal.cover_icon,
+        cover_color = v_journal.cover_color,
+        link = v_journal.link,
+        published_date = v_journal.published_date,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_journal)
+    db.commit()
+    db.refresh(db_journal)
+    return db_journal
+
+def create_livre(db: Session, v_livre: schemas.Livre):
+    db_livre = models.Livres(
+        user_id = v_livre.user_id,
+        author = v_livre.author,
+        title = v_livre.title,
+        description = v_livre.description,
+        cover_url = v_livre.cover_url,
+        cover_icon = v_livre.cover_icon,
+        cover_color = v_livre.cover_color,
+        pages = v_livre.pages,
+        language = v_livre.language,
+        link = v_livre.link,
+        published_date = v_livre.published_date,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_livre)
+    db.commit()
+    db.refresh(db_livre)
+    return db_livre
+
 
 # ===============================================================================
 # Suppression
 # ===============================================================================
 def delete_user(db: Session, v_userid: int):
-    script = f'DELETE FROM `Users` WHERE `id` = "{v_userid}"'
-    db.execute(script)
-    db.commit()
+    try:
+        script = f'DELETE FROM `Users` WHERE `id` = "{v_userid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression de l'utilisateur {v_userid}: {e}")
+    return False
+
+def delete_journal(db: Session, v_journalid: int):
+    try:
+        script = f'DELETE FROM `Journaux` WHERE `id` = "{v_journalid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression du journal {v_journalid}: {e}")
+    return False
+
+def delete_livre(db: Session, v_livreid: int):
+    try:
+        script = f'DELETE FROM `Livres` WHERE `id` = "{v_livreid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression du livre {v_livreid}: {e}")
     return False
 
 
@@ -193,4 +285,51 @@ def update_user(db: Session, userID: int, v_user: schemas.updateUser):
         db.commit()
         db.refresh(db_user)
         return get_read_user(db=db, ID=userID)
-    return {"error": 404, "text": "User not found"}
+    return {"error": 404, "text": "L'utilisateur n'a pas été trouvé"}
+
+def update_journal(db: Session, journalID: int, v_journal: schemas.Journal):
+    # Vérification de l'existence du journal
+    db_journal = get_journal(db, journalID)
+
+    if db_journal:
+        # Mise à jour des informations
+        db.execute(update(models.Journaux).where(models.Journaux.id == journalID).values(
+            user_id = (v_journal.user_id if v_journal.user_id is not None else db_journal.user_id),
+            author = (v_journal.author if v_journal.author is not None else db_journal.author),
+            title = (v_journal.title if v_journal.title is not None else db_journal.title),
+            description = (v_journal.description if v_journal.description is not None else db_journal.description),
+            cover_url = (v_journal.cover_url if v_journal.cover_url is not None else db_journal.cover_url),
+            cover_icon = (v_journal.cover_icon if v_journal.cover_icon is not None else db_journal.cover_icon),
+            cover_color = (v_journal.cover_color if v_journal.cover_color is not None else db_journal.cover_color),
+            link = (v_journal.link if v_journal.link is not None else db_journal.link),
+            uid = (v_journal.uid if v_journal.uid is not None else db_journal.uid),
+            published_date = (v_journal.published_date if v_journal.published_date is not None else db_journal.published_date)
+        ))
+        db.commit()
+        db.refresh(db_journal)
+        return get_journal(db=db, ID=journalID)
+    return {"error": 404, "text": "Le journal n'a pas été trouvé"}
+
+def update_livre(db: Session, livreID: int, v_livre: schemas.Livre):
+    # Vérification de l'existence du livre
+    db_livre = get_livre(db, livreID)
+
+    if db_livre:
+        # Mise à jour des informations
+        db.execute(update(models.Livres).where(models.Livres.id == livreID).values(
+            user_id = (v_livre.user_id if v_livre.user_id is not None else db_livre.user_id),
+            author = (v_livre.author if v_livre.author is not None else db_livre.author),
+            title = (v_livre.title if v_livre.title is not None else db_livre.title),
+            description = (v_livre.description if v_livre.description is not None else db_livre.description),
+            cover_url = (v_livre.cover_url if v_livre.cover_url is not None else db_livre.cover_url),
+            cover_icon = (v_livre.cover_icon if v_livre.cover_icon is not None else db_livre.cover_icon),
+            cover_color = (v_livre.cover_color if v_livre.cover_color is not None else db_livre.cover_color),
+            pages = (v_livre.pages if v_livre.pages is not None else db_livre.pages),
+            language = (v_livre.language if v_livre.language is not None else db_livre.language),
+            link = (v_livre.link if v_livre.link is not None else db_livre.link),
+            published_date = (v_livre.published_date if v_livre.published_date is not None else db_livre.published_date)
+        ))
+        db.commit()
+        db.refresh(db_livre)
+        return get_livre(db=db, ID=livreID)
+    return {"error": 404, "text": "Le livre n'a pas été trouvé"}

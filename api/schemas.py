@@ -69,6 +69,39 @@ class readUser(BaseModel):
         from_attributes = True
 
 
+############### Bibliothèque ####################
+
+class Journal(BaseModel):
+    id: int | None = None
+    user_id: int
+    author: str
+    title: str
+    description: str | None = None
+    cover_url: str | None = None
+    cover_icon: str | None = "fab fa-discord"
+    cover_color: str | None = "#5865F2"
+    link: str | None = None
+    uid: str | None = None
+    published_date: datetime.datetime | None = None
+    created_at: datetime.datetime | None = None
+
+
+class Livre(BaseModel):
+    id: int | None = None
+    user_id: int
+    author: str
+    title: str
+    description: str | None = None
+    cover_url: str | None = None
+    cover_icon: str | None = "fas fa-book"
+    cover_color: str | None = "#4CAF50"
+    pages: int | None = 0
+    language: str | None = "Français"
+    link: str | None = None
+    published_date: datetime.datetime | None = None
+    created_at: datetime.datetime | None = None
+
+
 ################# Security #####################
 
 class SecurityUsers(BaseModel):

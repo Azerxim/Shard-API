@@ -111,7 +111,7 @@ def app_version():
     return JSONResponse(content=jsonable_encoder(result))
 
 
-################### API #########################
+################### USER #########################
 
 @app.post("/user/create/", tags=["Users"])
 def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.createUser, db: Session = Depends(get_db)):
@@ -187,6 +187,102 @@ def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     else:
         func = {'error': 200, 'skip': skip, 'limit': limit, 'users': users}
     return JSONResponse(content=jsonable_encoder(func))
+
+
+################### Bibliothèque #########################
+
+# -----------------------------------------------
+# Journaux
+# -----------------------------------------------
+@app.post("/journaux/create/", tags=["Bibliothèque"])
+def create_journal(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], journal: schemas.Journal, db: Session = Depends(get_db)):
+    return crud.create_journal(
+        db=db,
+        v_journal=journal
+    )
+
+# -----------------------------------------------
+@app.delete("/journaux/delete/", tags=["Bibliothèque"])
+def delete_journal(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], JournalID: int, db: Session = Depends(get_db)):
+    delete=crud.delete_journal(db=db, v_journalid=JournalID)
+    if not delete:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression du journal"}))
+    return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le journal a été supprimé"}))
+
+# -----------------------------------------------
+@app.get("/journaux/read/", tags=["Bibliothèque"])
+def read_journaux(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    journals = crud.get_journaux(db=db, skip=skip, limit=limit)
+    return JSONResponse(content=jsonable_encoder(journals))
+
+# -----------------------------------------------
+@app.get("/journaux/read/{JournalID}", tags=["Bibliothèque"])
+def read_journal(JournalID: int, db: Session = Depends(get_db)):
+    journal = crud.get_journal(db=db, ID=JournalID)
+    if journal is None:
+        func = {'error': 404, 'journal': journal}
+    else:
+        func = {'error': 200, 'journal': journal}
+    return JSONResponse(content=jsonable_encoder(func))
+
+# -----------------------------------------------
+@app.get("/journaux/read/user/{UserID}", tags=["Bibliothèque"])
+def read_journaux_by_user(UserID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    journals = crud.get_journaux_by_user(db=db, userID=UserID, skip=skip, limit=limit)
+    return JSONResponse(content=jsonable_encoder(journals))
+
+# -----------------------------------------------
+@app.get("/journaux/count/", tags=["Bibliothèque"])
+def count_journaux(db: Session = Depends(get_db)):
+    count = crud.get_journaux_count(db=db)
+    return JSONResponse(content=jsonable_encoder(count))
+
+
+# -----------------------------------------------
+# Livres
+# -----------------------------------------------
+@app.post("/livres/create/", tags=["Bibliothèque"])
+def create_livre(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], livre: schemas.Livre, db: Session = Depends(get_db)):
+    return crud.create_livre(
+        db=db,
+        v_livre=livre
+    )
+
+# -----------------------------------------------
+@app.delete("/livres/delete/", tags=["Bibliothèque"])
+def delete_livre(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], LivreID: int, db: Session = Depends(get_db)):
+    delete=crud.delete_livre(db=db, v_livreid=LivreID)
+    if not delete:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression du livre"}))
+    return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le livre a été supprimé"}))
+
+# -----------------------------------------------
+@app.get("/livres/read/", tags=["Bibliothèque"])
+def read_livres(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    livres = crud.get_livres(db=db, skip=skip, limit=limit)
+    return JSONResponse(content=jsonable_encoder(livres))
+
+# -----------------------------------------------
+@app.get("/livres/read/{LivreID}", tags=["Bibliothèque"])
+def read_livre(LivreID: int, db: Session = Depends(get_db)):
+    livre = crud.get_livre(db=db, ID=LivreID)
+    if livre is None:
+        func = {'error': 404, 'livre': livre}
+    else:
+        func = {'error': 200, 'livre': livre}
+    return JSONResponse(content=jsonable_encoder(func))
+
+# -----------------------------------------------
+@app.get("/livres/read/user/{UserID}", tags=["Bibliothèque"])
+def read_livres_by_user(UserID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    livres = crud.get_livres_by_user(db=db, userID=UserID, skip=skip, limit=limit)
+    return JSONResponse(content=jsonable_encoder(livres))
+
+# -----------------------------------------------
+@app.get("/livres/count/", tags=["Bibliothèque"])
+def count_livres(db: Session = Depends(get_db)):
+    count = crud.get_livres_count(db=db)
+    return JSONResponse(content=jsonable_encoder(count))
 
 
 ################# HTML ##########################

@@ -34,6 +34,53 @@ class UserPlatforms(Base):
 
     user = relationship("Users", back_populates="platforms")
 
+
+############### Bibliothèque ####################
+
+class Journaux(Base):
+
+    __tablename__="Journaux"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("Users.id"))
+    author = Column(String)
+    title = Column(String)
+    description = Column(Text)
+    
+    cover_url = Column(String)
+    cover_icon = Column(String)
+    cover_color = Column(String)
+
+    link = Column(String)
+    uid = Column(String)
+
+    published_date = Column(Date)
+    created_at = Column(DateTime)
+
+
+class Livres(Base):
+
+    __tablename__="Livres"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("Users.id"))
+    author = Column(String)
+    title = Column(String)
+    description = Column(Text)
+    
+    cover_url = Column(String)
+    cover_icon = Column(String)
+    cover_color = Column(String)
+
+    pages = Column(Integer)
+    language = Column(String)
+
+    link = Column(String)
+
+    published_date = Column(Date)
+    created_at = Column(DateTime)
+
+
 ################# Security #####################
 
 class SecurityUsers(Base):
