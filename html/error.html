@@ -16,24 +16,24 @@
 
         <title>{{ api }} - Erreur</title>
 
-        {% include 'modules/css.html' %}
-        {% include 'modules/scripts.html' %}
+        {% include 'components/css.html' %}
+        {% include 'components/scripts.html' %}
 
     </head>
     <body>
         
-        {% include 'modules/menu.html' %}
+        {% include 'components/navigation/navbar.html' %}
 
-        <div class="flex-center-full fd-col gap-20 ultradarkblue" style="width: 100%; margin: 20px;">
-            <div class="flex-center-vertical fd-row fw-on gap-20">
+        <div class="flex flex-col items-center justify-center gap-5 text-black w-full m-5">
+            <div class="flex flex-row flex-wrap items-center gap-5">
                 <i class="fa-solid fa-triangle-exclamation fa-beat fa-2xl"></i>
-                <h1 class="is-size-1">Erreur</h1>
+                <h1 class="text-5xl font-bold">Erreur</h1>
             </div>
             <img src="https://dl.topazdev.fr/stock/draws/undraw/undraw_alert_re_j2op.svg" alt="404 Not Found"/>
-            <h3 class="is-size-4">{{ text }}</h3>
+            <h3 class="text-2xl">{{ text }}</h3>
         </div>
 
-        {% include 'modules/footer.html' %}
+        {% include 'components/layouts/footer.html' %}
 
     </body>
 </html>

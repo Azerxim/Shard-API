@@ -5,6 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.openapi.docs import get_swagger_ui_html
 from sqlalchemy.orm import Session
 
 import time as t, datetime as dt
@@ -17,7 +18,12 @@ from .database import SessionLocal, engine
 
 
 models.Base.metadata.create_all(bind=engine)
-app = FastAPI()
+app = FastAPI(
+    title=utils.CONFIG['api']['name'],
+    version=utils.CONFIG['api']['version'],
+    docs_url=None,
+    redoc_url=None
+)
 
 ################# Dependency ###################
 def get_db():
@@ -98,6 +104,20 @@ async def startup_event():
 @app.get("/", response_class=HTMLResponse)
 def html_main(request: Request):
     return templates.TemplateResponse("version.html", {"request": request, "version": utils.CONFIG['api']['version'], "api": utils.CONFIG['api']['name']})
+
+# -----------------------------------------------
+@app.get("/docs", response_class=HTMLResponse, include_in_schema=False)
+async def custom_swagger_ui_html(request: Request):
+    swagger_ui = get_swagger_ui_html(
+        openapi_url=app.openapi_url,
+        title=f"{utils.CONFIG['api']['name']} - Documentation",
+        swagger_favicon_url="/assets/images/favicon.ico"
+    )
+    return templates.TemplateResponse("docs.html", {
+        "request": request, 
+        "api": utils.CONFIG['api']['name'],
+        "swagger_ui_html": swagger_ui.body.decode()
+    })
 
 # @app.get("/")
 # def app_main():

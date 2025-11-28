@@ -16,21 +16,21 @@
 
         <title>{{ api }}</title>
 
-        {% include 'modules/css.html' %}
-        {% include 'modules/scripts.html' %}
+        {% include 'components/css.html' %}
+        {% include 'components/scripts.html' %}
 
     </head>
     <body>
         
-        {% include 'modules/menu.html' %}
+        {% include 'components/navigation/navbar.html' %}
 
-        <div class="container">
-            <div class="content is-medium" style="margin-top: 3em;">
+        <div class="container mx-auto px-4">
+            <div class="prose prose-lg max-w-none mt-12">
                 <div></div>
             </div>
         </div>
 
-        {% include 'modules/footer.html' %}
+        {% include 'components/layouts/footer.html' %}
 
     </body>
 </html>
