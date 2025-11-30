@@ -4,10 +4,12 @@ from sqlalchemy import text, update
 import time as t, datetime as dt
 from operator import itemgetter
 import hashlib
+import asyncio
 
 from . import models, schemas, crud_security as crudSecu
 from topazdevsdk import colors
 from . import utils
+from . import discord_handler
 
 ################# USER #####################
 
@@ -149,6 +151,58 @@ def get_journaux_by_user(db: Session, userID: int, skip: int = 0, limit: int = 1
 def get_journaux_count(db: Session):
     return db.query(func.count(models.Journaux.id)).scalar()
 
+def get_journaux_count_by_user(db: Session, userID: int):
+    return db.query(func.count(models.Journaux.id)).filter(models.Journaux.user_id == userID).scalar()
+
+def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int = 10000):
+    """
+    Récupère les messages Discord associés à un journal.
+    
+    Args:
+        db: Session de la base de données
+        journalID: L'ID du journal
+        skip: Nombre de messages à sauter
+        limit: Nombre maximum de messages à récupérer
+    
+    Returns:
+        dict: Les messages du canal Discord ou erreur
+    """
+    try:
+        # Récupérer le journal
+        journal = get_journal(db, journalID)
+        if not journal:
+            return {"error": 404, "message": "Journal non trouvé"}
+        
+        # Vérifier que le journal a un UID Discord
+        if not journal.uid:
+            return {"error": 400, "message": "Ce journal n'a pas de canal Discord associé"}
+        
+        # Récupérer les messages du canal Discord
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        messages = loop.run_until_complete(
+            discord_handler.get_channel_messages(journal.uid, limit=limit + skip)
+        )
+        loop.close()
+        
+        # Appliquer skip et limit
+        paginated_messages = messages[skip:skip + limit]
+        
+        return {
+            "journal_id": journalID,
+            "journal_title": journal.title,
+            "channel_id": journal.uid,
+            "total_messages": len(messages),
+            "messages_count": len(paginated_messages),
+            "skip": skip,
+            "limit": limit,
+            "messages": paginated_messages
+        }
+    
+    except Exception as e:
+        print(f"Erreur lors de la récupération des messages du journal {journalID}: {e}")
+        return {"error": 500, "message": f"Erreur serveur: {str(e)}"}
+
 # Livres
 def get_livres(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Livres).offset(skip).limit(limit).all()
@@ -161,6 +215,9 @@ def get_livres_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100
 
 def get_livres_count(db: Session):
     return db.query(func.count(models.Livres.id)).scalar()
+
+def get_livres_count_by_user(db: Session, userID: int):
+    return db.query(func.count(models.Livres.id)).filter(models.Livres.user_id == userID).scalar()
 
 
 # ===============================================================================
@@ -181,9 +238,26 @@ def create_user(db: Session, v_user: schemas.createUser):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    return db_user
+    return {"error": 200, "text": "Utilisateur créé avec succès", "user": db_user}
 
 def create_journal(db: Session, v_journal: schemas.Journal):
+    # Créer le salon Discord si le titre est fourni
+    channel_uid = None
+    category_uid = 1444691218234605700
+    if v_journal.title:
+        try:
+            # Utiliser asyncio pour exécuter la fonction asynchrone
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            channel_uid = loop.run_until_complete(
+                discord_handler.create_channel(v_journal.title, category_uid)
+            )
+            loop.close()
+            print(f"\033[92mSalon Discord créé avec l'ID: {channel_uid}\033[0m")
+        except Exception as e:
+            print(f"Avertissement: Impossible de créer le salon Discord: {e}")
+            channel_uid = None
+    
     db_journal = models.Journaux(
         user_id = v_journal.user_id,
         author = v_journal.author,
@@ -193,6 +267,7 @@ def create_journal(db: Session, v_journal: schemas.Journal):
         cover_icon = v_journal.cover_icon,
         cover_color = v_journal.cover_color,
         link = v_journal.link,
+        uid = channel_uid if channel_uid else v_journal.uid,
         published_date = v_journal.published_date,
         created_at = dt.datetime.today()
     )
@@ -239,6 +314,25 @@ def delete_user(db: Session, v_userid: int):
 
 def delete_journal(db: Session, v_journalid: int):
     try:
+        # Récupérer le journal pour obtenir son UID Discord
+        journal = get_journal(db, v_journalid)
+        if journal and journal.uid:
+            try:
+                # Supprimer le salon Discord associé
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                result = loop.run_until_complete(
+                    discord_handler.delete_channel(journal.uid)
+                )
+                loop.close()
+                if result:
+                    print(f"Salon Discord {journal.uid} supprimé avec succès")
+                else:
+                    print(f"Avertissement: Impossible de supprimer le salon Discord {journal.uid}")
+            except Exception as e:
+                print(f"Avertissement: Erreur suppression salon Discord {journal.uid}: {e}")
+        
+        # Supprimer le journal de la base de données
         script = f'DELETE FROM `Journaux` WHERE `id` = "{v_journalid}"'
         db.execute(script)
         db.commit()

@@ -26,3 +26,6 @@ install("SQLAlchemy", "1.4.52")
 
 # OAuth2
 install("starlette-discord", "0.2.1")
+
+# Discord
+install("discord.py", "2.3.2")

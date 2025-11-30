@@ -9,7 +9,6 @@ from fastapi.openapi.docs import get_swagger_ui_html
 from sqlalchemy.orm import Session
 
 import time as t, datetime as dt
-from starlette_discord import DiscordOAuthClient
 
 from . import utils
 from topazdevsdk import file as f, colors
@@ -257,6 +256,22 @@ def count_journaux(db: Session = Depends(get_db)):
     count = crud.get_journaux_count(db=db)
     return JSONResponse(content=jsonable_encoder(count))
 
+# -----------------------------------------------
+@app.get("/journaux/count/user/{UserID}", tags=["Bibliothèque"])
+def count_journaux_by_user(UserID: int, db: Session = Depends(get_db)):
+    count = crud.get_journaux_count_by_user(db=db, userID=UserID)
+    return JSONResponse(content=jsonable_encoder(count))
+
+# -----------------------------------------------
+@app.get("/journaux/contents/{JournalID}", tags=["Bibliothèque"])
+def read_journal_contents(JournalID: int, skip: int = 0, limit: int = 10000, db: Session = Depends(get_db)):
+    content = crud.get_journal_contents(db=db, journalID=JournalID, skip=skip, limit=limit)
+    if content is None:
+        func = {'error': 404, 'content': content}
+    else:
+        func = {'error': 200, 'content': content}
+    return JSONResponse(content=jsonable_encoder(func))
+
 
 # -----------------------------------------------
 # Livres
@@ -302,6 +317,12 @@ def read_livres_by_user(UserID: int, skip: int = 0, limit: int = 100, db: Sessio
 @app.get("/livres/count/", tags=["Bibliothèque"])
 def count_livres(db: Session = Depends(get_db)):
     count = crud.get_livres_count(db=db)
+    return JSONResponse(content=jsonable_encoder(count))
+
+# -----------------------------------------------
+@app.get("/livres/count/user/{UserID}", tags=["Bibliothèque"])
+def count_livres_by_user(UserID: int, db: Session = Depends(get_db)):
+    count = crud.get_livres_count_by_user(db=db, userID=UserID)
     return JSONResponse(content=jsonable_encoder(count))
 
 

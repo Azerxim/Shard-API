@@ -12,5 +12,9 @@
 		"username": "admin",
 		"full_name": "Admin",
 		"password": "admin"
+	},
+	"discord": {
+		"token": "YOUR_DISCORD_BOT_TOKEN",
+		"guild_id": 123456789
 	}
 }
