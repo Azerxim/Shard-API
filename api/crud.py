@@ -1,158 +1,233 @@
-from sqlalchemy.orm import Session
-from sqlalchemy.sql import func
-from sqlalchemy import text, update
-import time as t, datetime as dt
-from operator import itemgetter
+from typing import Annotated
+from fastapi import Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from sqlmodel import Session, select
 import hashlib
 import asyncio
-
-from . import models, schemas, crud_security as crudSecu
-from topazdevsdk import colors
-from . import utils
+import datetime as dt
 from . import discord_handler
 
-################# USER #####################
+from . import models, schemas
+from .database import get_db
+from topazdevsdk import colors
 
-# -------------------------------------------------------------------------------
-def get_user(db: Session, ID: int):
-    return db.query(models.Users).filter(models.Users.id == ID).first()
+################# Security #####################
 
-# -------------------------------------------------------------------------------
-def get_users(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Users).offset(skip).limit(limit).all()
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# -------------------------------------------------------------------------------
-def get_read_user(db: Session, ID: int):
-    result = get_user(db=db, ID=ID)
-    if result is not None:
-        user = schemas.readUser(
-            id=result.id,
-            username=result.username,
-            email=result.email,
-            pseudo=result.pseudo,
-            image_url=result.image_url,
-            arrival=result.arrival,
-            is_disabled=result.is_disabled,
-            is_admin=result.is_admin,
+# -----------------------------------------------
+async def secu_get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
+    user = secu_decode_token(db, token)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-        return user
-    return None
+    return user
 
+async def secu_get_current_active_user(current_user: Annotated[schemas.Users, Depends(secu_get_current_user)]):
+    if current_user.is_disabled:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return JSONResponse(content=jsonable_encoder(current_user))
 
-# -------------------------------------------------------------------------------
-def get_read_users(db: Session, skip: int = 0, limit: int = 100):
-    result = get_users(db=db, skip=skip, limit=limit)
-    users = []
-    for one in result:
-        user = schemas.readUser(
-            id=one.id,
-            username=one.username,
-            email=one.email,
-            pseudo=one.pseudo,
-            image_url=one.image_url,
-            arrival=one.arrival,
-            is_disabled=one.is_disabled,
-            is_admin=one.is_admin,
+# -----------------------------------------------
+def hash_password(password: str):
+    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+
+def secu_decode_token(db: Session, token):
+    user = secu_get_user_by_username(db, token)
+    return user
+
+def secu_get_user_by_username(db: Session, username: str):
+    statement = select(models.Users).where(models.Users.username == username).where(models.Users.is_admin == True).where(models.Users.is_disabled == False)
+    results = db.exec(statement)
+    return results.first()
+
+def secu_get_user_by_email(db: Session, email: str):
+    statement = select(models.Users).where(models.Users.email == email).where(models.Users.is_admin == True).where(models.Users.is_disabled == False)
+    results = db.exec(statement)
+    return results.first()
+
+def loadsecurity(db: Session, json):
+    # Gestion du password vide
+    if json['password']=="":
+        print(f"{colors.BColors.RED}ERROR{colors.BColors.END}:    Security load error, password null")
+        return {"fonction": "loadsecurity", "erreur": 'Le mot de passe ne peut pas être vide'}
+    try:
+        user = get_user_by_username(db, json['username'])     
+        user_dict = models.Users(
+            username = json['username'],
+            full_name = json['full_name'],
+            email = json.get('email', json['username'] + '@admin.local'),
+            hashed_password = hash_password(json['password']),
+            is_admin = True,
+            is_disabled = False,
+            is_visible = False
         )
-        users.append(user)
-    return users
+        if not user:
+            db.add(user_dict)
+            db.commit()
+            db.refresh(user_dict)
+            print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Utilisateur de sécurité créé")
+            return {"result": 'Utilisateur de sécurité créé'}
+        else:
+            statement = select(models.Users).where(models.Users.username == user_dict.username)
+            result = db.exec(statement).one()
+            result.username = user_dict.username
+            result.full_name = user_dict.full_name
+            result.email = user_dict.email
+            result.hashed_password = user_dict.hashed_password
+            result.is_admin = True
+            result.is_disabled = False
+            result.is_visible = False
+            db.add(result)
+            db.commit()
+            db.refresh(result)
+            
+            print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Utilisateur de sécurité modifié")
+            return {"result": 'Utilisateur de sécurité modifié'}
+    except:
+        print(f"{colors.BColors.RED}ERROR{colors.BColors.END}:    Erreur lors du chargement de la sécurité")
+        return {"fonction": "loadsecurity", "erreur": 'Erreur lors du chargement de la sécurité'}
 
+    
+############### Users #############
 
-# -------------------------------------------------------------------------------
-def user_exist(db: Session, email: str = "", username: str = ""):
-    if username != "" and username is not None:
-        db_user_name = db.query(models.Users).filter(models.Users.username == username).first()
-    else:
-        db_user_name = None
-    if email != "" and email is not None:
-        db_user_mail = db.query(models.Users).filter(models.Users.email == email).first()
-    else:
-        db_user_mail = None
-
-    if db_user_name:
-        return True, db_user_name
-    elif db_user_mail:
-        return True, db_user_mail
-    else:
-        return False, None
-
-
-# -------------------------------------------------------------------------------
+# ------------------------------------------ 
 def check_user_from_name(db: Session, username, password):
-    result = db.query(models.Users).filter(models.Users.username == username).first()
+    statement = select(models.Users).where(models.Users.username == username)
+    results = db.exec(statement)
+    result = results.first()
     if result is not None:
-        user = schemas.readUser(
-            id=result.id,
-            username=result.username,
-            email=result.email,
-            pseudo=result.pseudo,
-            image_url=result.image_url,
-            arrival=result.arrival,
-            is_disabled=result.is_disabled,
-            is_admin=result.is_admin,
-        )
-        if result.hashed_password == crudSecu.hash_password(password):
+        user = build_user_read(result)
+        if result.hashed_password == hash_password(password):
             return True, user
         return False, user
     return False, None
 
-
-# -------------------------------------------------------------------------------
 def check_user_from_email(db: Session, email, password):
-    result = db.query(models.Users).filter(models.Users.email == email).first()
+    statement = select(models.Users).where(models.Users.email == email)
+    results = db.exec(statement)
+    result = results.first()
     if result is not None:
-        user = schemas.readUser(
-            id=result.id,
-            username=result.username,
-            email=result.email,
-            pseudo=result.pseudo,
-            image_url=result.image_url,
-            arrival=result.arrival,
-            is_disabled=result.is_disabled,
-            is_admin=result.is_admin,
-        )
-        if result.hashed_password == crudSecu.hash_password(password):
+        user = build_user_read(result)
+        if result.hashed_password == hash_password(password):
             return True, user
         return False, user
     return False, None
 
-
-# -------------------------------------------------------------------------------
 def check_user_all(db: Session, username, email, password):
-    result = db.query(models.Users).filter(models.Users.username == username).filter(models.Users.email == email).first()
+    statement = select(models.Users).where(models.Users.username == username).where(models.Users.email == email)
+    results = db.exec(statement)
+    result = results.first()
     if result is not None:
-        user = schemas.readUser(
-            id=result.id,
-            username=result.username,
-            email=result.email,
-            pseudo=result.pseudo,
-            image_url=result.image_url,
-            arrival=result.arrival,
-            is_disabled=result.is_disabled,
-            is_admin=result.is_admin,
-        )
-        if result.hashed_password == crudSecu.hash_password(password):
+        user = build_user_read(result)
+        if result.hashed_password == hash_password(password):
             return True, user
         return False, user
     return False, None
+
+# ------------------------------------------ 
+def get_user_by_username(db: Session, username: str):
+    statement = select(models.Users).where(models.Users.username == username)
+    results = db.exec(statement)
+    return results.first()
+
+def get_user_by_email(db: Session, email: str):
+    statement = select(models.Users).where(models.Users.email == email)
+    results = db.exec(statement)
+    return results.first()
+
+def get_user_by_id(db: Session, user_id: int):
+    statement = select(models.Users).where(models.Users.id == user_id)
+    results = db.exec(statement)
+    return results.first()
+
+def get_users(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Users).where(models.Users.is_disabled == False).where(models.Users.is_visible == True).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def build_user_read(user: models.Users):
+    return schemas.UserRead(
+        id=user.id,
+        username=user.username,
+        full_name=user.full_name,
+        email=user.email,
+        image_url=user.image_url,
+        arrival=user.arrival,
+        is_disabled=user.is_disabled,
+        is_admin=user.is_admin,
+        is_visible=user.is_visible,
+        created_at=user.created_at
+    )
+
+def create_user(db: Session, user):
+    db_user = models.Users(
+        username=user.username,
+        full_name=user.username,
+        email=user.email,
+        hashed_password=hash_password(user.password),
+        is_admin=False,
+        is_disabled=False,
+        is_visible=True
+    )
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    return build_user_read(db_user)
+
+def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate):
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return None
+    if user_update.username is not None:
+        user.username = user_update.username
+    if user_update.full_name is not None:
+        user.full_name = user_update.full_name
+    if user_update.email is not None:
+        user.email = user_update.email
+    if user_update.password is not None:
+        user.hashed_password = hash_password(user_update.password)
+    if user_update.is_disabled is not None:
+        user.is_disabled = user_update.is_disabled
+    if user_update.is_admin is not None:
+        user.is_admin = user_update.is_admin
+    if user_update.is_visible is not None:
+        user.is_visible = user_update.is_visible
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return build_user_read(user)
+
+def delete_user(db: Session, user_id: int):
+    user = get_user_by_id(db, user_id)
+    if not user:
+        return {"fonction": "delete_user", "erreur": "L'utilisateur n'existe pas"}
+    db.delete(user)
+    db.commit()
+    return {"fonction": "delete_user", "resultat": "Utilisateur supprimé"}
 
 ################# Bibliothèque #####################
 
-# Journaux
+# --------------- Journaux ---------------
 def get_journaux(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Journaux).offset(skip).limit(limit).all()
+    statement = select(models.Journaux).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
 def get_journal(db: Session, ID: int):
-    return db.query(models.Journaux).filter(models.Journaux.id == ID).first()
+    statement = select(models.Journaux).where(models.Journaux.id == ID)
+    results = db.exec(statement)
+    return results.first()
 
 def get_journaux_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100):
-    return db.query(models.Journaux).filter(models.Journaux.user_id == userID).offset(skip).limit(limit).all()
-
-def get_journaux_count(db: Session):
-    return db.query(func.count(models.Journaux.id)).scalar()
-
-def get_journaux_count_by_user(db: Session, userID: int):
-    return db.query(func.count(models.Journaux.id)).filter(models.Journaux.user_id == userID).scalar()
+    statement = select(models.Journaux).where(models.Journaux.user_id == userID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
 def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int = 10000):
     """
@@ -203,43 +278,6 @@ def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int 
         print(f"Erreur lors de la récupération des messages du journal {journalID}: {e}")
         return {"error": 500, "message": f"Erreur serveur: {str(e)}"}
 
-# Livres
-def get_livres(db: Session, skip: int = 0, limit: int = 100):
-    return db.query(models.Livres).offset(skip).limit(limit).all()
-
-def get_livre(db: Session, ID: int):
-    return db.query(models.Livres).filter(models.Livres.id == ID).first()
-
-def get_livres_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100):
-    return db.query(models.Livres).filter(models.Livres.user_id == userID).offset(skip).limit(limit).all()
-
-def get_livres_count(db: Session):
-    return db.query(func.count(models.Livres.id)).scalar()
-
-def get_livres_count_by_user(db: Session, userID: int):
-    return db.query(func.count(models.Livres.id)).filter(models.Livres.user_id == userID).scalar()
-
-
-# ===============================================================================
-# Création
-# ===============================================================================
-def create_user(db: Session, v_user: schemas.createUser):
-    db_user = models.Users(
-        username = v_user.username.lower(),
-        email = v_user.email,
-        hashed_password = crudSecu.hash_password(v_user.password),
-        pseudo = v_user.pseudo,
-        image_url = None,
-        arrival = dt.datetime.today(),
-        is_disabled = 0,
-        is_admin = 0
-    )
-    
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return {"error": 200, "text": "Utilisateur créé avec succès", "user": db_user}
-
 def create_journal(db: Session, v_journal: schemas.Journal):
     # Créer le salon Discord si le titre est fourni
     channel_uid = None
@@ -277,40 +315,25 @@ def create_journal(db: Session, v_journal: schemas.Journal):
     db.refresh(db_journal)
     return db_journal
 
-def create_livre(db: Session, v_livre: schemas.Livre):
-    db_livre = models.Livres(
-        user_id = v_livre.user_id,
-        author = v_livre.author,
-        title = v_livre.title,
-        description = v_livre.description,
-        cover_url = v_livre.cover_url,
-        cover_icon = v_livre.cover_icon,
-        cover_color = v_livre.cover_color,
-        pages = v_livre.pages,
-        language = v_livre.language,
-        link = v_livre.link,
-        published_date = v_livre.published_date,
+def create_journal_db(db: Session, v_journal: schemas.Journal):   
+    db_journal = models.Journaux(
+        user_id = v_journal.user_id,
+        author = v_journal.author,
+        title = v_journal.title,
+        description = v_journal.description,
+        cover_url = v_journal.cover_url,
+        cover_icon = v_journal.cover_icon,
+        cover_color = v_journal.cover_color,
+        link = v_journal.link,
+        uid = v_journal.uid,
+        published_date = v_journal.published_date,
         created_at = dt.datetime.today()
     )
     
-    db.add(db_livre)
+    db.add(db_journal)
     db.commit()
-    db.refresh(db_livre)
-    return db_livre
-
-
-# ===============================================================================
-# Suppression
-# ===============================================================================
-def delete_user(db: Session, v_userid: int):
-    try:
-        script = f'DELETE FROM `Users` WHERE `id` = "{v_userid}"'
-        db.execute(script)
-        db.commit()
-        return True
-    except Exception as e:
-        print(f"Erreur lors de la suppression de l'utilisateur {v_userid}: {e}")
-    return False
+    db.refresh(db_journal)
+    return db_journal
 
 def delete_journal(db: Session, v_journalid: int):
     try:
@@ -336,94 +359,555 @@ def delete_journal(db: Session, v_journalid: int):
         script = f'DELETE FROM `Journaux` WHERE `id` = "{v_journalid}"'
         db.execute(script)
         db.commit()
-        return True
+        return {"fonction": "delete_journal", "resultat": "Journal supprimé"}
     except Exception as e:
         print(f"Erreur lors de la suppression du journal {v_journalid}: {e}")
-    return False
+    return {"fonction": "delete_journal", "erreur": "Une erreur est survenue lors de la suppression du journal", "details": str(e)}
+
+# --------------- Livres ---------------
+def get_livres(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Livres).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_livre(db: Session, ID: int):
+    statement = select(models.Livres).where(models.Livres.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_livres_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Livres).where(models.Livres.user_id == userID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def create_livre(db: Session, v_livre: schemas.Livre):
+    db_livre = models.Livres(
+        user_id = v_livre.user_id,
+        author = v_livre.author,
+        title = v_livre.title,
+        description = v_livre.description,
+        cover_url = v_livre.cover_url,
+        cover_icon = v_livre.cover_icon,
+        cover_color = v_livre.cover_color,
+        pages = v_livre.pages,
+        language = v_livre.language,
+        link = v_livre.link,
+        published_date = v_livre.published_date,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_livre)
+    db.commit()
+    db.refresh(db_livre)
+    return db_livre
 
 def delete_livre(db: Session, v_livreid: int):
     try:
         script = f'DELETE FROM `Livres` WHERE `id` = "{v_livreid}"'
         db.execute(script)
         db.commit()
-        return True
+        return {"fonction": "delete_livre", "resultat": "Livre supprimé"}
     except Exception as e:
         print(f"Erreur lors de la suppression du livre {v_livreid}: {e}")
+    return {"fonction": "delete_livre", "erreur": "Une erreur est survenue lors de la suppression du livre", "details": str(e)}
+
+################# Civilisations #####################
+
+def get_civilisations(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Civilisations).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_civilisation_by_id(db: Session, ID: int):
+    statement = select(models.Civilisations).where(models.Civilisations.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_civilisation_by_title(db: Session, title: str):
+    statement = select(models.Civilisations).where(models.Civilisations.title == title)
+    results = db.exec(statement)
+    return results.first()
+
+def create_civilisation(db: Session, v_civilisation: schemas.CivilisationCreate):
+    db_civilisation = models.Civilisations(
+        title = v_civilisation.title,
+        description = v_civilisation.description,
+        is_public = v_civilisation.is_public,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_civilisation)
+    db.commit()
+    db.refresh(db_civilisation)
+    return db_civilisation
+
+def delete_civilisation(db: Session, v_civilisationid: int):
+    script = ''
+    try:
+        script += f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` IN (SELECT `id` FROM `Quartiers` WHERE `ville_id` IN (SELECT `id` FROM `Villes` WHERE `civilisation_id` = "{v_civilisationid}"))'
+        script += f'; DELETE FROM `Cartographie` WHERE `type` = "ville" AND `type_id` IN (SELECT `id` FROM `Villes` WHERE `civilisation_id` = "{v_civilisationid}")'
+        script += f'; DELETE FROM `Cartographie` WHERE `type` = "civilisation" AND `type_id` = "{v_civilisationid}"'
+        script += f'; DELETE FROM `Gouvernements` WHERE `civilisation_id` = "{v_civilisationid}"'
+        script += f'; DELETE FROM `Quartiers` WHERE `ville_id` IN (SELECT `id` FROM `Villes` WHERE `civilisation_id` = "{v_civilisationid}")'
+        script += f'; DELETE FROM `Villes` WHERE `civilisation_id` = "{v_civilisationid}"'
+        script += f'; DELETE FROM `CivilisationMembers` WHERE `civilisation_id` = "{v_civilisationid}"'
+        script += f'; DELETE FROM `Civilisations` WHERE `id` = "{v_civilisationid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la civilisation {v_civilisationid}: {e}")
     return False
 
+def update_civilisation(db: Session, civilisationID: int, v_civilisation: schemas.Civilisation):
+    # Vérification de l'existence de la civilisation
+    db_civilisation = get_civilisation_by_id(db, civilisationID)
 
-# ===============================================================================
-# Update
-# ===============================================================================
-def update_user(db: Session, userID: int, v_user: schemas.updateUser):
-    # Vérification de l'existence de l'utilisateur
-    db_user = get_user(db, userID)
-
-    if db_user:
-        # Vérification des modifications
-        if user_exist(db, v_user.username)[0]:
-            v_user.username = None
-        if user_exist(db, v_user.email)[0]:
-            v_user.email = None
-
+    if db_civilisation:
         # Mise à jour des informations
-        db.execute(update(models.Users).where(models.Users.id == userID).values(
-            username = (v_user.username if v_user.username is not None else db_user.username),
-            email = (v_user.email if v_user.email is not None else db_user.email),
-            hashed_password = (crudSecu.hash_password(v_user.password) if v_user.password is not None else db_user.hashed_password),
-            pseudo = (v_user.pseudo if v_user.pseudo is not None else db_user.pseudo),
-            image_url = (v_user.image_url if v_user.image_url is not None else db_user.image_url),
-            is_disabled = (v_user.is_disabled if v_user.is_disabled is not None else db_user.is_disabled),
-            is_admin = (v_user.is_admin if v_user.is_admin is not None else db_user.is_admin)
-        ))
+        if v_civilisation.title is not None:
+            db_civilisation.title = v_civilisation.title
+        if v_civilisation.description is not None:
+            db_civilisation.description = v_civilisation.description
+        if v_civilisation.date_founded is not None:
+            db_civilisation.date_founded = v_civilisation.date_founded
+        if v_civilisation.is_public is not None:
+            db_civilisation.is_public = v_civilisation.is_public
+        db.add(db_civilisation)
         db.commit()
-        db.refresh(db_user)
-        return get_read_user(db=db, ID=userID)
-    return {"error": 404, "text": "L'utilisateur n'a pas été trouvé"}
+        db.refresh(db_civilisation)
+        return get_civilisation_by_id(db=db, ID=civilisationID)
+    return {"error": 404, "text": "La civilisation n'a pas été trouvée"}
 
-def update_journal(db: Session, journalID: int, v_journal: schemas.Journal):
-    # Vérification de l'existence du journal
-    db_journal = get_journal(db, journalID)
+# Gouvernements
+def get_gouvernements(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Gouvernements).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-    if db_journal:
+def get_gouvernement_by_id(db: Session, ID: int):
+    statement = select(models.Gouvernements).where(models.Gouvernements.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def create_gouvernement(db: Session, v_gouvernement: schemas.GouvernementCreate):
+    db_gouvernement = models.Gouvernements(
+        civilisation_id = v_gouvernement.civilisation_id,
+        type = v_gouvernement.type,
+        description = v_gouvernement.description,
+        devise = v_gouvernement.devise,
+        hymne = v_gouvernement.hymne,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_gouvernement)
+    db.commit()
+    db.refresh(db_gouvernement)
+    return db_gouvernement
+
+def delete_gouvernement(db: Session, v_gouvernementid: int):
+    try:
+        db_gouvernement = get_gouvernement_by_id(db, v_gouvernementid)
+        script = f'; UPDATE `Civilisations` SET `gouvernement_id` = NULL WHERE `id` = "{db_gouvernement.civilisation_id}"'
+        script += f'; DELETE FROM `Gouvernements` WHERE `id` = "{v_gouvernementid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression du gouvernement {v_gouvernementid}: {e}")
+    return False
+
+def update_gouvernement(db: Session, gouvernementID: int, v_gouvernement: schemas.Gouvernement):
+    # Vérification de l'existence du gouvernement
+    db_gouvernement = get_gouvernement_by_id(db, gouvernementID)
+
+    if db_gouvernement:
         # Mise à jour des informations
-        db.execute(update(models.Journaux).where(models.Journaux.id == journalID).values(
-            user_id = (v_journal.user_id if v_journal.user_id is not None else db_journal.user_id),
-            author = (v_journal.author if v_journal.author is not None else db_journal.author),
-            title = (v_journal.title if v_journal.title is not None else db_journal.title),
-            description = (v_journal.description if v_journal.description is not None else db_journal.description),
-            cover_url = (v_journal.cover_url if v_journal.cover_url is not None else db_journal.cover_url),
-            cover_icon = (v_journal.cover_icon if v_journal.cover_icon is not None else db_journal.cover_icon),
-            cover_color = (v_journal.cover_color if v_journal.cover_color is not None else db_journal.cover_color),
-            link = (v_journal.link if v_journal.link is not None else db_journal.link),
-            uid = (v_journal.uid if v_journal.uid is not None else db_journal.uid),
-            published_date = (v_journal.published_date if v_journal.published_date is not None else db_journal.published_date)
-        ))
+        if v_gouvernement.civilisation_id is not None:
+            db_gouvernement.civilisation_id = v_gouvernement.civilisation_id
+        if v_gouvernement.type is not None:
+            db_gouvernement.type = v_gouvernement.type
+        if v_gouvernement.description is not None:
+            db_gouvernement.description = v_gouvernement.description
+        if v_gouvernement.devices is not None:
+            db_gouvernement.devices = v_gouvernement.devices
+        if v_gouvernement.hymne is not None:
+            db_gouvernement.hymne = v_gouvernement.hymne
+        db.add(db_gouvernement)
         db.commit()
-        db.refresh(db_journal)
-        return get_journal(db=db, ID=journalID)
-    return {"error": 404, "text": "Le journal n'a pas été trouvé"}
+        db.refresh(db_gouvernement)
+        return get_gouvernement_by_id(db=db, ID=gouvernementID)
+    return {"error": 404, "text": "Le gouvernement n'a pas été trouvé"}
 
-def update_livre(db: Session, livreID: int, v_livre: schemas.Livre):
-    # Vérification de l'existence du livre
-    db_livre = get_livre(db, livreID)
+# Villes
+def get_villes(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Villes).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-    if db_livre:
+def get_ville_by_id(db: Session, ID: int):
+    statement = select(models.Villes).where(models.Villes.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_villes_by_civilisation_id(db: Session, civilisationID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Villes).where(models.Villes.civilisation_id == civilisationID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def create_ville(db: Session, v_ville: schemas.VilleCreate):
+    db_ville = models.Villes(
+        civilisation_id = v_ville.civilisation_id,
+        title = v_ville.title,
+        description = v_ville.description,
+        population = v_ville.population,
+        dimension_id = v_ville.dimension_id,
+        x = v_ville.x,
+        z = v_ville.z,
+        founded_date = v_ville.founded_date,
+        is_capital = v_ville.is_capital,
+        is_public = v_ville.is_public,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_ville)
+    db.commit()
+    db.refresh(db_ville)
+    return db_ville
+
+def delete_ville(db: Session, v_villeid: int):
+    try:
+        script = f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` IN (SELECT `id` FROM `Quartiers` WHERE `ville_id` = "{v_villeid}")'
+        script += f'; DELETE FROM `Cartographie` WHERE `type` = "ville" AND `type_id` = "{v_villeid}"'
+        script += f'; DELETE FROM `Quartiers` WHERE `ville_id` = "{v_villeid}"'
+        script += f'; DELETE FROM `Villes` WHERE `id` = "{v_villeid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la ville {v_villeid}: {e}")
+    return False
+
+def update_ville(db: Session, villeID: int, v_ville: schemas.Ville):
+    # Vérification de l'existence de la ville
+    db_ville = get_ville_by_id(db, villeID)
+
+    if db_ville:
         # Mise à jour des informations
-        db.execute(update(models.Livres).where(models.Livres.id == livreID).values(
-            user_id = (v_livre.user_id if v_livre.user_id is not None else db_livre.user_id),
-            author = (v_livre.author if v_livre.author is not None else db_livre.author),
-            title = (v_livre.title if v_livre.title is not None else db_livre.title),
-            description = (v_livre.description if v_livre.description is not None else db_livre.description),
-            cover_url = (v_livre.cover_url if v_livre.cover_url is not None else db_livre.cover_url),
-            cover_icon = (v_livre.cover_icon if v_livre.cover_icon is not None else db_livre.cover_icon),
-            cover_color = (v_livre.cover_color if v_livre.cover_color is not None else db_livre.cover_color),
-            pages = (v_livre.pages if v_livre.pages is not None else db_livre.pages),
-            language = (v_livre.language if v_livre.language is not None else db_livre.language),
-            link = (v_livre.link if v_livre.link is not None else db_livre.link),
-            published_date = (v_livre.published_date if v_livre.published_date is not None else db_livre.published_date)
-        ))
+        if v_ville.civilisation_id is not None:
+            db_ville.civilisation_id = v_ville.civilisation_id
+        if v_ville.title is not None:
+            db_ville.title = v_ville.title
+        if v_ville.description is not None:
+            db_ville.description = v_ville.description
+        if v_ville.population is not None:
+            db_ville.population = v_ville.population
+        if v_ville.dimension_id is not None:
+            db_ville.dimension_id = v_ville.dimension_id
+        if v_ville.x is not None:
+            db_ville.x = v_ville.x
+        if v_ville.z is not None:
+            db_ville.z = v_ville.z
+        if v_ville.founded_date is not None:
+            db_ville.founded_date = v_ville.founded_date
+        if v_ville.is_capital is not None:
+            db_ville.is_capital = v_ville.is_capital
+        if v_ville.is_public is not None:
+            db_ville.is_public = v_ville.is_public
+        db.add(db_ville)
         db.commit()
-        db.refresh(db_livre)
-        return get_livre(db=db, ID=livreID)
-    return {"error": 404, "text": "Le livre n'a pas été trouvé"}
+        db.refresh(db_ville)
+        return get_ville_by_id(db=db, ID=villeID)
+    return {"error": 404, "text": "La ville n'a pas été trouvée"}
+
+# Quartiers
+def get_quartiers(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Quartiers).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_quartier_by_id(db: Session, ID: int):
+    statement = select(models.Quartiers).where(models.Quartiers.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_quartiers_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Quartiers).where(models.Quartiers.ville_id == villeID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def create_quartier(db: Session, v_quartier: schemas.QuartierCreate):
+    db_quartier = models.Quartiers(
+        ville_id = v_quartier.ville_id,
+        title = v_quartier.title,
+        description = v_quartier.description,
+        population = v_quartier.population,
+        x = v_quartier.x,
+        z = v_quartier.z,
+        founded_date = v_quartier.founded_date,
+        is_public = v_quartier.is_public,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_quartier)
+    db.commit()
+    db.refresh(db_quartier)
+    return db_quartier
+
+def delete_quartier(db: Session, v_quartierid: int):
+    try:
+        script = f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` = "{v_quartierid}"'
+        script += f'; DELETE FROM `Quartiers` WHERE `id` = "{v_quartierid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression du quartier {v_quartierid}: {e}")
+    return False
+
+def update_quartier(db: Session, quartierID: int, v_quartier: schemas.Quartier):
+    # Vérification de l'existence du quartier
+    db_quartier = get_quartier_by_id(db, quartierID)
+
+    if db_quartier:
+        # Mise à jour des informations
+        if v_quartier.ville_id is not None:
+            db_quartier.ville_id = v_quartier.ville_id
+        if v_quartier.title is not None:
+            db_quartier.title = v_quartier.title
+        if v_quartier.description is not None:
+            db_quartier.description = v_quartier.description
+        if v_quartier.population is not None:
+            db_quartier.population = v_quartier.population
+        if v_quartier.x is not None:
+            db_quartier.x = v_quartier.x
+        if v_quartier.z is not None:
+            db_quartier.z = v_quartier.z
+        if v_quartier.founded_date is not None:
+            db_quartier.founded_date = v_quartier.founded_date
+        if v_quartier.is_public is not None:
+            db_quartier.is_public = v_quartier.is_public
+        db.add(db_quartier)
+        db.commit()
+        db.refresh(db_quartier)
+        return get_quartier_by_id(db=db, ID=quartierID)
+    return {"error": 404, "text": "Le quartier n'a pas été trouvé"}
+
+################# Religions #####################
+
+def get_religions(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Religions).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_religion_by_id(db: Session, ID: int):
+    statement = select(models.Religions).where(models.Religions.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def create_religion(db: Session, v_religion: schemas.ReligionCreate):
+    db_religion = models.Religions(
+        title = v_religion.title,
+        description = v_religion.description,
+        founder = v_religion.founder,
+        date_founded = v_religion.date_founded,
+        is_public = v_religion.is_public,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_religion)
+    db.commit()
+    db.refresh(db_religion)
+    return db_religion
+
+def delete_religion(db: Session, v_religionid: int):
+    try:
+        script = f'UPDATE `Civilisations` SET `religion_id` = NULL WHERE `religion_id` = "{v_religionid}"'
+        script += f'; DELETE FROM `Religions` WHERE `id` = "{v_religionid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la religion {v_religionid}: {e}")
+    return False
+
+def update_religion(db: Session, religionID: int, v_religion: schemas.Religions):
+    # Vérification de l'existence de la religion
+    db_religion = get_religion_by_id(db, religionID)
+
+    if db_religion:
+        # Mise à jour des informations
+        if v_religion.title is not None:
+            db_religion.title = v_religion.title
+        if v_religion.description is not None:
+            db_religion.description = v_religion.description
+        if v_religion.founder is not None:
+            db_religion.founder = v_religion.founder
+        if v_religion.date_founded is not None:
+            db_religion.date_founded = v_religion.date_founded
+        if v_religion.is_public is not None:
+            db_religion.is_public = v_religion.is_public
+        db.add(db_religion)
+        db.commit()
+        db.refresh(db_religion)
+        return get_religion_by_id(db=db, ID=religionID)
+    return {"error": 404, "text": "La religion n'a pas été trouvée"}
+
+################# Cartographie #####################
+
+# Dimensions
+def get_dimensions(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Dimensions).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_dimension_by_id(db: Session, ID: int):
+    statement = select(models.Dimensions).where(models.Dimensions.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_dimension_by_name(db: Session, name: str):
+    statement = select(models.Dimensions).where(models.Dimensions.title == name)
+    results = db.exec(statement)
+    return results.first()
+
+def get_dimensions_by_title(db: Session, title: str, skip: int = 0, limit: int = 100):
+    statement = select(models.Dimensions).where(models.Dimensions.title.like(f"%{title}%")).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def create_dimension(db: Session, v_dimension: schemas.DimensionCreate):
+    db_dimension = models.Dimensions(
+        title = v_dimension.title,
+        link = v_dimension.link,
+        description = v_dimension.description
+    )
+    
+    db.add(db_dimension)
+    db.commit()
+    db.refresh(db_dimension)
+    return db_dimension
+
+def delete_dimension(db: Session, v_dimensionid: int):
+    try:
+        script = f'DELETE FROM `Dimensions` WHERE `id` = "{v_dimensionid}"'
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la dimension {v_dimensionid}: {e}")
+    return False
+
+def update_dimension(db: Session, dimensionID: int, v_dimension: schemas.Dimension):
+    # Vérification de l'existence de la dimension
+    db_dimension = get_dimension_by_id(db, dimensionID)
+
+    if db_dimension:
+        # Mise à jour des informations
+        if v_dimension.title is not None:
+            db_dimension.title = v_dimension.title
+        if v_dimension.link is not None:
+            db_dimension.link = v_dimension.link
+        if v_dimension.description is not None:
+            db_dimension.description = v_dimension.description
+        db.add(db_dimension)
+        db.commit()
+        db.refresh(db_dimension)
+        return get_dimension_by_id(db=db, ID=dimensionID)
+    return {"error": 404, "text": "La dimension n'a pas été trouvée"}
+
+# Cartographie Markers
+def get_cartographies(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_cartographie_by_id(db: Session, ID: int):
+    statement = select(models.Cartographie).where(models.Cartographie.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_cartographies_by_dimension(db: Session, dimensionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.dimension_id == dimensionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_cartographies_by_type(db: Session, type: str, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.type == type).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_cartographies_by_type_and_dimension(db: Session, type: str, dimensionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.type == type).where(models.Cartographie.dimension_id == dimensionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_cartographies_type(db: Session):
+    types = ["civilisation", "ville", "quartier"]
+    return types
+
+def get_cartographies_by_types(db: Session, type: str, id: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.type == type).where(models.Cartographie.type_id == id).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def create_cartographie(db: Session, v_cartographie: schemas.CartographieCreate):
+    db_cartographie = models.Cartographie(
+        title = v_cartographie.title,
+        description = v_cartographie.description,
+        text = v_cartographie.text,
+        color = v_cartographie.color,
+        dimension_id = v_cartographie.dimension_id,
+        shape_type = v_cartographie.shape_type,
+        coordinates = v_cartographie.coordinates,
+        type = v_cartographie.type,
+        type_id = v_cartographie.type_id
+    )
+    
+    db.add(db_cartographie)
+    db.commit()
+    db.refresh(db_cartographie)
+    return db_cartographie
+
+def delete_cartographie(db: Session, v_cartographieid: int):
+    try:
+        script = f"DELETE FROM `Cartographie` WHERE `id` = '{v_cartographieid}'"
+        db.execute(script)
+        db.commit()
+        return True
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la cartographie {v_cartographieid}: {e}")
+    return False
+
+def update_cartographie(db: Session, cartographieID: int, v_cartographie: schemas.Cartographie):
+    # Vérification de l'existence de la cartographie
+    db_cartographie = get_cartographie_by_id(db, cartographieID)
+
+    if db_cartographie:
+        # Mise à jour des informations
+        if v_cartographie.title is not None:
+            db_cartographie.title = v_cartographie.title
+        if v_cartographie.description is not None:
+            db_cartographie.description = v_cartographie.description
+        if v_cartographie.text is not None:
+            db_cartographie.text = v_cartographie.text
+        if v_cartographie.color is not None:
+            db_cartographie.color = v_cartographie.color
+        if v_cartographie.type is not None:
+            db_cartographie.type = v_cartographie.type
+        if v_cartographie.type_id is not None:
+            db_cartographie.type_id = v_cartographie.type_id
+        if v_cartographie.dimension_id is not None:
+            db_cartographie.dimension_id = v_cartographie.dimension_id
+        if v_cartographie.shape_type is not None:
+            db_cartographie.shape_type = v_cartographie.shape_type
+        if v_cartographie.coordinates is not None:
+            db_cartographie.coordinates = v_cartographie.coordinates
+        db.add(db_cartographie)
+        db.commit()
+        db.refresh(db_cartographie)
+        return get_cartographie_by_id(db=db, ID=cartographieID)
+    return {"error": 404, "text": "La cartographie n'a pas été trouvée"}
+
+################# Templates #####################
+

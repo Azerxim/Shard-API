@@ -1,40 +1,76 @@
-from typing import List, Annotated
-from fastapi import Depends, FastAPI, HTTPException, Request, Response, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from typing import Annotated
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, FileResponse
+from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from fastapi.openapi.docs import get_swagger_ui_html
-from sqlalchemy.orm import Session
+from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from contextlib import asynccontextmanager
 
-import time as t, datetime as dt
+from sqlmodel import Session
+from .database import get_db, create_db_and_tables, check_database_tables
 
 from . import utils
-from topazdevsdk import file as f, colors
-from . import crud, models, schemas, crud_security as crudSecu
-from .database import SessionLocal, engine
+from topazdevsdk import colors
+from . import schemas, crud, models
+from .routes_users import router as users_router
+from .routes_bibliotheque import router as bibliotheque_router
+from .routes_civilisations import router as civilisations_router
+from .routes_cartographie import router as cartographie_router
+from .routes_religions import router as religions_router
 
 
-models.Base.metadata.create_all(bind=engine)
+################# App Initialization #################
+
+@asynccontextmanager
+async def lifespan(app_: FastAPI):
+    # Démarrage de l'application
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     {colors.BColors.PURPLE}{utils.CONFIG['api']['name']}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Version {colors.BColors.LIGHTBLUE}{utils.VERSION}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+    
+    # Initialisation de la base de données
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Initialisation de la base de données...")
+    create_db_and_tables()
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Base de données initialisée.")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+    
+    # Vérification des tables de la base de données existantes par rapport aux modèles
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Vérification des tables de la base de données...")
+    check_database_tables()
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Vérification terminée.")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+    
+    # Initialisation de la sécurité
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Initialisation de la sécurité...")
+    db = next(get_db())
+    result = crud.loadsecurity(db, utils.SECURITY)
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Sécurité initialisée. Résultat: {result.get('result') if result.get('result') is not None else result.get('erreur', 'Erreur inconnue')}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+
+    # Fonctionnement de l'application
+    yield
+    
+    # Arrêt de l'application
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Arrêt en cours...")
+
+# Paramétrage de l'application FastAPI
 app = FastAPI(
     title=utils.CONFIG['api']['name'],
-    version=utils.CONFIG['api']['version'],
+    version=utils.VERSION,
     docs_url=None,
-    redoc_url=None
+    redoc_url=None,
+    lifespan=lifespan
 )
 
-################# Dependency ###################
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+################# Templates #################
 
-################# Templates #####################
-
-templates = Jinja2Templates(directory="html")
+templates = Jinja2Templates(directory="templates")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 favicon_path = 'assets/images/favicon.ico'
@@ -42,35 +78,65 @@ favicon_path = 'assets/images/favicon.ico'
 async def favicon():
     return FileResponse(favicon_path)
 
+robots_path = 'robots.txt'
+@app.get('/robots.txt', include_in_schema=False)
+async def robots():
+    return FileResponse(robots_path, media_type='text/plain')
 
-################# Security ######################
+@app.get('/sitemap.xml', include_in_schema=False)
+async def sitemap(request: Request):
+    """Generate sitemap.xml dynamically"""
+    base_url = str(request.base_url).rstrip('/')
+    
+    # Define routes with their priority and change frequency
+    routes = [
+        {'loc': '/', 'priority': '1.0', 'changefreq': 'weekly'},
+        # {'loc': '/login', 'priority': '0.8', 'changefreq': 'monthly'},
+        # {'loc': '/register', 'priority': '0.8', 'changefreq': 'monthly'},
+        # {'loc': '/profile', 'priority': '0.7', 'changefreq': 'weekly'},
+        # {'loc': '/users', 'priority': '0.7', 'changefreq': 'daily'},
+        {'loc': '/docs', 'priority': '0.6', 'changefreq': 'monthly'},
+    ]
+    
+    # Build XML sitemap
+    xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
+    xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    
+    for route in routes:
+        xml_content += '  <url>\n'
+        xml_content += f'    <loc>{base_url}{route["loc"]}</loc>\n'
+        xml_content += f'    <changefreq>{route["changefreq"]}</changefreq>\n'
+        xml_content += f'    <priority>{route["priority"]}</priority>\n'
+        xml_content += '  </url>\n'
+    
+    xml_content += '</urlset>'
+    
+    return Response(content=xml_content, media_type='application/xml')
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-
-# -----------------------------------------------
-async def secu_get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
-    user = crudSecu.secu_decode_token(db, token)
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return user
-
-# -----------------------------------------------
-async def secu_get_current_active_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_user)]):
-    if current_user.disabled:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return JSONResponse(content=jsonable_encoder(current_user))
+################# Security #################
 
 # -----------------------------------------------
 @app.post("/token", tags=["Security"])
 async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
-    user_dict = crudSecu.secu_get_user_from_username(db, form_data.username)
+    """
+    Authentification OAuth2
+    """
+    # # Vérifier le client_id et client_secret
+    # if utils.CLIENT_ID and utils.CLIENT_SECRET:
+    #     client_id = form_data.client_id if form_data.client_id else None
+    #     client_secret = form_data.client_secret if form_data.client_secret else None
+
+    #     if not client_id or client_id != utils.CLIENT_ID:
+    #         raise HTTPException(status_code=400, detail="Invalid client_id")
+    #     if not client_secret or client_secret != utils.CLIENT_SECRET:
+    #         raise HTTPException(status_code=400, detail="Invalid client_secret")
+    
+    # Vérifier les credentials de l'utilisateur
+    user_dict = crud.secu_get_user_by_username(db, form_data.username)
     if not user_dict:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
-    hashed_password = crudSecu.hash_password(form_data.password)
+    
+    hashed_password = crud.hash_password(form_data.password)
     if not hashed_password == user_dict.hashed_password:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
@@ -78,31 +144,34 @@ async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
 
 # -----------------------------------------------
 @app.get("/security/me", tags=["Security"])
-async def read_securityusers_me(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], db: Session = Depends(get_db)):
+async def read_securityusers_me(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], db: Session = Depends(get_db)):
     return JSONResponse(content=jsonable_encoder(current_user))
 
-# -----------------------------------------------
-@app.get("/security/load", tags=["Security"])
-async def security_load(db: Session = Depends(get_db)):
-    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
-    result = crudSecu.loadsecurity(db, utils.SECURITY)
-    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
-    return JSONResponse(content=jsonable_encoder(result))
+################# Include Routers #################
 
+app.include_router(users_router)
 
-################### API #########################
+app.include_router(bibliotheque_router)
 
-@app.on_event("startup")
-async def startup_event():
-    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
-    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     {colors.BColors.PURPLE}{utils.CONFIG['api']['name']}{colors.BColors.END}")
-    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Version {colors.BColors.LIGHTBLUE}{utils.CONFIG['api']['version']}{colors.BColors.END}")
-    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+app.include_router(civilisations_router)
+
+app.include_router(religions_router)
+
+app.include_router(cartographie_router)
+
+################# Main Routes #################
 
 # -----------------------------------------------
 @app.get("/", response_class=HTMLResponse)
 def html_main(request: Request):
-    return templates.TemplateResponse("version.html", {"request": request, "version": utils.CONFIG['api']['version'], "api": utils.CONFIG['api']['name']})
+    return templates.TemplateResponse("landing.html", {
+        "request": request, 
+        "name": utils.CONFIG['api']['name'],
+        "version": utils.VERSION, 
+        "hostname": utils.HOSTNAME
+    })
+
+################# Docs Routes #################
 
 # -----------------------------------------------
 @app.get("/docs", response_class=HTMLResponse, include_in_schema=False)
@@ -114,243 +183,61 @@ async def custom_swagger_ui_html(request: Request):
     )
     return templates.TemplateResponse("docs.html", {
         "request": request, 
-        "api": utils.CONFIG['api']['name'],
+        "name": utils.CONFIG['api']['name'],
+        "version": utils.VERSION,
+        "hostname": utils.HOSTNAME,
         "swagger_ui_html": swagger_ui.body.decode()
     })
 
-# @app.get("/")
-# def app_main():
-#     result = {'api': utils.CONFIG['api']['name'], 'version': utils.CONFIG['api']['version']}
-#     return JSONResponse(content=jsonable_encoder(result))
+# -----------------------------------------------
+@app.get("/redoc", response_class=HTMLResponse, include_in_schema=False)
+async def redoc_html(request: Request):
+    redoc_ui = get_redoc_html(
+        openapi_url=app.openapi_url,
+        title=f"{utils.CONFIG['api']['name']} - ReDoc Documentation",
+        redoc_favicon_url="/assets/images/favicon.ico"
+    )
+    return templates.TemplateResponse("redoc.html", {
+        "request": request, 
+        "name": utils.CONFIG['api']['name'],
+        "version": utils.VERSION,
+        "hostname": utils.HOSTNAME,
+        "redoc_ui_html": redoc_ui.body.decode()
+    })
+
+###################  API Endpoints #################
 
 # -----------------------------------------------
-@app.get("/version/")
+@app.get("/api/version/")
 def app_version():
-    result = {'api': utils.CONFIG['api']['name'], 'version': utils.CONFIG['api']['version']}
+    result = {'name': utils.CONFIG['api']['name'], 'version': utils.VERSION, 'version_dev': utils.VERSION_DEV, 'version_short': utils.VERSION_SHORT, 'hostname': utils.HOSTNAME}
     return JSONResponse(content=jsonable_encoder(result))
 
-
-################### USER #########################
-
-@app.post("/user/create/", tags=["Users"])
-def create_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.createUser, db: Session = Depends(get_db)):
-    # Vérification si l'email ou le username existe déjà
-    (db_check, db_user) = crud.user_exist(db, username=user.username)
-    if db_check:
-        raise HTTPException(status_code=400, detail=f"Le nom d'utilisateur '{user.username}' est déjà utilisé !")
-    (db_check, db_user) = crud.user_exist(db, email=user.email)
-    if db_check:
-        raise HTTPException(status_code=400, detail=f"L'adresse email '{user.email}' est déjà utilisée !")
-    return crud.create_user(
-        db=db,
-        v_user=user
-    )
+################# 404 Handler #################
 
 # -----------------------------------------------
-@app.put("/user/update/", tags=["Users"])
-def update_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], user: schemas.updateUser, db: Session = Depends(get_db)):
-    return crud.update_user(
-        db=db,
-        userID=user.id,
-        v_user=user
-    )
-
-# -----------------------------------------------
-@app.delete("/user/delete/", tags=["Users"])
-def delete_user(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], UserID: int, db: Session = Depends(get_db)):
-    delete=crud.delete_user(db=db, v_userid=UserID)
-    if not delete:
-        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression de l'utilisateur"}))
-    return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"L'utilisateur a été supprimé"}))
-
-# -----------------------------------------------
-@app.post("/user/login/", tags=["Users"])
-def login_user(user: schemas.loginUser, db: Session = Depends(get_db)):
-    username = "" if user.username is None else user.username
-    email = "" if user.email is None else user.email
-    password = "" if user.password is None else user.password
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    """Handle HTTP exceptions, including 404 errors"""
+    # For 404 errors with HTML accept header, return 404 template
+    if exc.status_code == 404:
+        accept_header = request.headers.get("accept", "")
+        if "text/html" in accept_header or not request.url.path.startswith("/api"):
+            return templates.TemplateResponse("404.html", {
+                "request": request,
+                "name": utils.CONFIG['api']['name'],
+                "version": utils.VERSION_SHORT,
+                "hostname": utils.HOSTNAME
+            }, status_code=404)
     
-    if username == "" and email == "":
-        func = {'error': 404, 'text': "Il manque les informations de login (username et email)"}
-    else:
-        if username != "" and email != "":
-            (check, user) = crud.check_user_all(db=db, email=email, username=username, password=password)
-        elif email != "":
-            (check, user) = crud.check_user_from_email(db=db, email=email, password=password)
-        else:
-            (check, user) = crud.check_user_from_name(db=db, username=username, password=password)
-        if check:
-            func = {'error': 200, 'user': user}
-        elif user is None:
-            func = {'error': 404, 'user': {}, 'text': "Aucun utilisateur n'a été trouvé"}
-        else:
-            func = {'error': 204, 'user': {}, 'text': "Mot de passe incorrect"}
-    return JSONResponse(content=jsonable_encoder(func))
-
-# -----------------------------------------------
-@app.get("/user/read/{UserID}", tags=["Users"])
-def read_user(UserID: int, db: Session = Depends(get_db)):
-    db_user = crud.get_read_user(db=db, ID=UserID)
-    if db_user is None:
-        func = {'error': 404, 'user': db_user}
-    else:
-        func = {'error': 200, 'user': db_user}
-    return JSONResponse(content=jsonable_encoder(func))
-
-# -----------------------------------------------
-@app.get("/users/read/", tags=["Users"])
-def read_users(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    users = crud.get_read_users(db=db, skip=skip, limit=limit)
-    if users is None:
-        func = {'error': 404, 'skip': skip, 'limit': limit, 'users': users}
-    else:
-        func = {'error': 200, 'skip': skip, 'limit': limit, 'users': users}
-    return JSONResponse(content=jsonable_encoder(func))
-
-
-################### Bibliothèque #########################
-
-# -----------------------------------------------
-# Journaux
-# -----------------------------------------------
-@app.post("/journaux/create/", tags=["Bibliothèque"])
-def create_journal(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], journal: schemas.Journal, db: Session = Depends(get_db)):
-    return crud.create_journal(
-        db=db,
-        v_journal=journal
+    # For API requests or non-404 errors, return JSON
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail}
     )
 
 # -----------------------------------------------
-@app.delete("/journaux/delete/", tags=["Bibliothèque"])
-def delete_journal(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], JournalID: int, db: Session = Depends(get_db)):
-    delete=crud.delete_journal(db=db, v_journalid=JournalID)
-    if not delete:
-        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression du journal"}))
-    return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le journal a été supprimé"}))
-
-# -----------------------------------------------
-@app.get("/journaux/read/", tags=["Bibliothèque"])
-def read_journaux(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    journals = crud.get_journaux(db=db, skip=skip, limit=limit)
-    return JSONResponse(content=jsonable_encoder(journals))
-
-# -----------------------------------------------
-@app.get("/journaux/read/{JournalID}", tags=["Bibliothèque"])
-def read_journal(JournalID: int, db: Session = Depends(get_db)):
-    journal = crud.get_journal(db=db, ID=JournalID)
-    if journal is None:
-        func = {'error': 404, 'journal': journal}
-    else:
-        func = {'error': 200, 'journal': journal}
-    return JSONResponse(content=jsonable_encoder(func))
-
-# -----------------------------------------------
-@app.get("/journaux/read/user/{UserID}", tags=["Bibliothèque"])
-def read_journaux_by_user(UserID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    journals = crud.get_journaux_by_user(db=db, userID=UserID, skip=skip, limit=limit)
-    return JSONResponse(content=jsonable_encoder(journals))
-
-# -----------------------------------------------
-@app.get("/journaux/count/", tags=["Bibliothèque"])
-def count_journaux(db: Session = Depends(get_db)):
-    count = crud.get_journaux_count(db=db)
-    return JSONResponse(content=jsonable_encoder(count))
-
-# -----------------------------------------------
-@app.get("/journaux/count/user/{UserID}", tags=["Bibliothèque"])
-def count_journaux_by_user(UserID: int, db: Session = Depends(get_db)):
-    count = crud.get_journaux_count_by_user(db=db, userID=UserID)
-    return JSONResponse(content=jsonable_encoder(count))
-
-# -----------------------------------------------
-@app.get("/journaux/contents/{JournalID}", tags=["Bibliothèque"])
-def read_journal_contents(JournalID: int, skip: int = 0, limit: int = 10000, db: Session = Depends(get_db)):
-    content = crud.get_journal_contents(db=db, journalID=JournalID, skip=skip, limit=limit)
-    if content is None:
-        func = {'error': 404, 'content': content}
-    else:
-        func = {'error': 200, 'content': content}
-    return JSONResponse(content=jsonable_encoder(func))
-
-
-# -----------------------------------------------
-# Livres
-# -----------------------------------------------
-@app.post("/livres/create/", tags=["Bibliothèque"])
-def create_livre(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], livre: schemas.Livre, db: Session = Depends(get_db)):
-    return crud.create_livre(
-        db=db,
-        v_livre=livre
-    )
-
-# -----------------------------------------------
-@app.delete("/livres/delete/", tags=["Bibliothèque"])
-def delete_livre(current_user: Annotated[schemas.SecurityUsers, Depends(secu_get_current_active_user)], LivreID: int, db: Session = Depends(get_db)):
-    delete=crud.delete_livre(db=db, v_livreid=LivreID)
-    if not delete:
-        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression du livre"}))
-    return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le livre a été supprimé"}))
-
-# -----------------------------------------------
-@app.get("/livres/read/", tags=["Bibliothèque"])
-def read_livres(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    livres = crud.get_livres(db=db, skip=skip, limit=limit)
-    return JSONResponse(content=jsonable_encoder(livres))
-
-# -----------------------------------------------
-@app.get("/livres/read/{LivreID}", tags=["Bibliothèque"])
-def read_livre(LivreID: int, db: Session = Depends(get_db)):
-    livre = crud.get_livre(db=db, ID=LivreID)
-    if livre is None:
-        func = {'error': 404, 'livre': livre}
-    else:
-        func = {'error': 200, 'livre': livre}
-    return JSONResponse(content=jsonable_encoder(func))
-
-# -----------------------------------------------
-@app.get("/livres/read/user/{UserID}", tags=["Bibliothèque"])
-def read_livres_by_user(UserID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    livres = crud.get_livres_by_user(db=db, userID=UserID, skip=skip, limit=limit)
-    return JSONResponse(content=jsonable_encoder(livres))
-
-# -----------------------------------------------
-@app.get("/livres/count/", tags=["Bibliothèque"])
-def count_livres(db: Session = Depends(get_db)):
-    count = crud.get_livres_count(db=db)
-    return JSONResponse(content=jsonable_encoder(count))
-
-# -----------------------------------------------
-@app.get("/livres/count/user/{UserID}", tags=["Bibliothèque"])
-def count_livres_by_user(UserID: int, db: Session = Depends(get_db)):
-    count = crud.get_livres_count_by_user(db=db, userID=UserID)
-    return JSONResponse(content=jsonable_encoder(count))
-
-
-################# HTML ##########################
-
-# ==== ERROR ====
-# -----------------------------------------------
-@app.get("/error-404", response_class=HTMLResponse, include_in_schema=False)
-def app_error_404(request: Request):
-    return templates.TemplateResponse("error-404.html", {"request": request})
-
-# -----------------------------------------------
-@app.get("/error", response_class=HTMLResponse, include_in_schema=False)
-def app_error(request: Request, text: str):
-    return templates.TemplateResponse("error.html", {"request": request, "text": text})
-
-
-# ==== READ ====
-# -----------------------------------------------
-@app.get("/html/users/read/", response_class=HTMLResponse, tags=["HTML"], include_in_schema=False)
-def html_read_users(request: Request, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
-    users = crud.get_read_users(db=db, skip=skip, limit=limit)
-    return templates.TemplateResponse("users.html", {"request": request, "users": users})
-
-# -----------------------------------------------
-@app.get("/html/user/read/{UserID}", response_class=HTMLResponse, tags=["HTML"], include_in_schema=False)
-def html_read_user(request: Request, UserID: int, db: Session = Depends(get_db)):
-    user = crud.get_read_user(db=db, ID=UserID)
-    if user is None:
-        return templates.TemplateResponse("error.html", {"request": request, "text": "Utilisateur non trouvé"})
-    return templates.TemplateResponse("user.html", {"request": request, "user": user})
+@app.get("/{full_path:path}", response_class=HTMLResponse)
+async def catch_all(full_path: str):
+    """Catch-all route for undefined paths"""
+    raise StarletteHTTPException(status_code=404, detail="Not Found")

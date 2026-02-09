@@ -1,95 +1,183 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, BigInteger, Date, DateTime, Float, Interval, Text, Time, Unicode, UnicodeText
-from sqlalchemy.orm import relationship
 import datetime as dt
-
-from .database import Base
-
+from sqlmodel import SQLModel, Field, Relationship
 
 ################# Users ########################
 
-class Users(Base):
+class Users(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(index=True, unique=True)
+    full_name: str | None = Field(default=None)
+    email: str = Field(index=True, unique=True)
+    hashed_password: str = Field()
+    image_url: str | None = Field(default=None)
+    arrival: dt.datetime | None = Field(default=None)
+    is_disabled: bool = Field(default=False)
+    is_admin: bool = Field(default=False)
+    is_visible: bool = Field(default=True)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
-    __tablename__="Users"
+    platforms: list["UserPlatforms"] = Relationship(back_populates="user")
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String, unique=True)
-    email = Column(String, unique=True)
-    hashed_password = Column(String)
-    pseudo = Column(String)
-    image_url = Column(String)
-    arrival = Column(DateTime)
-    is_disabled = Column(Boolean)
-    is_admin = Column(Boolean)
+class UserPlatforms(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    platform: str
+    uid: str
 
-    platforms = relationship("UserPlatforms", back_populates="user", cascade="all, delete-orphan")
+    user: Users = Relationship(back_populates="platforms")
 
-class UserPlatforms(Base):
-
-    __tablename__="UserPlatforms"
-
-    id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey("Users.id"))
-    platform = Column(String)
-    uid = Column(String)
-
-    user = relationship("Users", back_populates="platforms")
+# class ActiveSession(SQLModel, table=True):
+#     id: int | None = Field(default=None, primary_key=True)
+#     username: str = Field(index=True)
+#     access_token: str = Field()
+#     expiry_time: dt.datetime = Field()
 
 
 ############### Bibliothèque ####################
 
-class Journaux(Base):
-
-    __tablename__="Journaux"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("Users.id"))
-    author = Column(String)
-    title = Column(String)
-    description = Column(Text)
+class Journaux(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    author: str
+    title: str
+    description: str | None = Field(default=None)
     
-    cover_url = Column(String)
-    cover_icon = Column(String)
-    cover_color = Column(String)
+    cover_url: str | None = Field(default=None)
+    cover_icon: str | None = Field(default=None)
+    cover_color: str | None = Field(default=None)
 
-    link = Column(String)
-    uid = Column(String)
+    link: str | None = Field(default=None)
+    uid: str | None = Field(default=None)
 
-    published_date = Column(Date)
-    created_at = Column(DateTime)
+    published_date: dt.date | None = Field(default=None)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 
-class Livres(Base):
-
-    __tablename__="Livres"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey("Users.id"))
-    author = Column(String)
-    title = Column(String)
-    description = Column(Text)
+class Livres(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    author: str
+    title: str
+    description: str | None = Field(default=None)
     
-    cover_url = Column(String)
-    cover_icon = Column(String)
-    cover_color = Column(String)
+    cover_url: str | None = Field(default=None)
+    cover_icon: str | None = Field(default=None)
+    cover_color: str | None = Field(default=None)
+    pages: int | None = Field(default=None)
+    language: str | None = Field(default=None)
 
-    pages = Column(Integer)
-    language = Column(String)
+    link: str | None = Field(default=None)
+    published_date: dt.date | None = Field(default=None)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
-    link = Column(String)
+############### Civilisations ####################
 
-    published_date = Column(Date)
-    created_at = Column(DateTime)
+class CivilisationMembers(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
+    role: str | None = Field(default=None)
+    joined_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class Gouvernements(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
+    title: str
+    description: str | None = Field(default=None)
+    devise: str | None = Field(default=None)
+    hymne: str | None = Field(default=None)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class Civilisations(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+    date_founded: dt.date | None = Field(default=None)
+    gouvernement_id: int | None = Field(default=None, foreign_key="gouvernements.id")
+
+    is_public: bool | None = Field(default=None)
+    created_at: dt.datetime | None = Field(default=None)
+
+class Villes(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+
+    population: int | None = Field(default=None)
+    founded_date: dt.date | None = Field(default=None)
+    
+    dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
+    x: int | None = Field(default=None)
+    z: int | None = Field(default=None)
+
+    is_public: bool | None = Field(default=None)
+    is_capital: bool | None = Field(default=None)
+    created_at: dt.datetime | None = Field(default=None)
+    
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
+
+class Quartiers(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+
+    population: int | None = Field(default=None)
+    founded_date: dt.date | None = Field(default=None)
+
+    x: int | None = Field(default=None)
+    z: int | None = Field(default=None)
+
+    is_public: bool | None = Field(default=None)
+    created_at: dt.datetime | None = Field(default=None)
+    
+    ville_id: int | None = Field(default=None, foreign_key="villes.id")
+    
+
+############### Religions ####################
+
+class Religions(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+    founder: str | None = Field(default=None)
+    date_founded: dt.date | None = Field(default=None)
+
+    is_public: bool | None = Field(default=None)
+    created_at: dt.datetime | None = Field(default=None)
+
+class VillesReligions(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    ville_id: int | None = Field(default=None, foreign_key="villes.id")
+    religion_id: int | None = Field(default=None, foreign_key="religions.id")
+    influence: float | None = Field(default=None)
+
+class QuartiersReligions(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    quartier_id: int | None = Field(default=None, foreign_key="quartiers.id")
+    religion_id: int | None = Field(default=None, foreign_key="religions.id")
+    influence: float | None = Field(default=None)
+
+############### Cartographie ####################
+
+class Dimensions(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str 
+    link: str | None = Field(default=None)
+    description: str | None = Field(default=None)
+
+class Cartographie(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+    text: str | None = Field(default=None)
+    color: str | None = Field(default=None)
+    type: str | None = Field(default=None)      # e.g., "civilisation", "ville", "quartier"
+    type_id: int | None = Field(default=None)   # ID of the associated entity
+    
+    dimension_id: int = Field(foreign_key="dimensions.id")
+    shape_type: str | None = Field(default=None)  # e.g., "point", "line", "polygon"
+    coordinates: str | None = Field(default=None)  # Stored as JSON string
+
+############### Templates ####################
 
 
-################# Security #####################
-
-class SecurityUsers(Base):
-
-    __tablename__="SecurityUsers"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    username = Column(String, unique=True)
-    full_name = Column(String)
-    email = Column(String, unique=True)
-    hashed_password = Column(String)
-    disabled = Column(Boolean)

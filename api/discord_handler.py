@@ -24,8 +24,8 @@ class DiscordHandler:
             return
             
         try:
-            token = utils.CONFIG.get('discord', {}).get('token')
-            self.guild_id = utils.CONFIG.get('discord', {}).get('guild_id')
+            token = utils.PLATFORMS.get('discord', {}).get('token')
+            self.guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
             
             if not token:
                 raise ValueError("Discord token non configuré dans config.json")
@@ -133,8 +133,8 @@ async def create_channel(title: str, category_id: int = None) -> str:
     Returns:
         str: L'ID du salon créé
     """
-    token = utils.CONFIG.get('discord', {}).get('token')
-    guild_id = utils.CONFIG.get('discord', {}).get('guild_id')
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
     
     if not token or not guild_id:
         raise ValueError("Configuration Discord incomplète")
@@ -216,8 +216,8 @@ async def delete_channel(channel_id: str) -> bool:
     Returns:
         bool: True si la suppression a réussi, False sinon
     """
-    token = utils.CONFIG.get('discord', {}).get('token')
-    guild_id = utils.CONFIG.get('discord', {}).get('guild_id')
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
     
     if not token or not guild_id:
         raise ValueError("Configuration Discord incomplète")
@@ -293,8 +293,8 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
     Returns:
         list: Liste des messages avec their metadata
     """
-    token = utils.CONFIG.get('discord', {}).get('token')
-    guild_id = utils.CONFIG.get('discord', {}).get('guild_id')
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
     
     if not token or not guild_id:
         raise ValueError("Configuration Discord incomplète")

@@ -152,8 +152,8 @@ cython_debug/
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 #.idea/
 
-
-config.json
-*.db
 .vscode/
-/html/_work
+_work/
+.old/
+*.db
+config.json

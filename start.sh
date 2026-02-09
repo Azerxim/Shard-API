@@ -3,6 +3,9 @@
 # Shard API Manager - Main Menu
 # Interactive script to run various project tasks
 
+# Configuration
+VENV_DIR=".venv"
+
 # Couleurs ANSI
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -28,17 +31,17 @@ while true; do
     case $choice in
         1)
             echo ""
-            if [ -d ".env" ]; then
+            if [ -d "$VENV_DIR" ]; then
                 echo -e "${YELLOW}Virtual environment already exists. Activating...${NC}"
-                source .env/bin/activate
+                source "$VENV_DIR/bin/activate"
                 echo -e "${GREEN}Virtual environment activated!${NC}"
                 echo -e "${CYAN}Python version: $(python --version)${NC}"
             else
                 echo -e "${YELLOW}Creating virtual environment...${NC}"
-                python3 -m venv .env
+                python3 -m venv "$VENV_DIR"
                 echo -e "${GREEN}Virtual environment created!${NC}"
                 echo -e "${YELLOW}Activating virtual environment...${NC}"
-                source .env/bin/activate
+                source "$VENV_DIR/bin/activate"
                 echo -e "${GREEN}Virtual environment activated!${NC}"
                 echo -e "${CYAN}Python version: $(python --version)${NC}"
                 echo ""
@@ -61,13 +64,42 @@ while true; do
             ;;
         3)
             echo ""
-            echo -e "${GREEN}Starting API...${NC}"
-            echo -e "${CYAN}Server will be available at http://localhost:8000${NC}"
-            echo -e "${YELLOW}Press Ctrl+C to stop the server${NC}"
+            echo -e "${YELLOW}Reading configuration from config.json...${NC}"
+            
+            # Lire config.json avec jq ou grep selon la disponibilité
+            if command -v jq &> /dev/null; then
+                HOST_IP=$(jq -r '.api.ip' config.json)
+                HOST_PORT=$(jq -r '.api.port' config.json)
+            else
+                # Fallback si jq n'est pas disponible
+                HOST_IP=$(grep -oP '"ip":\s*"\K[^"]+' config.json)
+                HOST_PORT=$(grep -oP '"port":\s*\K[0-9]+' config.json | head -1)
+            fi
+            
+            # Demander le mode de développement
             echo ""
-            python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+            echo -e "${CYAN}Mode de développement:${NC}"
+            echo "1) Mode développeur (--reload activé)"
+            echo "2) Mode production (--reload désactivé)"
             echo ""
-            read -p "Press any key to continue..." -n 1
+            read -p "Choisissez le mode [1-2] (défaut: 1): " dev_mode
+            
+            # Définir le flag reload
+            if [ "$dev_mode" = "2" ]; then
+                RELOAD_FLAG=""
+                MODE_TEXT="production"
+            else
+                RELOAD_FLAG="--reload"
+                MODE_TEXT="développeur"
+            fi
+            
+            echo -e "${GREEN}Démarrage en mode ${MODE_TEXT}...${NC}"
+            echo -e "${CYAN}Serveur disponible à http://$HOST_IP:$HOST_PORT${NC}"
+            echo -e "${YELLOW}Appuyez sur Ctrl+C pour arrêter le serveur${NC}"
+            echo ""
+            python -m uvicorn api.main:app $RELOAD_FLAG --host $HOST_IP --port $HOST_PORT
+            echo ""
+            read -p "Appuyez sur une touche pour continuer..." -n 1
             ;;
         4)
             echo ""

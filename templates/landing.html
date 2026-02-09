@@ -1,0 +1,323 @@
+<!doctype html>
+<html>
+  <!--=======================-->
+  <!--====== HTML HEAD ======-->
+  <!--=======================-->
+  <head>
+    <meta name="author" content="Azerxim" />
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
+    <meta
+      name="description"
+      content="{{ name }} - API moderne et performante"
+    />
+    <meta name="keywords" content="API, FastAPI, SQLModel, REST" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index, follow" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="language" content="French" />
+    <link rel="shortcut icon" href="/assets/images/favicon.ico" />
+
+    <title>{{ name }}</title>
+
+    {% include 'components/css.html' %} {% include 'components/scripts.html' %}
+  </head>
+  <body>
+    {% include 'components/navigation/navbar.html' %}
+
+    <!-- Hero Section -->
+    <section
+      class="hero bg-gradient-to-r from-blue-600 to-purple-600 text-white py-24"
+    >
+      <div class="container mx-auto px-4">
+        <div
+          class="flex flex-col items-center justify-center gap-8 text-center"
+        >
+          <h1 class="text-6xl font-bold mb-4">{{ name }}</h1>
+          <p class="text-2xl font-light mb-8 max-w-2xl">
+            Une API moderne et performante construite avec FastAPI et SQLModel
+          </p>
+          <div class="text-xl mb-8">
+            <span class="badge badge-lg bg-white text-blue-600 font-bold"
+              >v{{ version }}</span
+            >
+          </div>
+          <div class="flex gap-4 flex-wrap justify-center">
+            <a href="/docs" class="btn btn-lg btn-primary">
+              <i class="fas fa-book"></i> Swagger UI
+            </a>
+            <a href="/redoc" class="btn btn-lg btn-secondary">
+              <i class="fas fa-file-alt"></i> ReDoc
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="py-20 bg-gray-50">
+      <div class="container mx-auto px-4">
+        <h2 class="text-5xl font-bold text-center mb-16">Fonctionnalités</h2>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+          <!-- Feature 1 -->
+          <div class="card bg-white shadow-lg hover:shadow-xl transition">
+            <div class="card-body">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="text-4xl text-blue-600">
+                  <i class="fas fa-rocket"></i>
+                </div>
+                <h3 class="card-title text-2xl">Performance</h3>
+              </div>
+              <p class="text-gray-600">
+                FastAPI offre des performances exceptionnelles avec le support
+                async/await natif et les validations automatiques.
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature 2 -->
+          <div class="card bg-white shadow-lg hover:shadow-xl transition">
+            <div class="card-body">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="text-4xl text-green-600">
+                  <i class="fas fa-database"></i>
+                </div>
+                <h3 class="card-title text-2xl">ORM Puissant</h3>
+              </div>
+              <p class="text-gray-600">
+                SQLModel combine SQLAlchemy et Pydantic pour une gestion
+                élégante et type-safe de vos données.
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature 3 -->
+          <div class="card bg-white shadow-lg hover:shadow-xl transition">
+            <div class="card-body">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="text-4xl text-purple-600">
+                  <i class="fas fa-lock"></i>
+                </div>
+                <h3 class="card-title text-2xl">Sécurité</h3>
+              </div>
+              <p class="text-gray-600">
+                Support OAuth2 intégré avec validation optionnelle du client_id
+                et client_secret.
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature 4 -->
+          <div class="card bg-white shadow-lg hover:shadow-xl transition">
+            <div class="card-body">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="text-4xl text-yellow-600">
+                  <i class="fas fa-book"></i>
+                </div>
+                <h3 class="card-title text-2xl">Documentation Auto</h3>
+              </div>
+              <p class="text-gray-600">
+                Swagger UI et ReDoc automatiquement générées à partir de votre
+                code. Aucun effort requis.
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature 5 -->
+          <div class="card bg-white shadow-lg hover:shadow-xl transition">
+            <div class="card-body">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="text-4xl text-red-600">
+                  <i class="fas fa-cube"></i>
+                </div>
+                <h3 class="card-title text-2xl">Architecture Modulaire</h3>
+              </div>
+              <p class="text-gray-600">
+                Code bien organisé avec séparation des responsabilités : CRUD,
+                modèles, schémas et routes.
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature 6 -->
+          <div class="card bg-white shadow-lg hover:shadow-xl transition">
+            <div class="card-body">
+              <div class="flex items-center gap-4 mb-4">
+                <div class="text-4xl text-cyan-600">
+                  <i class="fas fa-sync"></i>
+                </div>
+                <h3 class="card-title text-2xl">Synchronisation BD</h3>
+              </div>
+              <p class="text-gray-600">
+                Vérification et synchronisation automatiques des schémas de base
+                de données avec les modèles.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tech Stack Section -->
+    <section class="py-20 bg-white">
+      <div class="container mx-auto px-4">
+        <h2 class="text-5xl font-bold text-center mb-16">
+          Stack Technologique
+        </h2>
+
+        <div
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 text-center"
+        >
+          <div
+            class="p-6 border-2 border-gray-200 rounded-lg hover:border-blue-600 transition"
+          >
+            <div class="text-5xl mb-4 text-blue-600">
+              <i class="fas fa-bolt"></i>
+            </div>
+            <h3 class="text-xl font-bold mb-2">FastAPI</h3>
+            <p class="text-gray-600">
+              Framework Web moderne et haute performance
+            </p>
+          </div>
+
+          <div
+            class="p-6 border-2 border-gray-200 rounded-lg hover:border-green-600 transition"
+          >
+            <div class="text-5xl mb-4 text-green-600">
+              <i class="fas fa-table"></i>
+            </div>
+            <h3 class="text-xl font-bold mb-2">SQLModel</h3>
+            <p class="text-gray-600">ORM combinant SQLAlchemy et Pydantic</p>
+          </div>
+
+          <div
+            class="p-6 border-2 border-gray-200 rounded-lg hover:border-purple-600 transition"
+          >
+            <div class="text-5xl mb-4 text-purple-600">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <h3 class="text-xl font-bold mb-2">Pydantic</h3>
+            <p class="text-gray-600">Validation de données et parsing</p>
+          </div>
+
+          <div
+            class="p-6 border-2 border-gray-200 rounded-lg hover:border-yellow-600 transition"
+          >
+            <div class="text-5xl mb-4 text-yellow-600">
+              <i class="fas fa-database"></i>
+            </div>
+            <h3 class="text-xl font-bold mb-2">SQLAlchemy</h3>
+            <p class="text-gray-600">Toolkit SQL puissant et flexible</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Start Section -->
+    <section class="py-20 bg-gradient-to-r from-gray-100 to-gray-200">
+      <div class="container mx-auto px-4">
+        <h2 class="text-5xl font-bold text-center mb-16">Démarrage Rapide</h2>
+
+        <div class="max-w-2xl mx-auto">
+          <div class="steps steps-vertical">
+            <div class="step step-primary">
+              <div class="step-content">
+                <h3 class="font-bold text-lg">1. Cloner le repository</h3>
+                <p class="text-gray-600 mt-2">
+                  Obtenez une copie du code source
+                </p>
+                <code class="block bg-gray-800 text-white p-3 mt-2 rounded"
+                  >git clone &lt;url-du-repository&gt;</code
+                >
+              </div>
+            </div>
+
+            <div class="step step-primary">
+              <div class="step-content">
+                <h3 class="font-bold text-lg">2. Configurer l'application</h3>
+                <p class="text-gray-600 mt-2">
+                  Copier et éditer le fichier de configuration
+                </p>
+                <code class="block bg-gray-800 text-white p-3 mt-2 rounded"
+                  >cp config.json.template config.json</code
+                >
+              </div>
+            </div>
+
+            <div class="step step-primary">
+              <div class="step-content">
+                <h3 class="font-bold text-lg">3. Lancer l'API</h3>
+                <p class="text-gray-600 mt-2">
+                  Utiliser le script de démarrage
+                </p>
+                <code class="block bg-gray-800 text-white p-3 mt-2 rounded"
+                  >./start.sh (ou .\start.ps1 sur Windows)</code
+                >
+              </div>
+            </div>
+
+            <div class="step">
+              <div class="step-content">
+                <h3 class="font-bold text-lg">4. Consulter la documentation</h3>
+                <p class="text-gray-600 mt-2">Accéder à Swagger UI ou ReDoc</p>
+                <p class="text-sm text-gray-500 mt-2">
+                  <a href="/docs" class="link link-primary">Swagger UI</a> |
+                  <a href="/redoc" class="link link-primary">ReDoc</a>
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CTA Section -->
+    <section class="py-20 bg-blue-600 text-white">
+      <div class="container mx-auto px-4 text-center">
+        <h2 class="text-5xl font-bold mb-8">Prêt à commencer ?</h2>
+        <p class="text-xl mb-12 max-w-2xl mx-auto">
+          Explorez la documentation complète et découvrez tous les endpoints
+          disponibles
+        </p>
+        <div class="flex gap-4 flex-wrap justify-center">
+          <a href="/docs" class="btn btn-lg btn-light">
+            <i class="fas fa-play"></i> Démarrer
+          </a>
+          <a
+            href="https://fastapi.tiangolo.com"
+            target="_blank"
+            class="btn btn-lg btn-outline btn-light"
+          >
+            <i class="fas fa-external-link-alt"></i> FastAPI Docs
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Info Section -->
+    <section class="py-16 bg-gray-900 text-white">
+      <div class="container mx-auto px-4">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+          <div>
+            <div class="text-4xl font-bold text-blue-400 mb-2">
+              {{ hostname }}
+            </div>
+            <p class="text-gray-300">Serveur</p>
+          </div>
+          <div>
+            <div class="text-4xl font-bold text-green-400 mb-2">
+              {{ version }}
+            </div>
+            <p class="text-gray-300">Version</p>
+          </div>
+          <div>
+            <div class="text-4xl font-bold text-purple-400 mb-2">RESTful</div>
+            <p class="text-gray-300">Architecture</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {% include 'components/layouts/footer.html' %}
+  </body>
+</html>

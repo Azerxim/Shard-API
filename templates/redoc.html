@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+  <!--=======================-->
+  <!--====== HTML HEAD ======-->
+  <!--=======================-->
+  <head>
+    <meta name="author" content="Azerxim" />
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
+    <meta name="description" content="{{ api }} - Documentation" />
+    <meta name="keywords" content="" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="language" content="French" />
+    <link rel="shortcut icon" href="/assets/images/favicon.ico" />
+
+    <title>{{ name }} - Documentation</title>
+
+    {% include 'components/css.html' %} {% include 'components/scripts.html' %}
+  </head>
+  <body>
+    {% include 'components/navigation/navbar.html' %} {{ redoc_ui_html | safe }}
+    {% include 'components/layouts/footer.html' %}
+  </body>
+</html>

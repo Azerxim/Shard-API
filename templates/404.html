@@ -1,0 +1,52 @@
+<!doctype html>
+<html>
+  <head>
+    <meta name="author" content="Azerxim" />
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
+    <meta name="description" content="Page non trouvée - 404" />
+    <meta name="keywords" content="404, erreur, page non trouvée" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="language" content="French" />
+    <link rel="shortcut icon" href="/assets/images/favicon.ico" />
+
+    <title>{{ name }} - 404 - Page non trouvée</title>
+
+    {% include 'components/css.html' %} {% include 'components/scripts.html' %}
+  </head>
+  <body>
+    {% include 'components/navigation/navbar.html' %}
+
+    <!-- 404 Section -->
+    <section
+      class="error-section bg-gradient-to-r from-red-600 to-red-700 text-white py-24"
+    >
+      <div class="container mx-auto px-4">
+        <div
+          class="flex flex-col items-center justify-center gap-8 text-center"
+        >
+          <h1 class="text-9xl font-bold mb-4">404</h1>
+          <h2 class="text-4xl font-semibold">Page non trouvée</h2>
+          <p class="text-xl text-gray-100 mb-8">
+            Désolé, la page que vous recherchez n'existe pas ou a été déplacée.
+          </p>
+          <img
+            src="https://dl.topazdev.fr/stock/draws/undraw/undraw_page_not_found_re_e9o6.svg"
+            alt="Page non trouvée"
+            class="w-64 h-64 object-contain"
+          />
+          <div class="flex gap-4 mt-8 flex-wrap justify-center">
+            <a
+              href="/"
+              class="bg-white text-red-600 px-8 py-3 rounded-lg font-semibold hover:bg-gray-100 transition"
+              >Retour à l'accueil</a
+            >
+          </div>
+        </div>
+      </div>
+    </section>
+
+    {% include 'components/layouts/footer.html' %}
+  </body>
+</html>
