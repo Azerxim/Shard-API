@@ -73,8 +73,8 @@ app = FastAPI(
 templates = Jinja2Templates(directory="templates")
 app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
-favicon_path = 'assets/images/favicon.ico'
-@app.get('/favicon.ico', include_in_schema=False)
+favicon_path = 'assets/images/favicon_shard.ico'
+@app.get('/favicon_shard.ico', include_in_schema=False)
 async def favicon():
     return FileResponse(favicon_path)
 
