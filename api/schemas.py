@@ -72,6 +72,7 @@ class Journal(BaseModel):
     uid: str | None = None
     published_date: datetime.datetime | None = None
     created_at: datetime.datetime | None = None
+    is_public: bool | None = None
 
 
 class Livre(BaseModel):
@@ -88,6 +89,7 @@ class Livre(BaseModel):
     link: str | None = None
     published_date: datetime.datetime | None = None
     created_at: datetime.datetime | None = None
+    is_public: bool | None = None
     
 ############### Civilisations ####################
 

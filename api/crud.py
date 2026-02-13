@@ -304,12 +304,16 @@ def create_journal(db: Session, v_journal: schemas.Journal):
         cover_url = v_journal.cover_url,
         cover_icon = v_journal.cover_icon,
         cover_color = v_journal.cover_color,
-        link = v_journal.link,
+        link = "",
         uid = channel_uid if channel_uid else v_journal.uid,
         published_date = v_journal.published_date,
         created_at = dt.datetime.today()
     )
     
+    db.add(db_journal)
+    db.commit()
+    db.refresh(db_journal)
+    db_journal.link = f"/bibliotheque/journal/{db_journal.id}"
     db.add(db_journal)
     db.commit()
     db.refresh(db_journal)
@@ -329,7 +333,7 @@ def create_journal_db(db: Session, v_journal: schemas.Journal):
         published_date = v_journal.published_date,
         created_at = dt.datetime.today()
     )
-    
+
     db.add(db_journal)
     db.commit()
     db.refresh(db_journal)
@@ -356,13 +360,41 @@ def delete_journal(db: Session, v_journalid: int):
                 print(f"Avertissement: Erreur suppression salon Discord {journal.uid}: {e}")
         
         # Supprimer le journal de la base de données
-        script = f'DELETE FROM `Journaux` WHERE `id` = "{v_journalid}"'
-        db.execute(script)
+        journal = get_journal(db, v_journalid)
+        db.delete(journal)
         db.commit()
         return {"fonction": "delete_journal", "resultat": "Journal supprimé"}
     except Exception as e:
         print(f"Erreur lors de la suppression du journal {v_journalid}: {e}")
-    return {"fonction": "delete_journal", "erreur": "Une erreur est survenue lors de la suppression du journal", "details": str(e)}
+        return {"fonction": "delete_journal", "erreur": "Une erreur est survenue lors de la suppression du journal", "details": str(e)}
+
+def update_journal(db: Session, journalID: int, v_journal: schemas.Journal):
+    # Vérification de l'existence du journal
+    db_journal = get_journal(db, journalID)
+
+    if db_journal:
+        # Mise à jour des informations
+        if v_journal.title is not None:
+            db_journal.title = v_journal.title
+        if v_journal.author is not None:
+            db_journal.author = v_journal.author
+        if v_journal.description is not None:
+            db_journal.description = v_journal.description
+        if v_journal.cover_url is not None:
+            db_journal.cover_url = v_journal.cover_url
+        if v_journal.cover_icon is not None:
+            db_journal.cover_icon = v_journal.cover_icon
+        if v_journal.cover_color is not None:
+            db_journal.cover_color = v_journal.cover_color
+        if v_journal.published_date is not None:
+            db_journal.published_date = v_journal.published_date
+        if v_journal.is_public is not None:
+            db_journal.is_public = v_journal.is_public
+        db.add(db_journal)
+        db.commit()
+        db.refresh(db_journal)
+        return get_journal(db=db, ID=journalID)
+    return {"error": 404, "text": "Le journal n'a pas été trouvé"}
 
 # --------------- Livres ---------------
 def get_livres(db: Session, skip: int = 0, limit: int = 100):
@@ -403,13 +435,13 @@ def create_livre(db: Session, v_livre: schemas.Livre):
 
 def delete_livre(db: Session, v_livreid: int):
     try:
-        script = f'DELETE FROM `Livres` WHERE `id` = "{v_livreid}"'
-        db.execute(script)
+        livre = get_livre(db, v_livreid)
+        db.delete(livre)
         db.commit()
         return {"fonction": "delete_livre", "resultat": "Livre supprimé"}
     except Exception as e:
         print(f"Erreur lors de la suppression du livre {v_livreid}: {e}")
-    return {"fonction": "delete_livre", "erreur": "Une erreur est survenue lors de la suppression du livre", "details": str(e)}
+        return {"fonction": "delete_livre", "erreur": "Une erreur est survenue lors de la suppression du livre", "details": str(e)}
 
 ################# Civilisations #####################
 

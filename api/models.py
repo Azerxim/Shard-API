@@ -52,6 +52,8 @@ class Journaux(SQLModel, table=True):
     published_date: dt.date | None = Field(default=None)
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
+    is_public: bool | None = Field(default=None)
+
 
 class Livres(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
@@ -67,8 +69,11 @@ class Livres(SQLModel, table=True):
     language: str | None = Field(default=None)
 
     link: str | None = Field(default=None)
+    
     published_date: dt.date | None = Field(default=None)
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+    is_public: bool | None = Field(default=None)
 
 ############### Civilisations ####################
 
