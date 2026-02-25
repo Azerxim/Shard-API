@@ -35,8 +35,8 @@ class UserUpdate(BaseModel):
     full_name: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
+    image_url: Optional[str] = None
     is_disabled: Optional[bool] = None
-    is_admin: Optional[bool] = None
     is_visible: Optional[bool] = None
 
 class UserRead(BaseModel):

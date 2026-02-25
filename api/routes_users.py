@@ -25,7 +25,7 @@ def create_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_cur
     return crud.create_user(db=db, user=user)
 
 # -----------------------------------------------
-@router.put("/update/{user_id}", response_model=schemas.UserRead)
+@router.put("/update/{user_id}/", response_model=schemas.UserRead)
 async def update_current_user(user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
     """Mettre à jour un utilisateur (l'utilisateur lui-même ou un admin)"""
     from sqlmodel import select
@@ -44,7 +44,7 @@ async def update_current_user(user_id: int, user_update: schemas.UserUpdate, db:
     return crud.update_user(db=db, user_id=user_id, user_update=user_update)
 
 # -----------------------------------------------
-@router.delete("/delete/{user_id}", tags=["Users"])
+@router.delete("/delete/{user_id}/", tags=["Users"])
 async def delete_current_user(user_id: int, db: Session = Depends(get_db)):
     """Supprimer un utilisateur (l'utilisateur lui-même ou un admin)"""
     from sqlmodel import select
@@ -81,7 +81,7 @@ def read_user_by_id(user_id: int, db: Session = Depends(get_db)):
     return crud.build_user_read(db_user)
 
 # -----------------------------------------------
-@router.get("/get/{user_id}")
+@router.get("/get/{user_id}/")
 async def get_user_by_id_endpoint(user_id: int, db: Session = Depends(get_db)):
     """Récupérer les informations d'un utilisateur spécifique par ID (admin uniquement)"""
     try:
@@ -106,7 +106,7 @@ async def get_user_by_id_endpoint(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Accès refusé")
 
 # -----------------------------------------------
-@router.get("/list", response_model=List[schemas.UserRead])
+@router.get("/list/", response_model=List[schemas.UserRead])
 async def get_users_list(db: Session = Depends(get_db)):
     """Récupérer la liste de tous les utilisateurs (admin uniquement)"""
     try:
@@ -162,7 +162,7 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     return JSONResponse(content=jsonable_encoder(func))
 
 # -----------------------------------------------
-@router.get("/me", response_model=schemas.UserRead)
+@router.get("/me/", response_model=schemas.UserRead)
 async def read_current_user(username: str, db: Session = Depends(get_db)):
     """Récupérer les informations de l'utilisateur par username"""
     if not username:

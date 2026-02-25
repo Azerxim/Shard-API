@@ -194,10 +194,10 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate):
         user.hashed_password = hash_password(user_update.password)
     if user_update.is_disabled is not None:
         user.is_disabled = user_update.is_disabled
-    if user_update.is_admin is not None:
-        user.is_admin = user_update.is_admin
     if user_update.is_visible is not None:
         user.is_visible = user_update.is_visible
+    if user_update.image_url is not None:
+        user.image_url = user_update.image_url
     db.add(user)
     db.commit()
     db.refresh(user)
