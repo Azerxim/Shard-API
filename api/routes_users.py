@@ -2,6 +2,7 @@ from typing import List, Annotated
 from fastapi import Depends
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, FileResponse
+from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.encoders import jsonable_encoder
 from sqlmodel import Session
 
@@ -13,7 +14,7 @@ router = APIRouter(prefix="/api/users", tags=["Users"])
 
 # -----------------------------------------------
 @router.post("/create/", response_model=schemas.UserRead)
-def create_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], user: schemas.UserLogin, db: Session = Depends(get_db)):
+def create_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     """Créer un nouvel utilisateur"""
     db_user = crud.get_user_by_username(db, username=user.username)
     if db_user:
@@ -26,7 +27,7 @@ def create_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_cur
 
 # -----------------------------------------------
 @router.put("/update/{user_id}/", response_model=schemas.UserRead)
-async def update_current_user(user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
+async def update_current_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
     """Mettre à jour un utilisateur (l'utilisateur lui-même ou un admin)"""
     from sqlmodel import select
     
@@ -34,18 +35,15 @@ async def update_current_user(user_id: int, user_update: schemas.UserUpdate, db:
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Vérifier qu'il y a au moins un admin (pour permettre les modifications)
-    statement = select(models.Users)
-    all_users = db.exec(statement).all()
-    has_admin = any(u.is_admin and not u.is_disabled for u in all_users)
-    if not has_admin:
+    # Vérifier que l'utilisateur actuel est soit l'utilisateur lui-même, soit un admin
+    if current_user.id != user_id and not current_user.is_admin and not current_user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
-    
+
     return crud.update_user(db=db, user_id=user_id, user_update=user_update)
 
 # -----------------------------------------------
 @router.delete("/delete/{user_id}/", tags=["Users"])
-async def delete_current_user(user_id: int, db: Session = Depends(get_db)):
+async def delete_current_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], user_id: int, db: Session = Depends(get_db)):
     """Supprimer un utilisateur (l'utilisateur lui-même ou un admin)"""
     from sqlmodel import select
     
@@ -53,11 +51,8 @@ async def delete_current_user(user_id: int, db: Session = Depends(get_db)):
     if db_user is None:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Vérifier qu'il y a au moins un admin (pour permettre les suppressions)
-    statement = select(models.Users)
-    all_users = db.exec(statement).all()
-    has_admin = any(u.is_admin and not u.is_disabled for u in all_users)
-    if not has_admin:
+    # Vérifier que l'utilisateur actuel est soit l'utilisateur lui-même, soit un admin
+    if current_user.id != user_id and not current_user.is_admin and not current_user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     return crud.delete_user(db=db, user_id=user_id)
@@ -129,15 +124,6 @@ async def get_users_list(db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Accès refusé")
 
 # -----------------------------------------------
-# @router.get("/admin/id/{id}/", response_model=schemas.Users)
-# def admin_read_user_by_id(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], id: int, db: Session = Depends(get_db)):
-#     """Mettre à jour un utilisateur existant"""
-#     db_user = crud.get_user_by_id(db, user_id=id)
-#     if db_user is None:
-#         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-#     return db_user
-
-# -----------------------------------------------
 @router.post("/login/")
 def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     username = "" if user.username is None else user.username
@@ -162,8 +148,8 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     return JSONResponse(content=jsonable_encoder(func))
 
 # -----------------------------------------------
-@router.get("/me/", response_model=schemas.UserRead)
-async def read_current_user(username: str, db: Session = Depends(get_db)):
+@router.get("/me", response_model=schemas.UserRead)
+async def read_current_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], username: str, db: Session = Depends(get_db)):
     """Récupérer les informations de l'utilisateur par username"""
     if not username:
         raise HTTPException(status_code=400, detail="Username required")
@@ -173,3 +159,30 @@ async def read_current_user(username: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="User not found")
     
     return JSONResponse(content=jsonable_encoder(crud.build_user_read(user)))
+
+# -----------------------------------------------
+@router.post("/token")
+async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
+    """
+    Authentification OAuth2
+    """
+    # # Vérifier le client_id et client_secret
+    # if utils.CLIENT_ID and utils.CLIENT_SECRET:
+    #     client_id = form_data.client_id if form_data.client_id else None
+    #     client_secret = form_data.client_secret if form_data.client_secret else None
+
+    #     if not client_id or client_id != utils.CLIENT_ID:
+    #         raise HTTPException(status_code=400, detail="Invalid client_id")
+    #     if not client_secret or client_secret != utils.CLIENT_SECRET:
+    #         raise HTTPException(status_code=400, detail="Invalid client_secret")
+    
+    # Vérifier les credentials de l'utilisateur
+    user_dict = crud.secu_get_user_by_username(db, form_data.username)
+    if not user_dict:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+    
+    hashed_password = crud.hash_password(form_data.password)
+    if not hashed_password == user_dict.hashed_password:
+        raise HTTPException(status_code=400, detail="Incorrect username or password")
+
+    return {"access_token": user_dict.username, "token_type": "bearer"}

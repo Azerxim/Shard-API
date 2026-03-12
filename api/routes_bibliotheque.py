@@ -18,6 +18,7 @@ router = APIRouter(prefix="/api/bibliotheque")
 def create_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], journal: schemas.Journal, db: Session = Depends(get_db)):
     return crud.create_journal(
         db=db,
+        user=current_user,
         v_journal=journal
     )
 
@@ -25,12 +26,13 @@ def create_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_
 def create_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], journal: schemas.Journal, db: Session = Depends(get_db)):
     return crud.create_journal_db(
         db=db,
+        user=current_user,
         v_journal=journal
     )
 
 @router.delete("/journaux/delete/", tags=["Journaux"])
 def delete_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], JournalID: int, db: Session = Depends(get_db)):
-    delete=crud.delete_journal(db=db, v_journalid=JournalID)
+    delete=crud.delete_journal(db=db, user=current_user, journalID=JournalID)
     if not delete:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la suppression du journal"}))
     return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le journal a été supprimé"}))
@@ -71,12 +73,13 @@ def read_journal_contents(JournalID: int, skip: int = 0, limit: int = 10000, db:
 def create_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], livre: schemas.Livre, db: Session = Depends(get_db)):
     return crud.create_livre(
         db=db,
+        user=current_user,
         v_livre=livre
     )
 
 @router.delete("/livres/delete/", tags=["Livres"])
 def delete_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], LivreID: int, db: Session = Depends(get_db)):
-    delete=crud.delete_livre(db=db, v_livreid=LivreID)
+    delete=crud.delete_livre(db=db, user=current_user, livreID=LivreID)
     if not delete:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la suppression du livre"}))
     return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le livre a été supprimé"}))
