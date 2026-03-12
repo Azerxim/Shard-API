@@ -26,11 +26,11 @@ class UserPlatforms(SQLModel, table=True):
 
     user: Users = Relationship(back_populates="platforms")
 
-# class ActiveSession(SQLModel, table=True):
-#     id: int | None = Field(default=None, primary_key=True)
-#     username: str = Field(index=True)
-#     access_token: str = Field()
-#     expiry_time: dt.datetime = Field()
+class ActiveSession(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    username: str = Field(index=True)
+    access_token: str = Field(index=True, unique=True)
+    expiry_time: dt.datetime = Field()
 
 
 ############### Bibliothèque ####################

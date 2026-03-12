@@ -113,40 +113,6 @@ async def sitemap(request: Request):
     
     return Response(content=xml_content, media_type='application/xml')
 
-################# Security #################
-
-# -----------------------------------------------
-@app.post("/token", tags=["Security"])
-async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
-    """
-    Authentification OAuth2
-    """
-    # # Vérifier le client_id et client_secret
-    # if utils.CLIENT_ID and utils.CLIENT_SECRET:
-    #     client_id = form_data.client_id if form_data.client_id else None
-    #     client_secret = form_data.client_secret if form_data.client_secret else None
-
-    #     if not client_id or client_id != utils.CLIENT_ID:
-    #         raise HTTPException(status_code=400, detail="Invalid client_id")
-    #     if not client_secret or client_secret != utils.CLIENT_SECRET:
-    #         raise HTTPException(status_code=400, detail="Invalid client_secret")
-    
-    # Vérifier les credentials de l'utilisateur
-    user_dict = crud.secu_get_user_by_username(db, form_data.username)
-    if not user_dict:
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-    
-    hashed_password = crud.hash_password(form_data.password)
-    if not hashed_password == user_dict.hashed_password:
-        raise HTTPException(status_code=400, detail="Incorrect username or password")
-
-    return {"access_token": user_dict.username, "token_type": "bearer"}
-
-# -----------------------------------------------
-@app.get("/security/me", tags=["Security"])
-async def read_securityusers_me(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], db: Session = Depends(get_db)):
-    return JSONResponse(content=jsonable_encoder(current_user))
-
 ################# Include Routers #################
 
 app.include_router(users_router)

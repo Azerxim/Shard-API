@@ -149,12 +149,9 @@ def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
 
 # -----------------------------------------------
 @router.get("/me", response_model=schemas.UserRead)
-async def read_current_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], username: str, db: Session = Depends(get_db)):
-    """Récupérer les informations de l'utilisateur par username"""
-    if not username:
-        raise HTTPException(status_code=400, detail="Username required")
-    
-    user = crud.get_user_by_username(db, username=username)
+async def read_current_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], db: Session = Depends(get_db)):
+    """Récupérer les informations de l'utilisateur actuellement connecté"""
+    user = crud.get_user_by_username(db, username=current_user.username)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
@@ -162,7 +159,7 @@ async def read_current_user(current_user: Annotated[schemas.Users, Depends(crud.
 
 # -----------------------------------------------
 @router.post("/token")
-async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
+async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
     """
     Authentification OAuth2
     """
@@ -177,7 +174,7 @@ async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     #         raise HTTPException(status_code=400, detail="Invalid client_secret")
     
     # Vérifier les credentials de l'utilisateur
-    user_dict = crud.secu_get_user_by_username(db, form_data.username)
+    user_dict = crud.get_user_by_username(db, form_data.username)
     if not user_dict:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
@@ -185,4 +182,5 @@ async def secu_login(form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     if not hashed_password == user_dict.hashed_password:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
-    return {"access_token": user_dict.username, "token_type": "bearer"}
+    session = crud.create_active_session(db, user_dict.username)
+    return {"access_token": session.access_token, "token_type": "bearer"}

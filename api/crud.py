@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 import hashlib
 import asyncio
 import datetime as dt
+import secrets
 from . import discord_handler
 
 from . import models, schemas
@@ -15,7 +16,7 @@ from topazdevsdk import colors
 
 ################# Security #####################
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/token")
 
 # -----------------------------------------------
 async def secu_get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
@@ -31,32 +32,59 @@ async def secu_get_current_user(token: Annotated[str, Depends(oauth2_scheme)], d
 async def secu_get_current_active_user(current_user: Annotated[schemas.Users, Depends(secu_get_current_user)]):
     if current_user.is_disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
-    return JSONResponse(content=jsonable_encoder(current_user))
+    return current_user
 
 async def secu_get_current_active_admin(current_user: Annotated[schemas.Users, Depends(secu_get_current_user)]):
     if current_user.is_disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     if not current_user.is_admin:
         raise HTTPException(status_code=403, detail="Access denied")
-    return JSONResponse(content=jsonable_encoder(current_user))
+    return current_user
 
 # -----------------------------------------------
 def hash_password(password: str):
     return hashlib.sha256(password.encode('utf-8')).hexdigest()
 
-def secu_decode_token(db: Session, token):
-    user = secu_get_user_by_username(db, token)
-    return user
+def secu_decode_token(db: Session, token: str):
+    now = dt.datetime.now()
+    statement = select(models.ActiveSession).where(
+        models.ActiveSession.access_token == token
+    ).where(models.ActiveSession.expiry_time > now)
+    session = db.exec(statement).first()
+    if not session:
+        return None
+    return get_user_by_username(db, session.username)
 
-def secu_get_user_by_username(db: Session, username: str):
-    statement = select(models.Users).where(models.Users.username == username).where(models.Users.is_admin == True).where(models.Users.is_disabled == False)
-    results = db.exec(statement)
-    return results.first()
+def create_active_session(db: Session, username: str, expiry_hours: int = 24):
+    """Crée une session active pour l'utilisateur, supprime les anciennes sessions"""
+    # Supprimer les sessions précédentes de cet utilisateur
+    old_sessions = db.exec(
+        select(models.ActiveSession).where(models.ActiveSession.username == username)
+    ).all()
+    for s in old_sessions:
+        db.delete(s)
+    db.commit()
 
-def secu_get_user_by_email(db: Session, email: str):
-    statement = select(models.Users).where(models.Users.email == email).where(models.Users.is_admin == True).where(models.Users.is_disabled == False)
-    results = db.exec(statement)
-    return results.first()
+    token = secrets.token_hex(32)
+    session = models.ActiveSession(
+        username=username,
+        access_token=token,
+        expiry_time=dt.datetime.now() + dt.timedelta(hours=expiry_hours)
+    )
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    return session
+
+# def secu_get_user_by_username(db: Session, username: str):
+#     statement = select(models.Users).where(models.Users.username == username).where(models.Users.is_disabled == False)
+#     results = db.exec(statement)
+#     return results.first()
+
+# def secu_get_user_by_email(db: Session, email: str):
+#     statement = select(models.Users).where(models.Users.email == email).where(models.Users.is_disabled == False)
+#     results = db.exec(statement)
+#     return results.first()
 
 def loadsecurity(db: Session, json):
     # Gestion du password vide
