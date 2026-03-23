@@ -122,13 +122,14 @@ def get_discord_handler():
     return _discord_handler
 
 
-async def create_channel(title: str, category_id: int = None) -> str:
+async def create_channel(title: str, description: str = "", category_id: int = None) -> str:
     """
     Crée un salon Discord en une seule opération rapide.
     Utilisé pour l'API FastAPI (mode synchrone).
     
     Args:
         title: Le titre du journal
+        description: La description du journal (optionnel)
         category_id: L'ID de la catégorie (optionnel)
     Returns:
         str: L'ID du salon créé
@@ -160,18 +161,18 @@ async def create_channel(title: str, category_id: int = None) -> str:
             if category_id:
                 category = guild.get_channel(category_id)
                 print(f"Création du salon '{channel_name}' dans la catégorie '{category.name}' sur le serveur '{guild.name}'")
-                channel = await guild.create_text_channel(channel_name, category=category)
+                channel = await guild.create_text_channel(channel_name, category=category, topic=description)
             else:
                 print(f"Création du salon '{channel_name}' sans catégorie sur le serveur '{guild.name}'")
-                channel = await guild.create_text_channel(channel_name)
+                channel = await guild.create_text_channel(channel_name, topic=description)
             
             channel_id = str(channel.id)
         except Exception as e:
             print(f"Erreur: {e}")
         finally:
             bot_ready.set()
-            await bot.close()
     
+    bot_task = None
     try:
         # Lancer le bot et attendre qu'il soit prêt
         bot_task = asyncio.create_task(bot.start(token))
@@ -180,24 +181,21 @@ async def create_channel(title: str, category_id: int = None) -> str:
         try:
             await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
         except asyncio.TimeoutError:
-            await bot.close()
             raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
-        
-        # Attendre que le bot se ferme proprement
-        try:
-            await asyncio.wait_for(bot_task, timeout=5.0)
-        except asyncio.TimeoutError:
-            pass
             
     except Exception as e:
         raise ValueError(f"Erreur création salon Discord: {e}")
     finally:
+        await bot.close()
         if bot_task and not bot_task.done():
-            bot_task.cancel()
             try:
-                await bot_task
-            except asyncio.CancelledError:
-                pass
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
     
     if not channel_id:
         raise ValueError("Impossible de créer le salon Discord")
@@ -249,8 +247,8 @@ async def delete_channel(channel_id: str) -> bool:
             success = False
         finally:
             bot_ready.set()
-            await bot.close()
     
+    bot_task = None
     try:
         # Lancer le bot et attendre qu'il soit prêt
         bot_task = asyncio.create_task(bot.start(token))
@@ -259,25 +257,22 @@ async def delete_channel(channel_id: str) -> bool:
         try:
             await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
         except asyncio.TimeoutError:
-            await bot.close()
             raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
-        
-        # Attendre que le bot se ferme proprement
-        try:
-            await asyncio.wait_for(bot_task, timeout=5.0)
-        except asyncio.TimeoutError:
-            pass
-            
+
     except Exception as e:
         print(f"Erreur suppression salon Discord: {e}")
         success = False
     finally:
+        await bot.close()
         if bot_task and not bot_task.done():
-            bot_task.cancel()
             try:
-                await bot_task
-            except asyncio.CancelledError:
-                pass
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
     
     return success
 
@@ -317,7 +312,6 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
             if not channel:
                 print(f"Avertissement: Salon Discord {channel_id} non trouvé")
                 bot_ready.set()
-                await bot.close()
                 return
             
             # Récupérer les messages
@@ -351,8 +345,8 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
             print(f"Erreur lors de la récupération des messages: {e}")
         finally:
             bot_ready.set()
-            await bot.close()
     
+    bot_task = None
     try:
         # Lancer le bot et attendre qu'il soit prêt
         bot_task = asyncio.create_task(bot.start(token))
@@ -361,23 +355,166 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
         try:
             await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
         except asyncio.TimeoutError:
-            await bot.close()
             raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
-        
-        # Attendre que le bot se ferme proprement
-        try:
-            await asyncio.wait_for(bot_task, timeout=5.0)
-        except asyncio.TimeoutError:
-            pass
-            
+
     except Exception as e:
         print(f"Erreur récupération messages Discord: {e}")
     finally:
+        await bot.close()
         if bot_task and not bot_task.done():
-            bot_task.cancel()
             try:
-                await bot_task
-            except asyncio.CancelledError:
-                pass
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
     
     return messages
+
+async def update_channel_name(channel_id: str, new_name: str) -> bool:
+    """
+    Met à jour le nom d'un salon Discord.
+    
+    Args:
+        channel_id: L'ID du salon à renommer
+        new_name: Le nouveau nom du salon
+    
+    Returns:
+        bool: True si la mise à jour a réussi, False sinon
+    """
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
+    
+    if not token or not guild_id:
+        raise ValueError("Configuration Discord incomplète")
+    
+    intents = discord.Intents.default()
+    intents.message_content = True
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    
+    success = False
+    bot_ready = asyncio.Event()
+    
+    @bot.event
+    async def on_ready():
+        nonlocal success
+        try:
+            guild = bot.get_guild(guild_id)
+            if not guild:
+                raise ValueError(f"Serveur Discord avec l'ID {guild_id} non trouvé")
+            
+            channel = guild.get_channel(int(channel_id))
+            if channel:
+                await channel.edit(name=new_name)
+                success = True
+            else:
+                print(f"Avertissement: Salon Discord {channel_id} non trouvé")
+                success = False
+        except Exception as e:
+            print(f"Erreur: {e}")
+            success = False
+        finally:
+            bot_ready.set()
+    
+    bot_task = None
+    try:
+        # Lancer le bot et attendre qu'il soit prêt
+        bot_task = asyncio.create_task(bot.start(token))
+        
+        # Attendre avec timeout
+        try:
+            await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
+
+    except Exception as e:
+        print(f"Erreur mise à jour nom salon Discord: {e}")
+        success = False
+    finally:
+        await bot.close()
+        if bot_task and not bot_task.done():
+            try:
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
+    
+    return success
+
+async def update_channel_description(channel_id: str, new_description: str) -> bool:
+    """
+    Met à jour la description d'un salon Discord.
+    
+    Args:
+        channel_id: L'ID du salon à mettre à jour
+        new_description: La nouvelle description du salon
+    
+    Returns:
+        bool: True si la mise à jour a réussi, False sinon
+    """
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
+    
+    if not token or not guild_id:
+        raise ValueError("Configuration Discord incomplète")
+    
+    intents = discord.Intents.default()
+    intents.message_content = True
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    
+    success = False
+    bot_ready = asyncio.Event()
+    
+    @bot.event
+    async def on_ready():
+        nonlocal success
+        try:
+            guild = bot.get_guild(guild_id)
+            if not guild:
+                raise ValueError(f"Serveur Discord avec l'ID {guild_id} non trouvé")
+            
+            channel = guild.get_channel(int(channel_id))
+            if channel:
+                await channel.edit(topic=new_description)
+                success = True
+            else:
+                print(f"Avertissement: Salon Discord {channel_id} non trouvé")
+                success = False
+        except Exception as e:
+            print(f"Erreur: {e}")
+            success = False
+        finally:
+            bot_ready.set()
+    
+    bot_task = None
+    try:
+        # Lancer le bot et attendre qu'il soit prêt
+        bot_task = asyncio.create_task(bot.start(token))
+        
+        # Attendre avec timeout
+        try:
+            await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
+
+    except Exception as e:
+        print(f"Erreur mise à jour description salon Discord: {e}")
+        success = False
+    finally:
+        await bot.close()
+        if bot_task and not bot_task.done():
+            try:
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
+    
+    return success

@@ -14,6 +14,7 @@ from . import models, schemas
 from .database import get_db
 from topazdevsdk import colors
 
+#region Security
 ################# Security #####################
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/token")
@@ -127,8 +128,9 @@ def loadsecurity(db: Session, json):
     except:
         print(f"{colors.BColors.RED}ERROR{colors.BColors.END}:    Erreur lors du chargement de la sécurité")
         return {"fonction": "loadsecurity", "erreur": 'Erreur lors du chargement de la sécurité'}
+#endregion
 
-    
+#region Users
 ############### Users #############
 
 # ------------------------------------------ 
@@ -245,9 +247,11 @@ def delete_user(db: Session, user_id: int):
     db.delete(user)
     db.commit()
     return {"fonction": "delete_user", "resultat": "Utilisateur supprimé"}
+#endregion
 
 ################# Bibliothèque #####################
 
+#region Journaux
 # --------------- Journaux ---------------
 def get_journaux(db: Session, skip: int = 0, limit: int = 100):
     statement = select(models.Journaux).offset(skip).limit(limit)
@@ -323,7 +327,7 @@ def create_journal(db: Session, user: schemas.Users, v_journal: schemas.Journal)
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             channel_uid = loop.run_until_complete(
-                discord_handler.create_channel(v_journal.title, category_uid)
+                discord_handler.create_channel(v_journal.title, v_journal.description, category_uid)
             )
             loop.close()
             print(f"\033[92mSalon Discord créé avec l'ID: {channel_uid}\033[0m")
@@ -408,7 +412,7 @@ def delete_journal(db: Session, user: schemas.Users, v_journalid: int):
         print(f"Erreur lors de la suppression du journal {v_journalid}: {e}")
         return {"fonction": "delete_journal", "erreur": "Une erreur est survenue lors de la suppression du journal", "details": str(e)}
 
-def update_journal(db: Session, user: schemas.Users, journalID: int, v_journal: schemas.Journal):
+async def update_journal(db: Session, user: schemas.Users, journalID: int, v_journal: schemas.Journal):
     # Vérification de l'existence du journal
     db_journal = get_journal(db, journalID)
 
@@ -420,10 +424,12 @@ def update_journal(db: Session, user: schemas.Users, journalID: int, v_journal: 
         # Mise à jour des informations
         if v_journal.title is not None:
             db_journal.title = v_journal.title
+            await discord_handler.update_channel_name(db_journal.uid, v_journal.title)
         if v_journal.author is not None:
             db_journal.author = v_journal.author
         if v_journal.description is not None:
             db_journal.description = v_journal.description
+            await discord_handler.update_channel_description(db_journal.uid, v_journal.description)
         if v_journal.cover_url is not None:
             db_journal.cover_url = v_journal.cover_url
         if v_journal.cover_icon is not None:
@@ -439,7 +445,9 @@ def update_journal(db: Session, user: schemas.Users, journalID: int, v_journal: 
         db.refresh(db_journal)
         return get_journal(db=db, ID=journalID)
     return {"error": 404, "text": "Le journal n'a pas été trouvé"}
+#endregion
 
+#region Livres
 # --------------- Livres ---------------
 def get_livres(db: Session, skip: int = 0, limit: int = 100):
     statement = select(models.Livres).offset(skip).limit(limit)
@@ -491,8 +499,48 @@ def delete_livre(db: Session, user: schemas.Users, livreID: int):
     except Exception as e:
         print(f"Erreur lors de la suppression du livre {livreID}: {e}")
         return {"fonction": "delete_livre", "erreur": "Une erreur est survenue lors de la suppression du livre", "details": str(e)}
+    
+def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schemas.Livre):
+    # Vérification de l'existence du livre
+    db_livre = get_livre(db, livreID)
+
+    # Vérifier de l'utilisateur actuel
+    if user.id != db_livre.user_id and not user.is_admin and not user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if db_livre:
+        # Mise à jour des informations
+        if v_livre.title is not None:
+            db_livre.title = v_livre.title
+        if v_livre.author is not None:
+            db_livre.author = v_livre.author
+        if v_livre.description is not None:
+            db_livre.description = v_livre.description
+        if v_livre.cover_url is not None:
+            db_livre.cover_url = v_livre.cover_url
+        if v_livre.cover_icon is not None:
+            db_livre.cover_icon = v_livre.cover_icon
+        if v_livre.cover_color is not None:
+            db_livre.cover_color = v_livre.cover_color
+        if v_livre.pages is not None:
+            db_livre.pages = v_livre.pages
+        if v_livre.language is not None:
+            db_livre.language = v_livre.language
+        if v_livre.link is not None:
+            db_livre.link = v_livre.link
+        if v_livre.published_date is not None:
+            db_livre.published_date = v_livre.published_date
+        if v_livre.is_public is not None:
+            db_livre.is_public = v_livre.is_public
+        db.add(db_livre)
+        db.commit()
+        db.refresh(db_livre)
+        return get_livre(db=db, ID=livreID)
+    return {"error": 404, "text": "Le livre n'a pas été trouvé"}
+#endregion
 
 ################# Civilisations #####################
+#region Civilisations
 
 def get_civilisations(db: Session, skip: int = 0, limit: int = 100):
     statement = select(models.Civilisations).offset(skip).limit(limit)
@@ -793,7 +841,9 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
 #         db.refresh(db_quartier)
 #         return get_quartier_by_id(db=db, ID=quartierID)
 #     return {"error": 404, "text": "Le quartier n'a pas été trouvé"}
+#endregion
 
+#region Religions
 ################# Religions #####################
 
 # def get_religions(db: Session, skip: int = 0, limit: int = 100):
@@ -853,7 +903,9 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
 #         db.refresh(db_religion)
 #         return get_religion_by_id(db=db, ID=religionID)
 #     return {"error": 404, "text": "La religion n'a pas été trouvée"}
+#endregion
 
+#region Cartographie
 ################# Cartographie #####################
 
 # Dimensions
@@ -1009,6 +1061,4 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
 #         db.refresh(db_cartographie)
 #         return get_cartographie_by_id(db=db, ID=cartographieID)
 #     return {"error": 404, "text": "La cartographie n'a pas été trouvée"}
-
-################# Templates #####################
-
+#endregion
