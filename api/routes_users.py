@@ -13,7 +13,7 @@ from .database import get_db
 router = APIRouter(prefix="/api/users", tags=["Users"])
 
 # -----------------------------------------------
-@router.post("/create/", response_model=schemas.UserRead)
+@router.post("/create", response_model=schemas.UserRead)
 def create_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     """Créer un nouvel utilisateur"""
     db_user = crud.get_user_by_username(db, username=user.username)
@@ -26,7 +26,7 @@ def create_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     return crud.create_user(db=db, user=user)
 
 # -----------------------------------------------
-@router.put("/update/{user_id}/", response_model=schemas.UserRead)
+@router.put("/update/{user_id}", response_model=schemas.UserRead)
 async def update_current_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], user_id: int, user_update: schemas.UserUpdate, db: Session = Depends(get_db)):
     """Mettre à jour un utilisateur (l'utilisateur lui-même ou un admin)"""
     from sqlmodel import select
@@ -42,7 +42,7 @@ async def update_current_user(current_user: Annotated[schemas.Users, Depends(cru
     return crud.update_user(db=db, user_id=user_id, user_update=user_update)
 
 # -----------------------------------------------
-@router.delete("/delete/{user_id}/", tags=["Users"])
+@router.delete("/delete/{user_id}", tags=["Users"])
 async def delete_current_user(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], user_id: int, db: Session = Depends(get_db)):
     """Supprimer un utilisateur (l'utilisateur lui-même ou un admin)"""
     from sqlmodel import select
@@ -58,7 +58,7 @@ async def delete_current_user(current_user: Annotated[schemas.Users, Depends(cru
     return crud.delete_user(db=db, user_id=user_id)
 
 # -----------------------------------------------
-@router.get("/name/{username}/", response_model=schemas.UserRead)
+@router.get("/name/{username}", response_model=schemas.UserRead)
 def read_user_by_username(username: str, db: Session = Depends(get_db)):
     """Récupérer un utilisateur par nom d'utilisateur"""
     db_user = crud.get_user_by_username(db, username=username)
@@ -67,7 +67,7 @@ def read_user_by_username(username: str, db: Session = Depends(get_db)):
     return crud.build_user_read(db_user)
 
 # -----------------------------------------------
-@router.get("/id/{user_id}/", response_model=schemas.UserRead)
+@router.get("/id/{user_id}", response_model=schemas.UserRead)
 def read_user_by_id(user_id: int, db: Session = Depends(get_db)):
     """Récupérer un utilisateur par ID"""
     db_user = crud.get_user_by_id(db, user_id=user_id)
@@ -76,7 +76,7 @@ def read_user_by_id(user_id: int, db: Session = Depends(get_db)):
     return crud.build_user_read(db_user)
 
 # -----------------------------------------------
-@router.get("/get/{user_id}/")
+@router.get("/get/{user_id}")
 async def get_user_by_id_endpoint(user_id: int, db: Session = Depends(get_db)):
     """Récupérer les informations d'un utilisateur spécifique par ID (admin uniquement)"""
     try:
@@ -101,7 +101,7 @@ async def get_user_by_id_endpoint(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Accès refusé")
 
 # -----------------------------------------------
-@router.get("/list/", response_model=List[schemas.UserRead])
+@router.get("/list", response_model=List[schemas.UserRead])
 async def get_users_list(db: Session = Depends(get_db)):
     """Récupérer la liste de tous les utilisateurs (admin uniquement)"""
     try:
@@ -124,7 +124,7 @@ async def get_users_list(db: Session = Depends(get_db)):
         raise HTTPException(status_code=403, detail="Accès refusé")
 
 # -----------------------------------------------
-@router.post("/login/")
+@router.post("/login")
 def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     username = "" if user.username is None else user.username
     email = "" if user.email is None else user.email

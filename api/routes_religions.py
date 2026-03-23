@@ -11,7 +11,7 @@ from .database import get_db
 # Créer un routeur pour les routes utilisateur
 router = APIRouter(prefix="/api/religions")
 
-# @router.get("/list/", tags=["Religions"])
+# @router.get("/list", tags=["Religions"])
 # def read_religions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 #     result = crud.get_religions(db=db, skip=skip, limit=limit)
 #     return JSONResponse(content=jsonable_encoder(result))
@@ -25,14 +25,14 @@ router = APIRouter(prefix="/api/religions")
 #         func = {'error': 200, 'religion': religion}
 #     return JSONResponse(content=jsonable_encoder(func))
 
-# @router.post("/create/", tags=["Religions"])
+# @router.post("/create", tags=["Religions"])
 # def create_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], religion: schemas.ReligionCreate, db: Session = Depends(get_db)):
 #     return crud.create_religion(
 #         db=db,
 #         v_religion=religion
 #     )
 
-# @router.delete("/delete/", tags=["Religions"])
+# @router.delete("/delete", tags=["Religions"])
 # def delete_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], ReligionID: int, db: Session = Depends(get_db)):
 #     delete=crud.delete_religion(db=db, v_religionid=ReligionID)
 #     if not delete:

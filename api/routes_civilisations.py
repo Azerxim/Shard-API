@@ -12,31 +12,58 @@ from .database import get_db
 router = APIRouter(prefix="/api/civilisations")
 
 
-@router.get("/list/", tags=["Civilisations"])
+@router.get("/list", tags=["Civilisations"])
 def read_civilisations(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     result = crud.get_civilisations(db=db, skip=skip, limit=limit)
-    return JSONResponse(content=jsonable_encoder(result))
+    table = []
+    for civilisation in result:
+        members = crud.get_members_of_civilisation(db=db, civilisationID=civilisation.id)
+        members_table = []
+        for member in members:
+            user = crud.get_user_by_id(db=db, user_id=member.user_id)
+            members_table.append({
+                "user_id": member.user_id,
+                "role": member.role,
+                "joined_at": member.joined_at,
+                "username": user.username if user else None
+            })
+        table.append({
+            "civilisation": jsonable_encoder(civilisation),
+            "members": jsonable_encoder(members_table) if members_table else []
+        })
+    return JSONResponse(content=jsonable_encoder(table))
 
 @router.get("/id/{CivilisationID}", tags=["Civilisations"])
 def read_civilisation(CivilisationID: int, db: Session = Depends(get_db)):
     civilisation = crud.get_civilisation_by_id(db=db, ID=CivilisationID)
     if civilisation is None:
-        func = {'error': 404, 'civilisation': civilisation}
+        func = {'error': 404, 'message': f"Civilisation with ID {CivilisationID} not found"}
     else:
-        func = {'error': 200, 'civilisation': civilisation}
+        members = crud.get_members_of_civilisation(db=db, civilisationID=CivilisationID)
+        members_table = []
+        for member in members:
+            user = crud.get_user_by_id(db=db, user_id=member.user_id)
+            members_table.append({
+                "user_id": member.user_id,
+                "role": member.role,
+                "joined_at": member.joined_at,
+                "username": user.username if user else None
+            })
+        func = {'error': 200, 'civilisation': civilisation, 'members': jsonable_encoder(members_table) if members_table else []}
     return JSONResponse(content=jsonable_encoder(func))
 
-@router.post("/create/", tags=["Civilisations"])
+@router.post("/create", tags=["Civilisations"])
 def create_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], civilisation: schemas.CivilisationCreate, db: Session = Depends(get_db)):
-    return crud.create_civilisation(
+    result = crud.create_civilisation(
         db=db,
         user=current_user,
         v_civilisation=civilisation
     )
+    return JSONResponse(content=jsonable_encoder({'error': 200, 'civilisation': result[0], 'member': result[1]})) 
 
-@router.delete("/delete/", tags=["Civilisations"])
+@router.delete("/delete", tags=["Civilisations"])
 def delete_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, db: Session = Depends(get_db)): 
-    delete=crud.delete_civilisation(db=db, user=current_user, v_civilisationid=CivilisationID)
+    delete=crud.delete_civilisation(db=db, user=current_user, civilisationID=CivilisationID)
     if not delete:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression de la civilisation"}))
     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"La civilisation et ses dépendances ont été supprimées"}))
@@ -52,7 +79,42 @@ def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 
 # -----------------------------------------------
 
-# @router.get("/gouvernements/list/", tags=["Gouvernements"])
+@router.get("/members/{CivilisationID}/list", tags=["Civilisations"])
+def list_civilisation_members(CivilisationID: int, db: Session = Depends(get_db)):
+    members = crud.get_members_of_civilisation(db=db, civilisationID=CivilisationID)
+    members_table = []
+    for member in members:
+        user = crud.get_user_by_id(db=db, user_id=member.user_id)
+        members_table.append({
+            "user_id": member.user_id,
+            "role": member.role,
+            "joined_at": member.joined_at,
+            "username": user.username if user else None
+        })
+    return JSONResponse(content=jsonable_encoder(members_table))
+
+@router.post("/members/{CivilisationID}/add", tags=["Civilisations"])
+def add_civilisation_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, user_id: int, role: str, db: Session = Depends(get_db)):
+    return crud.add_member_to_civilisation(
+        db=db,
+        user=current_user,
+        civilisationID=CivilisationID,
+        new_member_id=user_id,
+        role=role
+    )
+
+@router.delete("/members/{CivilisationID}/remove", tags=["Civilisations"])
+def remove_civilisation_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, user_id: int, db: Session = Depends(get_db)):
+    return crud.remove_member_from_civilisation(
+        db=db,
+        user=current_user,
+        civilisationID=CivilisationID,
+        member_id=user_id
+    )
+
+# -----------------------------------------------
+
+# @router.get("/gouvernements/list", tags=["Gouvernements"])
 # def read_gouvernements(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 #     result = crud.get_gouvernements(db=db, skip=skip, limit=limit)
 #     return JSONResponse(content=jsonable_encoder(result))
@@ -66,14 +128,14 @@ def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 #         func = {'error': 200, 'gouvernement': gouvernement}
 #     return JSONResponse(content=jsonable_encoder(func))
 
-# @router.post("/gouvernements/create/", tags=["Gouvernements"])
+# @router.post("/gouvernements/create", tags=["Gouvernements"])
 # def create_gouvernement(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], gouvernement: schemas.GouvernementCreate, db: Session = Depends(get_db)):
 #     return crud.create_gouvernement(
 #         db=db,
 #         v_gouvernement=gouvernement
 #     )
 
-# @router.delete("/gouvernements/delete/", tags=["Gouvernements"])
+# @router.delete("/gouvernements/delete", tags=["Gouvernements"])
 # def delete_gouvernement(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], GouvernementID: int, db: Session = Depends(get_db)):
 #     delete=crud.delete_gouvernement(db=db, v_gouvernementid=GouvernementID)
 #     if not delete:
@@ -90,7 +152,7 @@ def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 
 # -----------------------------------------------
 
-# @router.get("/villes/list/", tags=["Villes"])
+# @router.get("/villes/list", tags=["Villes"])
 # def read_villes(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 #     result = crud.get_villes(db=db, skip=skip, limit=limit)
 #     return JSONResponse(content=jsonable_encoder(result))
@@ -104,14 +166,14 @@ def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 #         func = {'error': 200, 'ville': ville}
 #     return JSONResponse(content=jsonable_encoder(func))
 
-# @router.post("/villes/create/", tags=["Villes"])
+# @router.post("/villes/create", tags=["Villes"])
 # def create_ville(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], ville: schemas.VilleCreate, db: Session = Depends(get_db)):
 #     return crud.create_ville(
 #         db=db,
 #         v_ville=ville
 #     )
 
-# @router.delete("/villes/delete/", tags=["Villes"])
+# @router.delete("/villes/delete", tags=["Villes"])
 # def delete_ville(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], VilleID: int, db: Session = Depends(get_db)):
 #     delete=crud.delete_ville(db=db, v_villeid=VilleID)
 #     if not delete:
@@ -128,7 +190,7 @@ def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 
 # -----------------------------------------------
 
-# @router.get("/quartiers/list/", tags=["Quartiers"])
+# @router.get("/quartiers/list", tags=["Quartiers"])
 # def read_quartiers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 #     result = crud.get_quartiers(db=db, skip=skip, limit=limit)
 #     return JSONResponse(content=jsonable_encoder(result))
@@ -142,14 +204,14 @@ def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 #         func = {'error': 200, 'quartier': quartier}
 #     return JSONResponse(content=jsonable_encoder(func))
 
-# @router.post("/quartiers/create/", tags=["Quartiers"])
+# @router.post("/quartiers/create", tags=["Quartiers"])
 # def create_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], quartier: schemas.QuartierCreate, db: Session = Depends(get_db)):
 #     return crud.create_quartier(
 #         db=db,
 #         v_quartier=quartier
 #     )
 
-# @router.delete("/quartiers/delete/", tags=["Quartiers"])
+# @router.delete("/quartiers/delete", tags=["Quartiers"])
 # def delete_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], QuartierID: int, db: Session = Depends(get_db)):
 #     delete=crud.delete_quartier(db=db, v_quartierid=QuartierID)
 #     if not delete:

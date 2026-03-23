@@ -12,7 +12,7 @@ from .database import get_db
 router = APIRouter(prefix="/api/cartographie")
 
 
-# @router.get("/list/", tags=["Cartographie"])
+# @router.get("/list", tags=["Cartographie"])
 # def read_cartographies(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 #     result = crud.get_cartographies(db=db, skip=skip, limit=limit)
 #     return JSONResponse(content=jsonable_encoder(result))
@@ -26,21 +26,21 @@ router = APIRouter(prefix="/api/cartographie")
 #         func = {'error': 200, 'cartographie': cartographie}
 #     return JSONResponse(content=jsonable_encoder(func))
 
-# @router.post("/create/", tags=["Cartographie"])
+# @router.post("/create", tags=["Cartographie"])
 # def create_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], cartographie: schemas.CartographieCreate, db: Session = Depends(get_db)):
 #     return crud.create_cartographie(
 #         db=db,
 #         v_cartographie=cartographie
 #     )
 
-# @router.delete("/delete/", tags=["Cartographie"])
+# @router.delete("/delete", tags=["Cartographie"])
 # def delete_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], cartographieID: int, db: Session = Depends(get_db)):
 #     delete=crud.delete_cartographie(db=db, v_cartographieid=cartographieID)
 #     if not delete:
 #         raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression du marqueur de cartographie"}))
 #     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le marqueur de cartographie a été supprimé"}))
 
-# @router.put("/update/", tags=["Cartographie"])
+# @router.put("/update", tags=["Cartographie"])
 # def update_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], cartographie: schemas.Cartographie, db: Session = Depends(get_db)):
 #     return crud.update_cartographie(
 #         db=db,
@@ -49,13 +49,13 @@ router = APIRouter(prefix="/api/cartographie")
 #     )
 
 # # -----------------------------------------------
-# @router.get("/types/", tags=["Cartographie"])
+# @router.get("/types", tags=["Cartographie"])
 # def read_cartographie_types(db: Session = Depends(get_db)):
 #     result = crud.get_cartographies_type(db=db)
 #     return JSONResponse(content=jsonable_encoder(result))
 
 # # -----------------------------------------------
-# @router.get("/dimensions/read/", tags=["Dimensions"])
+# @router.get("/dimensions/read", tags=["Dimensions"])
 # def read_dimensions(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
 #     result = crud.get_dimensions(db=db, skip=skip, limit=limit)
 #     return JSONResponse(content=jsonable_encoder(result))
@@ -78,21 +78,21 @@ router = APIRouter(prefix="/api/cartographie")
 #         func = {'error': 200, 'dimension': dimension}
 #     return JSONResponse(content=jsonable_encoder(func))
 
-# @router.post("/dimensions/create/", tags=["Dimensions"])
+# @router.post("/dimensions/create", tags=["Dimensions"])
 # def create_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], dimension: schemas.DimensionCreate, db: Session = Depends(get_db)):
 #     return crud.create_dimension(
 #         db=db,
 #         v_dimension=dimension
 #     )
 
-# @router.delete("/dimensions/delete/", tags=["Dimensions"])
+# @router.delete("/dimensions/delete", tags=["Dimensions"])
 # def delete_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], DimensionID: int, db: Session = Depends(get_db)):
 #     delete=crud.delete_dimension(db=db, v_dimensionid=DimensionID)
 #     if not delete:
 #         raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression de la dimension"}))
 #     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"La dimension a été supprimée"}))
 
-# @router.put("/dimensions/update/", tags=["Dimensions"])
+# @router.put("/dimensions/update", tags=["Dimensions"])
 # def update_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], dimension: schemas.Dimension, db: Session = Depends(get_db)):
 #     return crud.update_dimension(
 #         db=db,

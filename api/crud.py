@@ -547,6 +547,11 @@ def get_civilisations(db: Session, skip: int = 0, limit: int = 100):
     results = db.exec(statement)
     return results.all()
 
+def get_members_of_civilisation(db: Session, civilisationID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.CivilisationMembers).where(models.CivilisationMembers.civilisation_id == civilisationID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
 def get_civilisation_by_id(db: Session, ID: int):
     statement = select(models.Civilisations).where(models.Civilisations.id == ID)
     results = db.exec(statement)
@@ -559,7 +564,6 @@ def get_civilisation_by_title(db: Session, title: str):
 
 def create_civilisation(db: Session, user: schemas.Users, v_civilisation: schemas.CivilisationCreate):
     db_civilisation = models.Civilisations(
-        user_id=user.id,
         title = v_civilisation.title,
         description = v_civilisation.description,
         is_public = v_civilisation.is_public,
@@ -568,19 +572,32 @@ def create_civilisation(db: Session, user: schemas.Users, v_civilisation: schema
     
     db.add(db_civilisation)
     db.commit()
-    db.refresh(db_civilisation)
-    return db_civilisation
+    db.refresh(db_civilisation)  # Rafraîchir pour obtenir l'ID généré
+
+    db_member = models.CivilisationMembers(
+        user_id=user.id,
+        civilisation_id=db_civilisation.id,
+        role="Fondateur",
+        joined_at=dt.datetime.today()
+    )
+
+    db.add(db_member)
+    db.commit()
+    db.refresh(db_member)
+    return get_civilisation_by_id(db=db, ID=db_civilisation.id), db_member
 
 def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
     # Vérification de l'existence de la civilisation
     db_civilisation = get_civilisation_by_id(db, civilisationID)
+    db_members = get_members_of_civilisation(db, civilisationID)
 
     # Vérifier de l'utilisateur actuel
-    if user.id != db_civilisation.user_id and not user.is_admin and not user.is_disabled:
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     try:
         db.delete(db_civilisation)
+        db.delete(db_members)
         db.commit()
         return {"fonction": "delete_civilisation", "resultat": "Civilisation supprimée"}
     except Exception as e:
@@ -607,9 +624,10 @@ def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
 def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v_civilisation: schemas.Civilisation):
     # Vérification de l'existence de la civilisation
     db_civilisation = get_civilisation_by_id(db, civilisationID)
+    db_members = get_members_of_civilisation(db, civilisationID)
 
     # Vérifier de l'utilisateur actuel
-    if user.id != db_civilisation.user_id and not user.is_admin and not user.is_disabled:
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     if db_civilisation:
@@ -627,6 +645,60 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
         db.refresh(db_civilisation)
         return get_civilisation_by_id(db=db, ID=civilisationID)
     return {"error": 404, "text": "La civilisation n'a pas été trouvée"}
+
+def add_member_to_civilisation(db: Session, user: schemas.Users, civilisationID: int, new_member_id: int, role: str):
+    # Vérification de l'existence de la civilisation
+    db_civilisation = get_civilisation_by_id(db, civilisationID)
+    if not db_civilisation:
+        return {"fonction": "add_member_to_civilisation", "erreur": "La civilisation n'existe pas"}
+    db_members = get_members_of_civilisation(db, civilisationID)
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    
+    try:
+        db_member = models.CivilisationMembers(
+            user_id=new_member_id,
+            civilisation_id=civilisationID,
+            role=role,
+            joined_at=dt.datetime.today()
+        )
+        db.add(db_member)
+        db.commit()
+        db.refresh(db_member)
+        return {"fonction": "add_member_to_civilisation", "resultat": "Membre ajouté"}
+    except Exception as e:
+        print(f"Erreur lors de l'ajout du membre {new_member_id} à la civilisation {civilisationID}: {e}")
+        return {"fonction": "add_member_to_civilisation", "erreur": "Une erreur est survenue lors de l'ajout du membre à la civilisation", "details": str(e)}
+    
+def remove_member_from_civilisation(db: Session, user: schemas.Users, civilisationID: int, member_id: int):
+    # Vérification de l'existence de la civilisation
+    db_civilisation = get_civilisation_by_id(db, civilisationID)
+    if not db_civilisation:
+        return {"fonction": "remove_member_from_civilisation", "erreur": "La civilisation n'existe pas"}
+    db_members = get_members_of_civilisation(db, civilisationID)
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    
+    try:
+        member = db.exec(
+            select(models.CivilisationMembers).where(
+                models.CivilisationMembers.civilisation_id == civilisationID,
+                models.CivilisationMembers.user_id == member_id
+            )
+        ).first()
+        if member:
+            db.delete(member)
+            db.commit()
+            return {"fonction": "remove_member_from_civilisation", "resultat": "Membre retiré"}
+        else:
+            return {"fonction": "remove_member_from_civilisation", "erreur": "Le membre n'est pas dans la civilisation"}
+    except Exception as e:
+        print(f"Erreur lors du retrait du membre {member_id} de la civilisation {civilisationID}: {e}")
+        return {"fonction": "remove_member_from_civilisation", "erreur": "Une erreur est survenue lors du retrait du membre de la civilisation", "details": str(e)}
 
 # Gouvernements
 # def get_gouvernements(db: Session, skip: int = 0, limit: int = 100):
