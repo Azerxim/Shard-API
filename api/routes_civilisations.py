@@ -33,7 +33,7 @@ def read_civilisations(skip: int = 0, limit: int = 100, db: Session = Depends(ge
         })
     return JSONResponse(content=jsonable_encoder(table))
 
-@router.get("/id/{CivilisationID}", tags=["Civilisations"])
+@router.get("/read/{CivilisationID}", tags=["Civilisations"])
 def read_civilisation(CivilisationID: int, db: Session = Depends(get_db)):
     civilisation = crud.get_civilisation_by_id(db=db, ID=CivilisationID)
     if civilisation is None:
@@ -61,7 +61,7 @@ def create_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
     )
     return JSONResponse(content=jsonable_encoder({'error': 200, 'civilisation': result[0], 'member': result[1]})) 
 
-@router.delete("/delete", tags=["Civilisations"])
+@router.delete("/delete/{CivilisationID}", tags=["Civilisations"])
 def delete_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, db: Session = Depends(get_db)): 
     delete=crud.delete_civilisation(db=db, user=current_user, civilisationID=CivilisationID)
     if not delete:

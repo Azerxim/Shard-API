@@ -30,16 +30,16 @@ def create_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_
         v_journal=journal
     )
 
-@router.put("/journaux/update", tags=["Journaux"])
+@router.put("/journaux/update/{JournalID}", tags=["Journaux"])
 async def update_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], JournalID: int, journal: schemas.Journal, db: Session = Depends(get_db)):
     update=await crud.update_journal(db=db, user=current_user, journalID=JournalID, v_journal=journal)
     if not update:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la mise à jour du journal"}))
     return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le journal a été mis à jour"}))
 
-@router.delete("/journaux/delete", tags=["Journaux"])
+@router.delete("/journaux/delete/{JournalID}", tags=["Journaux"])
 def delete_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], JournalID: int, db: Session = Depends(get_db)):
-    delete=crud.delete_journal(db=db, user=current_user, journalID=JournalID)
+    delete=crud.delete_journal(db=db, user=current_user, v_journalid=JournalID)
     if not delete:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la suppression du journal"}))
     return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le journal a été supprimé"}))
@@ -84,14 +84,14 @@ def create_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_cu
         v_livre=livre
     )
 
-@router.put("/livres/update", tags=["Livres"])
+@router.put("/livres/update/{livreID}", tags=["Livres"])
 def update_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], livreID: int, livre: schemas.Livre, db: Session = Depends(get_db)):
     update=crud.update_livre(db=db, user=current_user, livreID=livreID, v_livre=livre)
     if not update:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la mise à jour du livre"}))
     return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le livre a été mis à jour"}))
 
-@router.delete("/livres/delete", tags=["Livres"])
+@router.delete("/livres/delete/{livreID}", tags=["Livres"])
 def delete_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], livreID: int, db: Session = Depends(get_db)):
     delete=crud.delete_livre(db=db, user=current_user, livreID=livreID)
     if not delete:
