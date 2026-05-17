@@ -63,19 +63,17 @@ def create_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 
 @router.delete("/delete/{CivilisationID}", tags=["Civilisations"])
 def delete_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, db: Session = Depends(get_db)): 
-    delete=crud.delete_civilisation(db=db, user=current_user, civilisationID=CivilisationID)
+    delete = crud.delete_civilisation(db=db, user=current_user, civilisationID=CivilisationID)
     if not delete:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression de la civilisation"}))
     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"La civilisation et ses dépendances ont été supprimées"}))
 
 @router.put("/update/{CivilisationID}", tags=["Civilisations"])
 def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, civilisation: schemas.CivilisationCreate, db: Session = Depends(get_db)):
-    return crud.update_civilisation(
-        db=db,
-        user=current_user,
-        civilisationID=CivilisationID,
-        v_civilisation=civilisation
-    )
+    update = crud.update_civilisation(db=db, user=current_user, civilisationID=CivilisationID, v_civilisation=civilisation)
+    if not update:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la mise à jour de la civilisation"}))
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"La civilisation a été mise à jour", 'civilisation': update}))
 
 # -----------------------------------------------
 

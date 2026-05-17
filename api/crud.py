@@ -597,7 +597,8 @@ def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
     
     try:
         db.delete(db_civilisation)
-        db.delete(db_members)
+        for member in db_members:
+            db.delete(member)
         db.commit()
         return {"fonction": "delete_civilisation", "resultat": "Civilisation supprimée"}
     except Exception as e:
