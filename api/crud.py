@@ -384,7 +384,7 @@ def delete_journal(db: Session, user: schemas.Users, v_journalid: int):
         journal = get_journal(db, v_journalid)
 
         # Vérifier de l'utilisateur actuel
-        if user.id != journal.user_id and not user.is_admin and not user.is_disabled:
+        if user.id != journal.user_id and not user.is_admin and user.is_disabled:
             raise HTTPException(status_code=403, detail="Accès refusé")
 
         if journal and journal.uid:
@@ -417,7 +417,7 @@ async def update_journal(db: Session, user: schemas.Users, journalID: int, v_jou
     db_journal = get_journal(db, journalID)
 
     # Vérifier de l'utilisateur actuel
-    if user.id != db_journal.user_id and not user.is_admin and not user.is_disabled:
+    if user.id != db_journal.user_id and not user.is_admin and user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
 
     if db_journal:
@@ -490,7 +490,7 @@ def delete_livre(db: Session, user: schemas.Users, livreID: int):
         livre = get_livre(db, livreID)
 
         # Vérifier de l'utilisateur actuel
-        if user.id != livre.user_id and not user.is_admin and not user.is_disabled:
+        if user.id != livre.user_id and not user.is_admin and user.is_disabled:
             raise HTTPException(status_code=403, detail="Accès refusé")
         
         db.delete(livre)
@@ -505,7 +505,7 @@ def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schema
     db_livre = get_livre(db, livreID)
 
     # Vérifier de l'utilisateur actuel
-    if user.id != db_livre.user_id and not user.is_admin and not user.is_disabled:
+    if user.id != db_livre.user_id and not user.is_admin and user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
 
     if db_livre:
@@ -562,6 +562,33 @@ def get_civilisation_by_title(db: Session, title: str):
     results = db.exec(statement)
     return results.first()
 
+def get_all_of_civilisation_by_id(db: Session, ID: int):
+    statement = select(models.Civilisations).where(models.Civilisations.id == ID)
+    results = db.exec(statement)
+    civ = results.first()
+    if not civ:
+        return None
+    
+    villes = get_villes_by_civilisation_id(db, civ.id)
+    gouvernement = get_gouvernement_by_id(db, civ.gouvernement_id) if civ.gouvernement_id else None
+    members = get_members_of_civilisation(db=db, civilisationID=civ.id)
+    members_table = []
+    for member in members:
+        user = get_user_by_id(db=db, user_id=member.user_id)
+        members_table.append({
+            "user_id": member.user_id,
+            "role": member.role,
+            "joined_at": member.joined_at,
+            "username": user.username if user else None
+        })
+    civ_all = {
+        'civilisation': civ,
+        'members': members_table if members_table else [],
+        'gouvernement': gouvernement if gouvernement else None,
+        'villes': villes if villes else [],
+    }
+    return civ_all
+
 def create_civilisation(db: Session, user: schemas.Users, v_civilisation: schemas.CivilisationCreate):
     db_civilisation = models.Civilisations(
         title = v_civilisation.title,
@@ -590,15 +617,18 @@ def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
     # Vérification de l'existence de la civilisation
     db_civilisation = get_civilisation_by_id(db, civilisationID)
     db_members = get_members_of_civilisation(db, civilisationID)
+    db_gouvernement = get_gouvernement_by_id(db, db_civilisation.gouvernement_id) if db_civilisation and db_civilisation.gouvernement_id else None
 
     # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     try:
         db.delete(db_civilisation)
         for member in db_members:
             db.delete(member)
+        if db_gouvernement:
+            db.delete(db_gouvernement)
         db.commit()
         return {"fonction": "delete_civilisation", "resultat": "Civilisation supprimée"}
     except Exception as e:
@@ -628,7 +658,7 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
     db_members = get_members_of_civilisation(db, civilisationID)
 
     # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     if db_civilisation:
@@ -655,7 +685,7 @@ def add_member_to_civilisation(db: Session, user: schemas.Users, civilisationID:
     db_members = get_members_of_civilisation(db, civilisationID)
 
     # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     try:
@@ -681,7 +711,7 @@ def remove_member_from_civilisation(db: Session, user: schemas.Users, civilisati
     db_members = get_members_of_civilisation(db, civilisationID)
 
     # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and not user.is_disabled:
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     try:
@@ -700,382 +730,516 @@ def remove_member_from_civilisation(db: Session, user: schemas.Users, civilisati
     except Exception as e:
         print(f"Erreur lors du retrait du membre {member_id} de la civilisation {civilisationID}: {e}")
         return {"fonction": "remove_member_from_civilisation", "erreur": "Une erreur est survenue lors du retrait du membre de la civilisation", "details": str(e)}
-
-# Gouvernements
-# def get_gouvernements(db: Session, skip: int = 0, limit: int = 100):
-#     statement = select(models.Gouvernements).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
-
-# def get_gouvernement_by_id(db: Session, ID: int):
-#     statement = select(models.Gouvernements).where(models.Gouvernements.id == ID)
-#     results = db.exec(statement)
-#     return results.first()
-
-# def create_gouvernement(db: Session, v_gouvernement: schemas.GouvernementCreate):
-#     db_gouvernement = models.Gouvernements(
-#         civilisation_id = v_gouvernement.civilisation_id,
-#         type = v_gouvernement.type,
-#         description = v_gouvernement.description,
-#         devise = v_gouvernement.devise,
-#         hymne = v_gouvernement.hymne,
-#         created_at = dt.datetime.today()
-#     )
-    
-#     db.add(db_gouvernement)
-#     db.commit()
-#     db.refresh(db_gouvernement)
-#     return db_gouvernement
-
-# def delete_gouvernement(db: Session, v_gouvernementid: int):
-#     try:
-#         db_gouvernement = get_gouvernement_by_id(db, v_gouvernementid)
-#         script = f'; UPDATE `Civilisations` SET `gouvernement_id` = NULL WHERE `id` = "{db_gouvernement.civilisation_id}"'
-#         script += f'; DELETE FROM `Gouvernements` WHERE `id` = "{v_gouvernementid}"'
-#         db.execute(script)
-#         db.commit()
-#         return True
-#     except Exception as e:
-#         print(f"Erreur lors de la suppression du gouvernement {v_gouvernementid}: {e}")
-#     return False
-
-# def update_gouvernement(db: Session, gouvernementID: int, v_gouvernement: schemas.Gouvernement):
-#     # Vérification de l'existence du gouvernement
-#     db_gouvernement = get_gouvernement_by_id(db, gouvernementID)
-
-#     if db_gouvernement:
-#         # Mise à jour des informations
-#         if v_gouvernement.civilisation_id is not None:
-#             db_gouvernement.civilisation_id = v_gouvernement.civilisation_id
-#         if v_gouvernement.type is not None:
-#             db_gouvernement.type = v_gouvernement.type
-#         if v_gouvernement.description is not None:
-#             db_gouvernement.description = v_gouvernement.description
-#         if v_gouvernement.devices is not None:
-#             db_gouvernement.devices = v_gouvernement.devices
-#         if v_gouvernement.hymne is not None:
-#             db_gouvernement.hymne = v_gouvernement.hymne
-#         db.add(db_gouvernement)
-#         db.commit()
-#         db.refresh(db_gouvernement)
-#         return get_gouvernement_by_id(db=db, ID=gouvernementID)
-#     return {"error": 404, "text": "Le gouvernement n'a pas été trouvé"}
-
-# Villes
-# def get_villes(db: Session, skip: int = 0, limit: int = 100):
-#     statement = select(models.Villes).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
-
-# def get_ville_by_id(db: Session, ID: int):
-#     statement = select(models.Villes).where(models.Villes.id == ID)
-#     results = db.exec(statement)
-#     return results.first()
-
-# def get_villes_by_civilisation_id(db: Session, civilisationID: int, skip: int = 0, limit: int = 100):
-#     statement = select(models.Villes).where(models.Villes.civilisation_id == civilisationID).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
-
-# def create_ville(db: Session, v_ville: schemas.VilleCreate):
-#     db_ville = models.Villes(
-#         civilisation_id = v_ville.civilisation_id,
-#         title = v_ville.title,
-#         description = v_ville.description,
-#         population = v_ville.population,
-#         dimension_id = v_ville.dimension_id,
-#         x = v_ville.x,
-#         z = v_ville.z,
-#         founded_date = v_ville.founded_date,
-#         is_capital = v_ville.is_capital,
-#         is_public = v_ville.is_public,
-#         created_at = dt.datetime.today()
-#     )
-    
-#     db.add(db_ville)
-#     db.commit()
-#     db.refresh(db_ville)
-#     return db_ville
-
-# def delete_ville(db: Session, v_villeid: int):
-#     try:
-#         script = f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` IN (SELECT `id` FROM `Quartiers` WHERE `ville_id` = "{v_villeid}")'
-#         script += f'; DELETE FROM `Cartographie` WHERE `type` = "ville" AND `type_id` = "{v_villeid}"'
-#         script += f'; DELETE FROM `Quartiers` WHERE `ville_id` = "{v_villeid}"'
-#         script += f'; DELETE FROM `Villes` WHERE `id` = "{v_villeid}"'
-#         db.execute(script)
-#         db.commit()
-#         return True
-#     except Exception as e:
-#         print(f"Erreur lors de la suppression de la ville {v_villeid}: {e}")
-#     return False
-
-# def update_ville(db: Session, villeID: int, v_ville: schemas.Ville):
-#     # Vérification de l'existence de la ville
-#     db_ville = get_ville_by_id(db, villeID)
-
-#     if db_ville:
-#         # Mise à jour des informations
-#         if v_ville.civilisation_id is not None:
-#             db_ville.civilisation_id = v_ville.civilisation_id
-#         if v_ville.title is not None:
-#             db_ville.title = v_ville.title
-#         if v_ville.description is not None:
-#             db_ville.description = v_ville.description
-#         if v_ville.population is not None:
-#             db_ville.population = v_ville.population
-#         if v_ville.dimension_id is not None:
-#             db_ville.dimension_id = v_ville.dimension_id
-#         if v_ville.x is not None:
-#             db_ville.x = v_ville.x
-#         if v_ville.z is not None:
-#             db_ville.z = v_ville.z
-#         if v_ville.founded_date is not None:
-#             db_ville.founded_date = v_ville.founded_date
-#         if v_ville.is_capital is not None:
-#             db_ville.is_capital = v_ville.is_capital
-#         if v_ville.is_public is not None:
-#             db_ville.is_public = v_ville.is_public
-#         db.add(db_ville)
-#         db.commit()
-#         db.refresh(db_ville)
-#         return get_ville_by_id(db=db, ID=villeID)
-#     return {"error": 404, "text": "La ville n'a pas été trouvée"}
-
-# Quartiers
-# def get_quartiers(db: Session, skip: int = 0, limit: int = 100):
-#     statement = select(models.Quartiers).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
-
-# def get_quartier_by_id(db: Session, ID: int):
-#     statement = select(models.Quartiers).where(models.Quartiers.id == ID)
-#     results = db.exec(statement)
-#     return results.first()
-
-# def get_quartiers_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: int = 100):
-#     statement = select(models.Quartiers).where(models.Quartiers.ville_id == villeID).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
-
-# def create_quartier(db: Session, v_quartier: schemas.QuartierCreate):
-#     db_quartier = models.Quartiers(
-#         ville_id = v_quartier.ville_id,
-#         title = v_quartier.title,
-#         description = v_quartier.description,
-#         population = v_quartier.population,
-#         x = v_quartier.x,
-#         z = v_quartier.z,
-#         founded_date = v_quartier.founded_date,
-#         is_public = v_quartier.is_public,
-#         created_at = dt.datetime.today()
-#     )
-    
-#     db.add(db_quartier)
-#     db.commit()
-#     db.refresh(db_quartier)
-#     return db_quartier
-
-# def delete_quartier(db: Session, v_quartierid: int):
-#     try:
-#         script = f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` = "{v_quartierid}"'
-#         script += f'; DELETE FROM `Quartiers` WHERE `id` = "{v_quartierid}"'
-#         db.execute(script)
-#         db.commit()
-#         return True
-#     except Exception as e:
-#         print(f"Erreur lors de la suppression du quartier {v_quartierid}: {e}")
-#     return False
-
-# def update_quartier(db: Session, quartierID: int, v_quartier: schemas.Quartier):
-#     # Vérification de l'existence du quartier
-#     db_quartier = get_quartier_by_id(db, quartierID)
-
-#     if db_quartier:
-#         # Mise à jour des informations
-#         if v_quartier.ville_id is not None:
-#             db_quartier.ville_id = v_quartier.ville_id
-#         if v_quartier.title is not None:
-#             db_quartier.title = v_quartier.title
-#         if v_quartier.description is not None:
-#             db_quartier.description = v_quartier.description
-#         if v_quartier.population is not None:
-#             db_quartier.population = v_quartier.population
-#         if v_quartier.x is not None:
-#             db_quartier.x = v_quartier.x
-#         if v_quartier.z is not None:
-#             db_quartier.z = v_quartier.z
-#         if v_quartier.founded_date is not None:
-#             db_quartier.founded_date = v_quartier.founded_date
-#         if v_quartier.is_public is not None:
-#             db_quartier.is_public = v_quartier.is_public
-#         db.add(db_quartier)
-#         db.commit()
-#         db.refresh(db_quartier)
-#         return get_quartier_by_id(db=db, ID=quartierID)
-#     return {"error": 404, "text": "Le quartier n'a pas été trouvé"}
 #endregion
 
-#region Religions
-################# Religions #####################
+#region Gouvernements
+def get_gouvernements(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Gouvernements).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-# def get_religions(db: Session, skip: int = 0, limit: int = 100):
-#     statement = select(models.Religions).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_gouvernement_by_id(db: Session, ID: int):
+    statement = select(models.Gouvernements).where(models.Gouvernements.id == ID)
+    results = db.exec(statement)
+    return results.first()
 
-# def get_religion_by_id(db: Session, ID: int):
-#     statement = select(models.Religions).where(models.Religions.id == ID)
-#     results = db.exec(statement)
-#     return results.first()
-
-# def create_religion(db: Session, v_religion: schemas.ReligionCreate):
-#     db_religion = models.Religions(
-#         title = v_religion.title,
-#         description = v_religion.description,
-#         founder = v_religion.founder,
-#         date_founded = v_religion.date_founded,
-#         is_public = v_religion.is_public,
-#         created_at = dt.datetime.today()
-#     )
+def create_gouvernement(db: Session, user: schemas.Users, v_gouvernement: schemas.GouvernementCreate):
+    db_gouvernement = models.Gouvernements(
+        civilisation_id = v_gouvernement.civilisation_id,
+        type = v_gouvernement.type,
+        description = v_gouvernement.description,
+        devise = v_gouvernement.devise,
+        hymne = v_gouvernement.hymne,
+        created_at = dt.datetime.today()
+    )
     
-#     db.add(db_religion)
-#     db.commit()
-#     db.refresh(db_religion)
-#     return db_religion
+    db.add(db_gouvernement)
+    db.commit()
+    db.refresh(db_gouvernement)
+    return db_gouvernement
 
-# def delete_religion(db: Session, v_religionid: int):
-#     try:
-#         script = f'UPDATE `Civilisations` SET `religion_id` = NULL WHERE `religion_id` = "{v_religionid}"'
-#         script += f'; DELETE FROM `Religions` WHERE `id` = "{v_religionid}"'
-#         db.execute(script)
-#         db.commit()
-#         return True
-#     except Exception as e:
-#         print(f"Erreur lors de la suppression de la religion {v_religionid}: {e}")
-#     return False
+def delete_gouvernement(db: Session, user: schemas.Users, v_gouvernementid: int):
+    db_gouvernement = get_gouvernement_by_id(db, v_gouvernementid)
+    db_civilisation = get_civilisation_by_id(db, db_gouvernement.civilisation_id) if db_gouvernement else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
 
-# def update_religion(db: Session, religionID: int, v_religion: schemas.Religions):
-#     # Vérification de l'existence de la religion
-#     db_religion = get_religion_by_id(db, religionID)
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    try:
+        db_civilisation.gouvernement_id = None
+        db.add(db_civilisation)
+        db.delete(db_gouvernement)
+        db.commit()
+        return {"fonction": "delete_gouvernement", "resultat": "Gouvernement supprimé"}
+    except Exception as e:
+        print(f"Erreur lors de la suppression du gouvernement {v_gouvernementid}: {e}")
+        return {"fonction": "delete_gouvernement", "erreur": "Une erreur est survenue lors de la suppression du gouvernement", "details": str(e)}
 
-#     if db_religion:
-#         # Mise à jour des informations
-#         if v_religion.title is not None:
-#             db_religion.title = v_religion.title
-#         if v_religion.description is not None:
-#             db_religion.description = v_religion.description
-#         if v_religion.founder is not None:
-#             db_religion.founder = v_religion.founder
-#         if v_religion.date_founded is not None:
-#             db_religion.date_founded = v_religion.date_founded
-#         if v_religion.is_public is not None:
-#             db_religion.is_public = v_religion.is_public
-#         db.add(db_religion)
-#         db.commit()
-#         db.refresh(db_religion)
-#         return get_religion_by_id(db=db, ID=religionID)
-#     return {"error": 404, "text": "La religion n'a pas été trouvée"}
+def update_gouvernement(db: Session, user: schemas.Users, gouvernementID: int, v_gouvernement: schemas.Gouvernement):
+    # Vérification de l'existence du gouvernement
+    db_gouvernement = get_gouvernement_by_id(db, gouvernementID)
+    db_civilisation = get_civilisation_by_id(db, db_gouvernement.civilisation_id) if db_gouvernement else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if db_gouvernement:
+        # Mise à jour des informations
+        if v_gouvernement.civilisation_id is not None:
+            db_gouvernement.civilisation_id = v_gouvernement.civilisation_id
+        if v_gouvernement.type is not None:
+            db_gouvernement.type = v_gouvernement.type
+        if v_gouvernement.description is not None:
+            db_gouvernement.description = v_gouvernement.description
+        if v_gouvernement.devise is not None:
+            db_gouvernement.devise = v_gouvernement.devise
+        if v_gouvernement.hymne is not None:
+            db_gouvernement.hymne = v_gouvernement.hymne
+        db.add(db_gouvernement)
+        db.commit()
+        db.refresh(db_gouvernement)
+        return get_gouvernement_by_id(db=db, ID=gouvernementID)
+    return {"error": 404, "text": "Le gouvernement n'a pas été trouvé"}
+
+#endregion
+
+#region Villes
+def get_villes(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Villes).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_ville_by_id(db: Session, ID: int):
+    statement = select(models.Villes).where(models.Villes.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_villes_by_civilisation_id(db: Session, civilisationID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Villes).where(models.Villes.civilisation_id == civilisationID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_villes_by_dimension_id(db: Session, dimensionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Villes).where(models.Villes.dimension_id == dimensionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def create_ville(db: Session, v_ville: schemas.VilleCreate):
+    db_ville = models.Villes(
+        civilisation_id = v_ville.civilisation_id,
+        title = v_ville.title,
+        description = v_ville.description,
+        population = v_ville.population,
+        dimension_id = v_ville.dimension_id,
+        x = v_ville.x,
+        z = v_ville.z,
+        founded_date = v_ville.founded_date,
+        is_capital = v_ville.is_capital,
+        is_public = v_ville.is_public,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_ville)
+    db.commit()
+    db.refresh(db_ville)
+    return db_ville
+
+def delete_ville(db: Session, user: schemas.Users, v_villeid: int):
+    db_ville = get_ville_by_id(db, v_villeid)
+    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+    db_quartiers = get_quartiers_by_ville_id(db, v_villeid) if db_ville else []
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    try:
+        for quartier in db_quartiers:
+            db.delete(quartier)
+        db.delete(db_ville)
+        db.commit()
+        return {"fonction": "delete_ville", "resultat": "Ville supprimée"}
+        # script = f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` IN (SELECT `id` FROM `Quartiers` WHERE `ville_id` = "{v_villeid}")'
+        # script += f'; DELETE FROM `Cartographie` WHERE `type` = "ville" AND `type_id` = "{v_villeid}"'
+        # script += f'; DELETE FROM `Quartiers` WHERE `ville_id` = "{v_villeid}"'
+        # script += f'; DELETE FROM `Villes` WHERE `id` = "{v_villeid}"'
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la ville {v_villeid}: {e}")
+        return {"fonction": "delete_ville", "erreur": "Une erreur est survenue lors de la suppression de la ville", "details": str(e)}
+
+def update_ville(db: Session, user: schemas.Users, villeID: int, v_ville: schemas.Ville):
+    # Vérification de l'existence de la ville
+    db_ville = get_ville_by_id(db, villeID)
+    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if db_ville:
+        # Mise à jour des informations
+        if v_ville.civilisation_id is not None:
+            db_ville.civilisation_id = v_ville.civilisation_id
+        if v_ville.title is not None:
+            db_ville.title = v_ville.title
+        if v_ville.description is not None:
+            db_ville.description = v_ville.description
+        if v_ville.population is not None:
+            db_ville.population = v_ville.population
+        if v_ville.dimension_id is not None:
+            db_ville.dimension_id = v_ville.dimension_id
+        if v_ville.x is not None:
+            db_ville.x = v_ville.x
+        if v_ville.z is not None:
+            db_ville.z = v_ville.z
+        if v_ville.founded_date is not None:
+            db_ville.founded_date = v_ville.founded_date
+        if v_ville.is_capital is not None:
+            db_ville.is_capital = v_ville.is_capital
+        if v_ville.is_public is not None:
+            db_ville.is_public = v_ville.is_public
+        db.add(db_ville)
+        db.commit()
+        db.refresh(db_ville)
+        return get_ville_by_id(db=db, ID=villeID)
+    return {"error": 404, "text": "La ville n'a pas été trouvée"}
+
+#endregion
+
+#region Quartiers
+def get_quartiers(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Quartiers).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_quartier_by_id(db: Session, ID: int):
+    statement = select(models.Quartiers).where(models.Quartiers.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_quartiers_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Quartiers).where(models.Quartiers.ville_id == villeID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def create_quartier(db: Session, v_quartier: schemas.QuartierCreate):
+    db_quartier = models.Quartiers(
+        ville_id = v_quartier.ville_id,
+        title = v_quartier.title,
+        description = v_quartier.description,
+        population = v_quartier.population,
+        x = v_quartier.x,
+        z = v_quartier.z,
+        founded_date = v_quartier.founded_date,
+        is_public = v_quartier.is_public,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_quartier)
+    db.commit()
+    db.refresh(db_quartier)
+    return db_quartier
+
+def delete_quartier(db: Session, user: schemas.Users, v_quartierid: int):
+    db_quartier = get_quartier_by_id(db, v_quartierid)
+    db_ville = get_ville_by_id(db, db_quartier.ville_id) if db_quartier else None
+    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    try:
+        db.delete(db_quartier)
+        db.commit()
+        return {"fonction": "delete_quartier", "resultat": "Quartier supprimé"}
+        # script = f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` = "{v_quartierid}"'
+        # script += f'; DELETE FROM `Quartiers` WHERE `id` = "{v_quartierid}"'
+        # db.execute(script)
+    except Exception as e:
+        print(f"Erreur lors de la suppression du quartier {v_quartierid}: {e}")
+        return {"fonction": "delete_quartier", "erreur": "Une erreur est survenue lors de la suppression du quartier", "details": str(e)}
+
+def update_quartier(db: Session, user: schemas.Users, quartierID: int, v_quartier: schemas.Quartier):
+    # Vérification de l'existence du quartier
+    db_quartier = get_quartier_by_id(db, quartierID)
+    db_ville = get_ville_by_id(db, db_quartier.ville_id) if db_quartier else None
+    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if db_quartier:
+        # Mise à jour des informations
+        if v_quartier.ville_id is not None:
+            db_quartier.ville_id = v_quartier.ville_id
+        if v_quartier.title is not None:
+            db_quartier.title = v_quartier.title
+        if v_quartier.description is not None:
+            db_quartier.description = v_quartier.description
+        if v_quartier.population is not None:
+            db_quartier.population = v_quartier.population
+        if v_quartier.x is not None:
+            db_quartier.x = v_quartier.x
+        if v_quartier.z is not None:
+            db_quartier.z = v_quartier.z
+        if v_quartier.founded_date is not None:
+            db_quartier.founded_date = v_quartier.founded_date
+        if v_quartier.is_public is not None:
+            db_quartier.is_public = v_quartier.is_public
+        db.add(db_quartier)
+        db.commit()
+        db.refresh(db_quartier)
+        return get_quartier_by_id(db=db, ID=quartierID)
+    return {"error": 404, "text": "Le quartier n'a pas été trouvé"}
+#endregion
+
+################# Religions #####################
+#region Religions
+
+def get_religions(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Religions).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_members_of_religion(db: Session, religionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.ReligionMembers).where(models.ReligionMembers.religion_id == religionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_religion_by_id(db: Session, ID: int):
+    statement = select(models.Religions).where(models.Religions.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_religions_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.VillesReligions, models.Religions).join(models.Religions, models.VillesReligions.religion_id == models.Religions.id).where(models.VillesReligions.ville_id == villeID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_villes_by_religion_id(db: Session, religionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.VillesReligions, models.Villes).join(models.Villes, models.VillesReligions.ville_id == models.Villes.id).where(models.VillesReligions.religion_id == religionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_religions_by_quartier_id(db: Session, quartierID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.QuartiersReligions, models.Religions).join(models.Religions, models.QuartiersReligions.religion_id == models.Religions.id).where(models.QuartiersReligions.quartier_id == quartierID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_quartiers_by_religion_id(db: Session, religionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.QuartiersReligions, models.Quartiers).join(models.Quartiers, models.QuartiersReligions.quartier_id == models.Quartiers.id).where(models.QuartiersReligions.religion_id == religionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_all_of_religion_by_id(db: Session, ID: int):
+    statement = select(models.Religions).where(models.Religions.id == ID)
+    results = db.exec(statement)
+    religion = results.first()
+    if not religion:
+        return None
+    
+    villes = get_villes_by_religion_id(db, religion.id)
+    quartiers = get_quartiers_by_religion_id(db, religion.id)
+    religion_all = {
+        'religion': religion,
+        'members': get_members_of_religion(db, religion.id),
+        'villes': villes if villes else [],
+        'quartiers': quartiers if quartiers else [],
+    }
+    return religion_all
+
+def create_religion(db: Session, user: schemas.Users, v_religion: schemas.ReligionCreate):
+    db_religion = models.Religions(
+        title = v_religion.title,
+        description = v_religion.description,
+        date_founded = v_religion.date_founded,
+        is_public = v_religion.is_public,
+        created_at = dt.datetime.today()
+    )
+    
+    db.add(db_religion)
+    db.commit()
+    db.refresh(db_religion) # Rafraîchir pour obtenir l'ID généré
+
+    db_member = models.ReligionMembers(
+        user_id=user.id,
+        religion_id=db_religion.id,
+        role="Fondateur",
+        joined_at=dt.datetime.today()
+    )
+    db.add(db_member)
+    db.commit()
+    db.refresh(db_member)
+
+    return get_religion_by_id(db=db, ID=db_religion.id), db_member
+
+def delete_religion(db: Session, user: schemas.Users, v_religionid: int):
+    db_religion = get_religion_by_id(db, v_religionid)
+    db_villes_religions = get_villes_by_religion_id(db, v_religionid, skip=0, limit=1000)
+    db_quartiers_religions = get_quartiers_by_religion_id(db, v_religionid, skip=0, limit=1000)
+    db_members = get_members_of_religion(db, v_religionid) if db_religion else []
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    
+    try:
+        for villereligion in db_villes_religions:
+            db.delete(villereligion)
+        for quartierreligion in db_quartiers_religions:
+            db.delete(quartierreligion)
+        db.delete(db_religion)
+        db.commit()
+        return {"fonction": "delete_religion", "resultat": "Religion supprimée"}
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la religion {v_religionid}: {e}")
+        return {"fonction": "delete_religion", "erreur": "Une erreur est survenue lors de la suppression de la religion", "details": str(e)}
+
+def update_religion(db: Session, user: schemas.Users, religionID: int, v_religion: schemas.Religions):
+    # Vérification de l'existence de la religion
+    db_religion = get_religion_by_id(db, religionID)
+    db_members = get_members_of_religion(db, religionID) if db_religion else []
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if db_religion:
+        # Mise à jour des informations
+        if v_religion.title is not None:
+            db_religion.title = v_religion.title
+        if v_religion.description is not None:
+            db_religion.description = v_religion.description
+        if v_religion.founder is not None:
+            db_religion.founder = v_religion.founder
+        if v_religion.date_founded is not None:
+            db_religion.date_founded = v_religion.date_founded
+        if v_religion.is_public is not None:
+            db_religion.is_public = v_religion.is_public
+        db.add(db_religion)
+        db.commit()
+        db.refresh(db_religion)
+        return get_religion_by_id(db=db, ID=religionID)
+    return {"error": 404, "text": "La religion n'a pas été trouvée"}
 #endregion
 
 #region Cartographie
 ################# Cartographie #####################
 
 # Dimensions
-# def get_dimensions(db: Session, skip: int = 0, limit: int = 100):
-#     statement = select(models.Dimensions).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_dimensions(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Dimensions).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-# def get_dimension_by_id(db: Session, ID: int):
-#     statement = select(models.Dimensions).where(models.Dimensions.id == ID)
-#     results = db.exec(statement)
-#     return results.first()
+def get_dimension_by_id(db: Session, ID: int):
+    statement = select(models.Dimensions).where(models.Dimensions.id == ID)
+    results = db.exec(statement)
+    return results.first()
 
-# def get_dimension_by_name(db: Session, name: str):
-#     statement = select(models.Dimensions).where(models.Dimensions.title == name)
-#     results = db.exec(statement)
-#     return results.first()
+def get_dimension_by_name(db: Session, name: str):
+    statement = select(models.Dimensions).where(models.Dimensions.title == name)
+    results = db.exec(statement)
+    return results.first()
 
-# def get_dimensions_by_title(db: Session, title: str, skip: int = 0, limit: int = 100):
-#     statement = select(models.Dimensions).where(models.Dimensions.title.like(f"%{title}%")).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_dimensions_by_title(db: Session, title: str, skip: int = 0, limit: int = 100):
+    statement = select(models.Dimensions).where(models.Dimensions.title.like(f"%{title}%")).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-# def create_dimension(db: Session, v_dimension: schemas.DimensionCreate):
-#     db_dimension = models.Dimensions(
-#         title = v_dimension.title,
-#         link = v_dimension.link,
-#         description = v_dimension.description
-#     )
+def create_dimension(db: Session, user: schemas.Users, v_dimension: schemas.DimensionCreate):
+    db_dimension = models.Dimensions(
+        title = v_dimension.title,
+        link = v_dimension.link,
+        description = v_dimension.description
+    )
     
-#     db.add(db_dimension)
-#     db.commit()
-#     db.refresh(db_dimension)
-#     return db_dimension
+    db.add(db_dimension)
+    db.commit()
+    db.refresh(db_dimension)
+    return db_dimension
 
-# def delete_dimension(db: Session, v_dimensionid: int):
-#     try:
-#         script = f'DELETE FROM `Dimensions` WHERE `id` = "{v_dimensionid}"'
-#         db.execute(script)
-#         db.commit()
-#         return True
-#     except Exception as e:
-#         print(f"Erreur lors de la suppression de la dimension {v_dimensionid}: {e}")
-#     return False
+def delete_dimension(db: Session, user: schemas.Users, v_dimensionid: int):
+    db_dimension = get_dimension_by_id(db, v_dimensionid)
 
-# def update_dimension(db: Session, dimensionID: int, v_dimension: schemas.Dimension):
-#     # Vérification de l'existence de la dimension
-#     db_dimension = get_dimension_by_id(db, dimensionID)
+    # Vérifier de l'utilisateur actuel
+    if not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    
+    if not db_dimension:
+        return {"fonction": "delete_dimension", "erreur": "La dimension n'existe pas"}
+    try:
+        db.delete(db_dimension)
+        db.commit()
+        return {"fonction": "delete_dimension", "resultat": "Dimension supprimée"}
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la dimension {v_dimensionid}: {e}")
+        return {"fonction": "delete_dimension", "erreur": "Une erreur est survenue lors de la suppression de la dimension", "details": str(e)}
 
-#     if db_dimension:
-#         # Mise à jour des informations
-#         if v_dimension.title is not None:
-#             db_dimension.title = v_dimension.title
-#         if v_dimension.link is not None:
-#             db_dimension.link = v_dimension.link
-#         if v_dimension.description is not None:
-#             db_dimension.description = v_dimension.description
-#         db.add(db_dimension)
-#         db.commit()
-#         db.refresh(db_dimension)
-#         return get_dimension_by_id(db=db, ID=dimensionID)
-#     return {"error": 404, "text": "La dimension n'a pas été trouvée"}
+def update_dimension(db: Session, user: schemas.Users, dimensionID: int, v_dimension: schemas.Dimension):
+    # Vérification de l'existence de la dimension
+    db_dimension = get_dimension_by_id(db, dimensionID)
+
+    # Vérifier de l'utilisateur actuel
+    if not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if db_dimension:
+        # Mise à jour des informations
+        if v_dimension.title is not None:
+            db_dimension.title = v_dimension.title
+        if v_dimension.link is not None:
+            db_dimension.link = v_dimension.link
+        if v_dimension.description is not None:
+            db_dimension.description = v_dimension.description
+        db.add(db_dimension)
+        db.commit()
+        db.refresh(db_dimension)
+        return get_dimension_by_id(db=db, ID=dimensionID)
+    return {"error": 404, "text": "La dimension n'a pas été trouvée"}
 
 # Cartographie Markers
-# def get_cartographies(db: Session, skip: int = 0, limit: int = 100):
-#     statement = select(models.Cartographie).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_cartographies(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-# def get_cartographie_by_id(db: Session, ID: int):
-#     statement = select(models.Cartographie).where(models.Cartographie.id == ID)
-#     results = db.exec(statement)
-#     return results.first()
+def get_cartographie_by_id(db: Session, ID: int):
+    statement = select(models.Cartographie).where(models.Cartographie.id == ID)
+    results = db.exec(statement)
+    return results.first()
 
-# def get_cartographies_by_dimension(db: Session, dimensionID: int, skip: int = 0, limit: int = 100):
-#     statement = select(models.Cartographie).where(models.Cartographie.dimension_id == dimensionID).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_cartographies_by_dimension(db: Session, dimensionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.dimension_id == dimensionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-# def get_cartographies_by_type(db: Session, type: str, skip: int = 0, limit: int = 100):
-#     statement = select(models.Cartographie).where(models.Cartographie.type == type).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_cartographies_by_type(db: Session, type: str, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.type == type).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-# def get_cartographies_by_type_and_dimension(db: Session, type: str, dimensionID: int, skip: int = 0, limit: int = 100):
-#     statement = select(models.Cartographie).where(models.Cartographie.type == type).where(models.Cartographie.dimension_id == dimensionID).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_cartographies_by_type_and_dimension(db: Session, type: str, dimensionID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.type == type).where(models.Cartographie.dimension_id == dimensionID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
-# def get_cartographies_type(db: Session):
-#     types = ["civilisation", "ville", "quartier"]
-#     return types
+def get_cartographies_type(db: Session):
+    types = ["civilisation", "ville", "quartier"]
+    return types
 
-# def get_cartographies_by_types(db: Session, type: str, id: int, skip: int = 0, limit: int = 100):
-#     statement = select(models.Cartographie).where(models.Cartographie.type == type).where(models.Cartographie.type_id == id).offset(skip).limit(limit)
-#     results = db.exec(statement)
-#     return results.all()
+def get_cartographies_by_types(db: Session, type: str, id: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Cartographie).where(models.Cartographie.type == type).where(models.Cartographie.type_id == id).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
 
 # def create_cartographie(db: Session, v_cartographie: schemas.CartographieCreate):
 #     db_cartographie = models.Cartographie(

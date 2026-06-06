@@ -144,11 +144,17 @@ class Religions(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
     description: str | None = Field(default=None)
-    founder: str | None = Field(default=None)
     date_founded: dt.date | None = Field(default=None)
 
     is_public: bool | None = Field(default=None)
     created_at: dt.datetime | None = Field(default=None)
+
+class ReligionMembers(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    religion_id: int | None = Field(default=None, foreign_key="religions.id")
+    role: str | None = Field(default=None)
+    joined_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 class VillesReligions(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)

@@ -9,10 +9,10 @@ from . import crud, schemas
 from .database import get_db
 
 # Créer un routeur pour les routes utilisateur
-router = APIRouter(prefix="/api/templates", tags=["Templates"])
+router = APIRouter(prefix="/api/commerces", tags=["Commerces"])
 
 # -----------------------------------------------
-#region Templates
+#region Commerces
 
 #endregion
 # -----------------------------------------------

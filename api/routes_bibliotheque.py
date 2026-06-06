@@ -12,8 +12,7 @@ from .database import get_db
 router = APIRouter(prefix="/api/bibliotheque")
 
 # -----------------------------------------------
-# Journaux
-# -----------------------------------------------
+#region Journaux
 @router.post("/journaux/create", tags=["Journaux"])
 def create_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], journal: schemas.Journal, db: Session = Depends(get_db)):
     return crud.create_journal(
@@ -72,10 +71,9 @@ def read_journal_contents(JournalID: int, skip: int = 0, limit: int = 10000, db:
         func = {'code': 200, 'content': content}
     return JSONResponse(content=jsonable_encoder(func))
 
-
+#endregion
 # -----------------------------------------------
-# Livres
-# -----------------------------------------------
+#region Livres
 @router.post("/livres/create", tags=["Livres"])
 def create_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], livre: schemas.Livre, db: Session = Depends(get_db)):
     return crud.create_livre(
@@ -116,3 +114,6 @@ def read_livre(livreID: int, db: Session = Depends(get_db)):
 def read_livres_by_user(userID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     livres = crud.get_livres_by_user(db=db, userID=userID, skip=skip, limit=limit)
     return JSONResponse(content=jsonable_encoder(livres))
+
+#endregion
+# -----------------------------------------------

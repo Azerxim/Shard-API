@@ -203,7 +203,6 @@ class Religions(BaseModel):
     id: int
     title: str
     description: str | None = None
-    founder: str | None = None
     date_founded: datetime.datetime | None = None
 
     is_public: bool | None = None
@@ -212,9 +211,18 @@ class Religions(BaseModel):
 class ReligionCreate(BaseModel):
     title: str
     description: str | None = None
-    founder: str | None = None
     date_founded: datetime.datetime | None = None
     is_public: bool | None = None
+
+class ReligionMember(BaseModel):
+    id: int
+    user_id: int
+    religion_id: int
+    role: str
+    joined_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
 
 class VillesReligions(BaseModel):
     id: int

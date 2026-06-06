@@ -2,10 +2,10 @@ _MAJOR = "2"
 _MINOR = "0"
 # On main and in a nightly release the patch should be one ahead of the last
 # released build.
-_PATCH = "2"
+_PATCH = "3"
 # This is mainly for nightly builds which have the suffix ".dev$DATE". See
 # https://semver.org/#is-v123-a-semantic-version for the semantics.
-_SUFFIX = ".2605.1"
+_SUFFIX = ".2606.1"
 
 __version__ = f'{_MAJOR}.{_MINOR}.{_PATCH}'
 __version_dev__ = f'{__version__}{_SUFFIX}'
