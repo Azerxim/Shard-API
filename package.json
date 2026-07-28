@@ -1,0 +1,17 @@
+{
+  "name": "shard-api",
+  "version": "2.0",
+  "private": true,
+  "description": "Scripts npm pour piloter l'API Python",
+  "scripts": {
+    "init": "python3 -m venv .venv && . .venv/bin/activate && python -m pip install --upgrade pip && python -m pip install --upgrade -r requirements.txt",
+    "dev": ". .venv/bin/activate && python -m uvicorn api.main:app --reload --host $(python -c \"import json; print(json.load(open('config.json'))['api']['development']['ip'])\") --port $(python -c \"import json; print(json.load(open('config.json'))['api']['development']['port'])\")",
+    "start": ". .venv/bin/activate && python -m uvicorn api.main:app --host $(python -c \"import json; print(json.load(open('config.json'))['api']['production']['ip'])\") --port $(python -c \"import json; print(json.load(open('config.json'))['api']['production']['port'])\")",
+    "pm2:start": "pm2 start npm --name shard-api -- run start",
+    "pm2:stop": "pm2 stop shard-api",
+    "pm2:restart": "pm2 restart shard-api",
+    "pm2:logs": "pm2 logs shard-api",
+    "pm2:delete": "pm2 delete shard-api",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

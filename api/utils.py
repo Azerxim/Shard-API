@@ -23,8 +23,9 @@ if file.exist(path):
 	CONFIG = file.json_read(path)
 	SECURITY = CONFIG['security']
 	DATABASE = CONFIG['database']
-	API_IP = CONFIG['api']['ip']
-	API_PORT = CONFIG['api']['port']
+	API_MODE = CONFIG['api']['mode']
+	API_IP = CONFIG['api'][API_MODE]['ip']
+	API_PORT = CONFIG['api'][API_MODE]['port']
 	OAUTH2 = CONFIG.get('oauth2', {})
 	CLIENT_ID = OAUTH2.get('client_id', '')
 	CLIENT_SECRET = OAUTH2.get('client_secret', '')

@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 
@@ -30,7 +31,9 @@ async def lifespan(app_: FastAPI):
     # Démarrage de l'application
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     {colors.BColors.PURPLE}{utils.CONFIG['api']['name']}{colors.BColors.END}")
-    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Version {colors.BColors.LIGHTBLUE}{utils.VERSION}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Version: {colors.BColors.LIGHTBLUE}{utils.VERSION}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Hostname: {colors.BColors.LIGHTBLUE}{utils.HOSTNAME}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     API Mode: {colors.BColors.LIGHTBLUE}{utils.API_MODE}{colors.BColors.END}")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     
     # Initialisation de la base de données
@@ -66,6 +69,15 @@ app = FastAPI(
     docs_url=None,
     redoc_url=None,
     lifespan=lifespan
+)
+
+# CORS preflight support: browsers can send OPTIONS before POST on cross-origin JSON requests.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 ################# Templates #################

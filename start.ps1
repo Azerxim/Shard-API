@@ -62,8 +62,6 @@ while ($true) {
             
             # Lire config.json
             $config = Get-Content "config.json" | ConvertFrom-Json
-            $host_ip = $config.api.ip
-            $host_port = $config.api.port
             
             # Demander le mode de développement
             Write-Host ""
@@ -77,9 +75,13 @@ while ($true) {
             if ($dev_mode -eq "2") {
                 $reload_flag = ""
                 $mode_text = "production"
+                $host_ip = $config.api.production.ip
+                $host_port = $config.api.production.port
             } else {
                 $reload_flag = "--reload"
-                $mode_text = "developer"
+                $mode_text = "development"
+                $host_ip = $config.api.development.ip
+                $host_port = $config.api.development.port
             }
             
             Write-Host ""
