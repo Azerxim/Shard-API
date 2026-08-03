@@ -106,6 +106,7 @@ class CivilisationMember(BaseModel):
 class Gouvernement(BaseModel):
     id: int
     civilisation_id: int
+    title: str
     type: str
     description: str | None = None
     devise: str | None = None
@@ -117,6 +118,7 @@ class Gouvernement(BaseModel):
 
 class GouvernementCreate(BaseModel):
     civilisation_id: int
+    title: str
     type: str
     description: str | None = None
     devise: str | None = None

@@ -88,6 +88,7 @@ class Gouvernements(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
     title: str
+    type: str | None = Field(default=None)
     description: str | None = Field(default=None)
     devise: str | None = Field(default=None)
     hymne: str | None = Field(default=None)
@@ -190,5 +191,10 @@ class Cartographie(SQLModel, table=True):
     coordinates: str | None = Field(default=None)  # Stored as JSON string
 
 ############### Templates ####################
+
+############### Tables importées des dumps mbu-s1 / mbu-tetrago ####################
+# Modèles bruts définis dans models_shards.py, exposés ici pour la découverte
+# automatique des tables (check_database_tables / create_db_and_tables).
+# from .mbu_models import *  # noqa: E402,F401,F403
 
 

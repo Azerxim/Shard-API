@@ -55,6 +55,18 @@ async def lifespan(app_: FastAPI):
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Sécurité initialisée. Résultat: {result.get('result') if result.get('result') is not None else result.get('erreur', 'Erreur inconnue')}")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
 
+    # Import des données historiques des dumps mbu-s1 / mbu-tetrago (tables s1/s2)
+    # from . import mbu_dump_import
+    # print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Import des données des dumps s1/s2...")
+    # dump_results = mbu_dump_import.import_all(db)
+    # for table_name, table_result in dump_results.items():
+    #     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:       {table_name}: {table_result}")
+    # print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Application démarrée avec succès.")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     API accessible via: {colors.BColors.LIGHTBLUE}http://{utils.API_IP}:{utils.API_PORT}{colors.BColors.END} (Press CTRL+C to quit)")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+
     # Fonctionnement de l'application
     yield
     

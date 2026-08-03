@@ -154,9 +154,12 @@ async def read_current_user(current_user: Annotated[schemas.Users, Depends(crud.
     return JSONResponse(content=jsonable_encoder(crud.build_user_read(user)))
 
 @router.post("/token")
-async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Session = Depends(get_db)):
+async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], expiry_hours: int = 24, db: Session = Depends(get_db)):
     """
     Authentification OAuth2
+    
+    Args:
+        expiry_hours: Durée de validité du token en heures (par défaut 24h)
     """
     # # Vérifier le client_id et client_secret
     # if utils.CLIENT_ID and utils.CLIENT_SECRET:
@@ -177,8 +180,13 @@ async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends
     if not hashed_password == user_dict.hashed_password:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
-    session = crud.create_active_session(db, user_dict.username)
+    session = crud.create_active_session(db, user_dict.username, expiry_hours=expiry_hours)
     return {"access_token": session.access_token, "token_type": "bearer"}
+
+@router.get("/verify")
+async def verify_token(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)]):
+    """Vérifier la validité du token actuel"""
+    return {"valid": True, "user": crud.build_user_read(current_user)}
 
 #endregion
 # -----------------------------------------------

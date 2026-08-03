@@ -42,7 +42,7 @@ def create_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
         user=current_user,
         v_civilisation=civilisation
     )
-    return JSONResponse(content=jsonable_encoder({'error': 200, 'civilisation': result[0], 'member': result[1]})) 
+    return JSONResponse(content=jsonable_encoder({'error': 200, 'civilisation': result[0], 'member': result[1], 'gouvernement': result[2]}))
 
 @router.delete("/delete/{CivilisationID}", tags=["Civilisations"])
 def delete_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, db: Session = Depends(get_db)): 
@@ -109,12 +109,12 @@ def update_civilisation_member(current_user: Annotated[schemas.Users, Depends(cr
 # -----------------------------------------------
 # region Gouvernements
 
-@router.get("/gouvernements/list", tags=["Gouvernements"])
+@router.get("/gouvernement/list", tags=["Gouvernements"])
 def read_gouvernements(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     result = crud.get_gouvernements(db=db, skip=skip, limit=limit)
     return JSONResponse(content=jsonable_encoder(result))
 
-@router.get("/gouvernements/id/{GouvernementID}", tags=["Gouvernements"])
+@router.get("/gouvernement/read/{GouvernementID}", tags=["Gouvernements"])
 def read_gouvernement(GouvernementID: int, db: Session = Depends(get_db)):
     gouvernement = crud.get_gouvernement_by_id(db=db, ID=GouvernementID)
     if gouvernement is None:
@@ -123,7 +123,7 @@ def read_gouvernement(GouvernementID: int, db: Session = Depends(get_db)):
         func = {'error': 200, 'gouvernement': gouvernement}
     return JSONResponse(content=jsonable_encoder(func))
 
-@router.post("/gouvernements/create", tags=["Gouvernements"])
+@router.post("/gouvernement/create", tags=["Gouvernements"])
 def create_gouvernement(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], gouvernement: schemas.GouvernementCreate, db: Session = Depends(get_db)):
     return crud.create_gouvernement(
         db=db,
@@ -131,21 +131,24 @@ def create_gouvernement(current_user: Annotated[schemas.Users, Depends(crud.secu
         v_gouvernement=gouvernement
     )
 
-@router.delete("/gouvernements/delete", tags=["Gouvernements"])
+@router.delete("/gouvernement/delete", tags=["Gouvernements"])
 def delete_gouvernement(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], GouvernementID: int, db: Session = Depends(get_db)):
     delete=crud.delete_gouvernement(db=db, user=current_user, v_gouvernementid=GouvernementID)
     if not delete:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression du gouvernement"}))
     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le gouvernement a été supprimé"}))
 
-@router.put("/gouvernements/update/{GouvernementID}", tags=["Gouvernements"])
-def update_gouvernement(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], GouvernementID: int, gouvernement: schemas.Gouvernement, db: Session = Depends(get_db)):
-    return crud.update_gouvernement(
+@router.put("/gouvernement/update/{GouvernementID}", tags=["Gouvernements"])
+def update_gouvernement(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], GouvernementID: int, gouvernement: schemas.GouvernementCreate, db: Session = Depends(get_db)):
+    update = crud.update_gouvernement(
         db=db,
         user=current_user,
         gouvernementID=GouvernementID,
         v_gouvernement=gouvernement
     )
+    if not update:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la mise à jour du gouvernement"}))
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le gouvernement a été mis à jour", 'gouvernement': update}))
 
 #endregion
 # -----------------------------------------------

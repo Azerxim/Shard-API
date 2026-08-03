@@ -483,6 +483,10 @@ def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
     db.add(db_livre)
     db.commit()
     db.refresh(db_livre)
+    db_livre.link = f"/bibliotheque/livre/{db_livre.id}"
+    db.add(db_livre)
+    db.commit()
+    db.refresh(db_livre)
     return db_livre
 
 def delete_livre(db: Session, user: schemas.Users, livreID: int):
@@ -611,7 +615,22 @@ def create_civilisation(db: Session, user: schemas.Users, v_civilisation: schema
     db.add(db_member)
     db.commit()
     db.refresh(db_member)
-    return get_civilisation_by_id(db=db, ID=db_civilisation.id), db_member
+
+    db_gouv = models.Gouvernements(
+        civilisation_id=db_civilisation.id,
+        title=f"Gouvernement de {v_civilisation.title}",
+        description=f"Gouvernement de la civilisation {v_civilisation.title}",
+        created_at=dt.datetime.today(),
+        type="Primitif",
+    )
+    db.add(db_gouv)
+    db.commit()
+    db.refresh(db_gouv)
+    db_civilisation.gouvernement_id = db_gouv.id
+    db.add(db_civilisation)
+    db.commit()
+
+    return get_civilisation_by_id(db=db, ID=db_civilisation.id), db_member, db_gouv
 
 def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
     # Vérification de l'existence de la civilisation
@@ -671,6 +690,8 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
             db_civilisation.date_founded = v_civilisation.date_founded
         if v_civilisation.is_public is not None:
             db_civilisation.is_public = v_civilisation.is_public
+        if v_civilisation.gouvernement_id is not None:
+            db_civilisation.gouvernement_id = v_civilisation.gouvernement_id
         db.add(db_civilisation)
         db.commit()
         db.refresh(db_civilisation)
@@ -746,6 +767,7 @@ def get_gouvernement_by_id(db: Session, ID: int):
 def create_gouvernement(db: Session, user: schemas.Users, v_gouvernement: schemas.GouvernementCreate):
     db_gouvernement = models.Gouvernements(
         civilisation_id = v_gouvernement.civilisation_id,
+        title = v_gouvernement.title,
         type = v_gouvernement.type,
         description = v_gouvernement.description,
         devise = v_gouvernement.devise,
@@ -776,7 +798,7 @@ def delete_gouvernement(db: Session, user: schemas.Users, v_gouvernementid: int)
         print(f"Erreur lors de la suppression du gouvernement {v_gouvernementid}: {e}")
         return {"fonction": "delete_gouvernement", "erreur": "Une erreur est survenue lors de la suppression du gouvernement", "details": str(e)}
 
-def update_gouvernement(db: Session, user: schemas.Users, gouvernementID: int, v_gouvernement: schemas.Gouvernement):
+def update_gouvernement(db: Session, user: schemas.Users, gouvernementID: int, v_gouvernement: schemas.GouvernementCreate):
     # Vérification de l'existence du gouvernement
     db_gouvernement = get_gouvernement_by_id(db, gouvernementID)
     db_civilisation = get_civilisation_by_id(db, db_gouvernement.civilisation_id) if db_gouvernement else None
