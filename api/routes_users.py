@@ -72,30 +72,6 @@ def read_user_by_id(user_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
     return crud.build_user_read(db_user)
 
-@router.get("/get/{user_id}")
-async def get_user_by_id_endpoint(user_id: int, db: Session = Depends(get_db)):
-    """Récupérer les informations d'un utilisateur spécifique par ID (admin uniquement)"""
-    try:
-        from sqlmodel import select
-        
-        # Récupérer l'utilisateur demandé
-        user = crud.get_user_by_id(db, user_id)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Vérifier qu'il y a au moins un admin
-        statement = select(models.Users)
-        all_users = db.exec(statement).all()
-        has_admin = any(u.is_admin and not u.is_disabled for u in all_users)
-        if not has_admin:
-            raise HTTPException(status_code=403, detail="Accès refusé")
-        
-        return JSONResponse(content=jsonable_encoder(crud.build_user_read(user)))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=403, detail="Accès refusé")
-
 @router.get("/list", response_model=List[schemas.UserRead])
 async def get_users_list(db: Session = Depends(get_db)):
     """Récupérer la liste de tous les utilisateurs (admin uniquement)"""
