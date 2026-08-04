@@ -69,11 +69,22 @@ class Livres(SQLModel, table=True):
     language: str | None = Field(default=None)
 
     link: str | None = Field(default=None)
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
     
     published_date: dt.date | None = Field(default=None)
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
     is_public: bool | None = Field(default=None)
+
+class LivresContenus(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    livre_id: int | None = Field(default=None, foreign_key="livres.id")
+    chapitre: str | None = Field(default=None)
+    sous_chapitre: str | None = Field(default=None)
+    ordre: int = Field(default=0)
+    indent: int | None = Field(default=None)
+    content: str | None = Field(default=None)
+    page_number: int | None = Field(default=None)
 
 ############### Civilisations ####################
 

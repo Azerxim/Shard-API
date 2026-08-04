@@ -115,5 +115,49 @@ def read_livres_by_user(userID: int, skip: int = 0, limit: int = 100, db: Sessio
     livres = crud.get_livres_by_user(db=db, userID=userID, skip=skip, limit=limit)
     return JSONResponse(content=jsonable_encoder(livres))
 
+@router.post("/livres/content/create", tags=["Livres"])
+def create_livre_contenu(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], contenu: schemas.LivreContenu, db: Session = Depends(get_db)):
+    create = crud.create_livre_contenu(
+        db=db,
+        user=current_user,
+        v_livre=contenu
+    )
+    if not create:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la création du contenu"}))
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le contenu a été créé", 'content': create}))
+
+@router.put("/livres/content/update/{contenuID}", tags=["Livres"])
+def update_livre_contenu(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], contenuID: int, contenu: schemas.LivreContenu, db: Session = Depends(get_db)):
+    update=crud.update_livre_contenu(db=db, user=current_user, contenuID=contenuID, v_livre=contenu)
+    if not update:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la mise à jour du contenu"}))
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le contenu a été mis à jour", 'content': update}))
+
+@router.delete("/livres/content/delete/{contenuID}", tags=["Livres"])
+def delete_livre_contenu(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], contenuID: int, db: Session = Depends(get_db)):
+    delete=crud.delete_livre_contenu(db=db, user=current_user, contenuID=contenuID)
+    if not delete:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la suppression du contenu"}))
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le contenu a été supprimé"}))
+
+@router.get("/livres/contents/read/{livreID}", tags=["Livres"])
+def read_livre_contenus(livreID: int, db: Session = Depends(get_db)):
+    livre = crud.get_livre(db=db, ID=livreID)
+    contenus = crud.get_livre_contenus(db=db, livreID=livreID)
+    if livre is None:
+        func = {'code': 404, 'livre': livre, 'contents': contenus}
+    else:
+        func = {'code': 200, 'livre': livre, 'contents': contenus}
+    return JSONResponse(content=jsonable_encoder(func))
+
+@router.get("/livres/content/read/{contenuID}", tags=["Livres"])
+def read_livre_contenu(contenuID: int, db: Session = Depends(get_db)):
+    contenu = crud.get_livre_contenu(db=db, ID=contenuID)
+    if contenu is None:
+        func = {'code': 404, 'content': contenu}
+    else:
+        func = {'code': 200, 'content': contenu}
+    return JSONResponse(content=jsonable_encoder(func))
+
 #endregion
 # -----------------------------------------------

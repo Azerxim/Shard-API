@@ -532,6 +532,8 @@ def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schema
             db_livre.language = v_livre.language
         if v_livre.link is not None:
             db_livre.link = v_livre.link
+        if v_livre.civilisation_id is not None:
+            db_livre.civilisation_id = v_livre.civilisation_id
         if v_livre.published_date is not None:
             db_livre.published_date = v_livre.published_date
         if v_livre.is_public is not None:
@@ -541,6 +543,83 @@ def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schema
         db.refresh(db_livre)
         return get_livre(db=db, ID=livreID)
     return {"error": 404, "text": "Le livre n'a pas été trouvé"}
+
+def get_livre_contenu(db: Session, ID: int):
+    statement = select(models.LivresContenus).where(models.LivresContenus.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_livre_contenus(db: Session, livreID: int):
+    statement = select(models.LivresContenus).where(models.LivresContenus.livre_id == livreID)
+    results = db.exec(statement)
+    return results.all()
+
+def create_livre_contenu(db: Session, user: schemas.Users, v_livre: schemas.LivreContenu):
+    last_ordre_livre = db.exec(
+        select(models.LivresContenus).where(models.LivresContenus.livre_id == v_livre.livre_id).order_by(models.LivresContenus.ordre.desc())
+    ).first()
+
+    db_livre_contenu = models.LivresContenus(
+        livre_id = v_livre.livre_id,
+        chapitre = v_livre.chapitre,
+        sous_chapitre = v_livre.sous_chapitre,
+        ordre= last_ordre_livre.ordre + 1 if last_ordre_livre else 0,
+        indent= v_livre.indent,
+        content = v_livre.content,
+        page_number = v_livre.page_number
+    )
+
+    db.add(db_livre_contenu)
+    db.commit()
+    db.refresh(db_livre_contenu)
+    return db_livre_contenu
+
+def delete_livre_contenu(db: Session, user: schemas.Users, contenuID: int):
+    try:
+        contenu = get_livre_contenu(db, contenuID)
+        livre = get_livre(db, contenu.livre_id) if contenu else None
+
+        # Vérifier de l'utilisateur actuel
+        if not livre or (user.id != livre.user_id and not user.is_admin and user.is_disabled):
+            raise HTTPException(status_code=403, detail="Accès refusé")
+        
+        db.delete(contenu)
+        db.commit()
+        return {"fonction": "delete_livre_contenu", "resultat": "Contenu supprimé"}
+    except Exception as e:
+        print(f"Erreur lors de la suppression du contenu {contenuID}: {e}")
+        return {"fonction": "delete_livre_contenu", "erreur": "Une erreur est survenue lors de la suppression du contenu", "details": str(e)}
+    
+def update_livre_contenu(db: Session, user: schemas.Users, contenuID: int, v_livre: schemas.LivreContenu):
+    # Vérification de l'existence du livre
+    db_contenu = get_livre_contenu(db, contenuID)
+    db_livre = get_livre(db, db_contenu.livre_id) if db_contenu else None
+
+    # Vérifier de l'utilisateur actuel
+    if not db_livre or (user.id != db_livre.user_id and not user.is_admin and user.is_disabled):
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if db_contenu:
+        # Mise à jour des informations
+        if v_livre.livre_id is not None:
+            db_contenu.livre_id = v_livre.livre_id
+        if v_livre.chapitre is not None:
+            db_contenu.chapitre = v_livre.chapitre
+        if v_livre.sous_chapitre is not None:
+            db_contenu.sous_chapitre = v_livre.sous_chapitre
+        if v_livre.ordre is not None:
+            db_contenu.ordre = v_livre.ordre
+        if v_livre.indent is not None:
+            db_contenu.indent = v_livre.indent
+        if v_livre.content is not None:
+            db_contenu.content = v_livre.content
+        if v_livre.page_number is not None:
+            db_contenu.page_number = v_livre.page_number
+        db.add(db_contenu)
+        db.commit()
+        db.refresh(db_contenu)
+        return get_livre_contenu(db=db, ID=contenuID)
+    return {"error": 404, "text": "Le contenu n'a pas été trouvé"}
 #endregion
 
 ################# Civilisations #####################

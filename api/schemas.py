@@ -84,12 +84,23 @@ class Livre(BaseModel):
     cover_url: str | None = None
     cover_icon: str | None = "fas fa-book"
     cover_color: str | None = "#4CAF50"
-    pages: int | None = 0
+    pages: int | None = None
     language: str | None = "Français"
     link: str | None = None
+    civilisation_id: int | None = None
     published_date: datetime.datetime | None = None
     created_at: datetime.datetime | None = None
     is_public: bool | None = None
+
+class LivreContenu(BaseModel):
+    id: int | None = None
+    livre_id: int
+    chapitre: str | None = None
+    sous_chapitre: str | None = None
+    ordre: int = 0
+    indent: int | None = None
+    content: str | None = None
+    page_number: int | None = None
     
 ############### Civilisations ####################
 
