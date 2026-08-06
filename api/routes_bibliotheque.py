@@ -115,6 +115,11 @@ def read_livres_by_user(userID: int, skip: int = 0, limit: int = 100, db: Sessio
     livres = crud.get_livres_by_user(db=db, userID=userID, skip=skip, limit=limit)
     return JSONResponse(content=jsonable_encoder(livres))
 
+@router.get("/livres/civilisation/{civilisationID}/list", tags=["Livres"])
+def read_livres_by_civilisation(civilisationID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    livres = crud.get_livres_by_civilisation(db=db, civilisationID=civilisationID, skip=skip, limit=limit)
+    return JSONResponse(content=jsonable_encoder(livres))
+
 @router.post("/livres/content/create", tags=["Livres"])
 def create_livre_contenu(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], contenu: schemas.LivreContenu, db: Session = Depends(get_db)):
     create = crud.create_livre_contenu(

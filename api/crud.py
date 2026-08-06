@@ -464,6 +464,11 @@ def get_livres_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100
     results = db.exec(statement)
     return results.all()
 
+def get_livres_by_civilisation(db: Session, civilisationID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Livres).where(models.Livres.civilisation_id == civilisationID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
 def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
     db_livre = models.Livres(
         user_id = user.id,
@@ -476,6 +481,7 @@ def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
         pages = v_livre.pages,
         language = v_livre.language,
         link = v_livre.link,
+        civilisation_id = v_livre.civilisation_id,
         published_date = v_livre.published_date,
         created_at = dt.datetime.today()
     )
@@ -798,7 +804,7 @@ def add_member_to_civilisation(db: Session, user: schemas.Users, civilisationID:
         db.add(db_member)
         db.commit()
         db.refresh(db_member)
-        return {"fonction": "add_member_to_civilisation", "resultat": "Membre ajouté"}
+        return {"fonction": "add_member_to_civilisation", "resultat": "Membre ajouté", "member": db_member}
     except Exception as e:
         print(f"Erreur lors de l'ajout du membre {new_member_id} à la civilisation {civilisationID}: {e}")
         return {"fonction": "add_member_to_civilisation", "erreur": "Une erreur est survenue lors de l'ajout du membre à la civilisation", "details": str(e)}
@@ -830,6 +836,38 @@ def remove_member_from_civilisation(db: Session, user: schemas.Users, civilisati
     except Exception as e:
         print(f"Erreur lors du retrait du membre {member_id} de la civilisation {civilisationID}: {e}")
         return {"fonction": "remove_member_from_civilisation", "erreur": "Une erreur est survenue lors du retrait du membre de la civilisation", "details": str(e)}
+    
+def update_member_of_civilisation(db: Session, user: schemas.Users, civilisationID: int, member_id: int, member: schemas.CivilisationMemberUpdate):
+    # Vérification de l'existence de la civilisation
+    db_civilisation = get_civilisation_by_id(db, civilisationID)
+    if not db_civilisation:
+        return {"fonction": "update_member_of_civilisation", "erreur": "La civilisation n'existe pas"}
+    db_members = get_members_of_civilisation(db, civilisationID)
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    
+    try:
+        db_member = db.exec(
+            select(models.CivilisationMembers).where(
+                models.CivilisationMembers.civilisation_id == civilisationID,
+                models.CivilisationMembers.user_id == member_id
+            )
+        ).first()
+
+        if db_member:
+            # Mise à jour des informations
+            if member.role is not None:
+                db_member.role = member.role
+            db.add(db_member)
+            db.commit()
+            db.refresh(db_member)
+            return {"fonction": "update_member_of_civilisation", "resultat": "Membre mis à jour", "member": db_member}
+        return {"fonction": "update_member_of_civilisation", "erreur": "Le membre n'est pas dans la civilisation"}
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour du membre {member_id} de la civilisation {civilisationID}: {e}")
+        return {"fonction": "update_member_of_civilisation", "erreur": "Une erreur est survenue lors de la mise à jour du membre de la civilisation", "details": str(e)}
 #endregion
 
 #region Gouvernements

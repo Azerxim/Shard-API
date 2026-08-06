@@ -114,6 +114,13 @@ class CivilisationMember(BaseModel):
     class Config:
         from_attributes = True
 
+class CivilisationMemberAdd(BaseModel):
+    user_id: int
+    role: str
+    
+class CivilisationMemberUpdate(BaseModel):
+    role: str
+
 class Gouvernement(BaseModel):
     id: int
     civilisation_id: int

@@ -77,13 +77,13 @@ def list_civilisation_members(CivilisationID: int, db: Session = Depends(get_db)
     return JSONResponse(content=jsonable_encoder(members_table))
 
 @router.post("/members/{CivilisationID}/add", tags=["Civilisations"])
-def add_civilisation_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, member_id: int, role: str, db: Session = Depends(get_db)):
+def add_civilisation_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, member: schemas.CivilisationMemberAdd, db: Session = Depends(get_db)):
     return crud.add_member_to_civilisation(
         db=db,
         user=current_user,
         civilisationID=CivilisationID,
-        new_member_id=member_id,
-        role=role
+        new_member_id=int(member.user_id),
+        role=member.role
     )
 
 @router.delete("/members/{CivilisationID}/remove", tags=["Civilisations"])
@@ -95,14 +95,14 @@ def remove_civilisation_member(current_user: Annotated[schemas.Users, Depends(cr
         member_id=member_id
     )
 
-@router.put("/members/{CivilisationID}/update", tags=["Civilisations"])
-def update_civilisation_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, member_id: int, role: str, db: Session = Depends(get_db)):
+@router.put("/members/{CivilisationID}/{MemberID}/update", tags=["Civilisations"])
+def update_civilisation_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, MemberID: int, member: schemas.CivilisationMemberUpdate, db: Session = Depends(get_db)):
     return crud.update_member_of_civilisation(
         db=db,
         user=current_user,
         civilisationID=CivilisationID,
-        member_id=member_id,
-        role=role
+        member_id=MemberID,
+        member=member
     )
 
 #endregion
