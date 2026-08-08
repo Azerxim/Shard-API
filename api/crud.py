@@ -966,7 +966,7 @@ def get_villes_by_dimension_id(db: Session, dimensionID: int, skip: int = 0, lim
     results = db.exec(statement)
     return results.all()
 
-def create_ville(db: Session, v_ville: schemas.VilleCreate):
+def create_ville(db: Session, user: schemas.Users, v_ville: schemas.VilleCreate):
     db_ville = models.Villes(
         civilisation_id = v_ville.civilisation_id,
         title = v_ville.title,
