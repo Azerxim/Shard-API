@@ -682,6 +682,7 @@ def create_civilisation(db: Session, user: schemas.Users, v_civilisation: schema
     db_civilisation = models.Civilisations(
         title = v_civilisation.title,
         description = v_civilisation.description,
+        date_founded = v_civilisation.date_founded,
         is_public = v_civilisation.is_public,
         created_at = dt.datetime.today()
     )

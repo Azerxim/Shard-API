@@ -43,7 +43,7 @@ def create_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get
         v_religion=religion
     )
 
-@router.delete("/delete", tags=["Religions"])
+@router.delete("/delete/{ReligionID}", tags=["Religions"])
 def delete_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], ReligionID: int, db: Session = Depends(get_db)):
     delete=crud.delete_religion(db=db, user=current_user, v_religionid=ReligionID)
     if not delete:
