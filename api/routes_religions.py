@@ -30,6 +30,15 @@ def read_religion(ReligionID: int, db: Session = Depends(get_db)):
         func = {'error': 200, 'religion': religion}
     return JSONResponse(content=jsonable_encoder(func))
 
+@router.get("/ville/{VilleID}/read/{ReligionID}", tags=["Religions"])
+def read_ville_religion(VilleID: int, ReligionID: int, db: Session = Depends(get_db)):
+    ville_religion = crud.get_ville_religion_by_id(db=db, villeID=VilleID, religionID=ReligionID)
+    if ville_religion is None:
+        func = {'error': 404, 'ville_religion': ville_religion}
+    else:
+        func = {'error': 200, 'ville_religion': ville_religion}
+    return JSONResponse(content=jsonable_encoder(func))
+
 @router.get("/ville/{VilleID}", tags=["Religions"])
 def read_religions_by_ville(VilleID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     result = crud.get_religions_by_ville_id(db=db, villeID=VilleID, skip=skip, limit=limit)
@@ -58,6 +67,33 @@ def update_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get
         religionID=ReligionID,
         v_religion=religion
     )
+
+@router.post("/ville/{VilleID}/add", tags=["Religions"])
+def add_religion_to_ville(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], VilleID: int, body: schemas.VillesReligionsUpdate, db: Session = Depends(get_db)):
+    return crud.add_religion_to_ville(
+        db=db,
+        user=current_user,
+        villeID=VilleID,
+        v_religionid=body.ReligionID,
+        influence=body.influence
+    )
+
+@router.put("/ville/{VilleID}/update/influence", tags=["Religions"])
+def update_influence_of_religion_in_ville(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], VilleID: int, body: schemas.VillesReligionsUpdate, db: Session = Depends(get_db)):
+    return crud.update_influence_of_religion_in_ville(
+        db=db,
+        user=current_user,
+        villeID=VilleID,
+        v_religionid=body.ReligionID,
+        influence=body.influence
+    )
+
+@router.delete("/ville/{VilleID}/delete/{religionID}", tags=["Religions"])
+def delete_religion_from_ville(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], VilleID: int, religionID: int, db: Session = Depends(get_db)):
+    delete = crud.delete_religion_from_ville(db=db, user=current_user, villeID=VilleID, v_religionid=religionID)
+    if not delete:
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression de la religion de la ville"}))
+    return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"La religion a été supprimée de la ville"}))
 
 #endregion
 # -----------------------------------------------

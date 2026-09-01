@@ -255,6 +255,10 @@ class VillesReligionsCreate(BaseModel):
     religion_id: int
     influence: float | None = 0.0
 
+class VillesReligionsUpdate(BaseModel):
+    ReligionID: int
+    influence: float | None = 0.0
+
 class QuartiersReligions(BaseModel):
     id: int
     quartier_id: int

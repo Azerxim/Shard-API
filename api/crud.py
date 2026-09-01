@@ -662,6 +662,24 @@ def get_all_of_civilisation_by_id(db: Session, ID: int):
     gouvernement = get_gouvernement_by_id(db, civ.gouvernement_id) if civ.gouvernement_id else None
     members = get_members_of_civilisation(db=db, civilisationID=civ.id)
     members_table = []
+    villes_table = []
+    for ville in villes:
+        villeReligions = get_religions_by_ville_id(db=db, villeID=ville.id)
+        villes_table.append({
+            "id": ville.id,
+            "title": ville.title,
+            "description": ville.description,
+            "population": ville.population,
+            "founded_date": ville.founded_date,
+            "dimension_id": ville.dimension_id,
+            "x": ville.x,
+            "z": ville.z,
+            "is_public": ville.is_public,
+            "is_capital": ville.is_capital,
+            "created_at": ville.created_at,
+            "civilisation_id": ville.civilisation_id,
+            "religions": villeReligions if villeReligions else []
+        })
     for member in members:
         user = get_user_by_id(db=db, user_id=member.user_id)
         members_table.append({
@@ -674,7 +692,7 @@ def get_all_of_civilisation_by_id(db: Session, ID: int):
         'civilisation': civ,
         'members': members_table if members_table else [],
         'gouvernement': gouvernement if gouvernement else None,
-        'villes': villes if villes else [],
+        'villes': villes_table if villes_table else [],
     }
     return civ_all
 
@@ -1159,25 +1177,42 @@ def get_religion_by_id(db: Session, ID: int):
     results = db.exec(statement)
     return results.first()
 
+def get_ville_religion_by_id(db: Session, villeID: int, religionID: int):
+    statement = select(models.VillesReligions).where(models.VillesReligions.ville_id == villeID, models.VillesReligions.religion_id == religionID)
+    results = db.exec(statement)
+    return results.first()
+
 def get_religions_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: int = 100):
     statement = select(models.VillesReligions, models.Religions).join(models.Religions, models.VillesReligions.religion_id == models.Religions.id).where(models.VillesReligions.ville_id == villeID).offset(skip).limit(limit)
     results = db.exec(statement)
-    return results.all()
+    resultlist = list()
+    for ville_religion, religion in results.all():
+        resultlist.append({
+            "id": religion.id,
+            "title": religion.title,
+            # "icon": religion.icon,
+            "description": religion.description,
+            "date_founded": religion.date_founded,
+            "created_at": religion.created_at,
+            "is_public": religion.is_public,
+            "influence": ville_religion.influence
+        })
+    return resultlist
 
 def get_villes_by_religion_id(db: Session, religionID: int, skip: int = 0, limit: int = 100):
     statement = select(models.VillesReligions, models.Villes).join(models.Villes, models.VillesReligions.ville_id == models.Villes.id).where(models.VillesReligions.religion_id == religionID).offset(skip).limit(limit)
     results = db.exec(statement)
-    return results.all()
+    return [{"villes_religions": ville_religion, "ville": ville} for ville_religion, ville in results.all()]
 
 def get_religions_by_quartier_id(db: Session, quartierID: int, skip: int = 0, limit: int = 100):
     statement = select(models.QuartiersReligions, models.Religions).join(models.Religions, models.QuartiersReligions.religion_id == models.Religions.id).where(models.QuartiersReligions.quartier_id == quartierID).offset(skip).limit(limit)
     results = db.exec(statement)
-    return results.all()
+    return [{"quartiers_religions": quartier_religion, "religion": religion} for quartier_religion, religion in results.all()]
 
 def get_quartiers_by_religion_id(db: Session, religionID: int, skip: int = 0, limit: int = 100):
     statement = select(models.QuartiersReligions, models.Quartiers).join(models.Quartiers, models.QuartiersReligions.quartier_id == models.Quartiers.id).where(models.QuartiersReligions.religion_id == religionID).offset(skip).limit(limit)
     results = db.exec(statement)
-    return results.all()
+    return [{"quartiers_religions": quartier_religion, "quartier": quartier} for quartier_religion, quartier in results.all()]
 
 def get_all_of_religion_by_id(db: Session, ID: int):
     statement = select(models.Religions).where(models.Religions.id == ID)
@@ -1233,9 +1268,9 @@ def delete_religion(db: Session, user: schemas.Users, v_religionid: int):
     
     try:
         for villereligion in db_villes_religions:
-            db.delete(villereligion)
+            db.delete(villereligion["villes_religions"])
         for quartierreligion in db_quartiers_religions:
-            db.delete(quartierreligion)
+            db.delete(quartierreligion["quartiers_religions"])
         db.delete(db_religion)
         db.commit()
         return {"fonction": "delete_religion", "resultat": "Religion supprimée"}
@@ -1269,6 +1304,120 @@ def update_religion(db: Session, user: schemas.Users, religionID: int, v_religio
         db.refresh(db_religion)
         return get_religion_by_id(db=db, ID=religionID)
     return {"error": 404, "text": "La religion n'a pas été trouvée"}
+
+def add_religion_to_ville(db: Session, user: schemas.Users, villeID: int, v_religionid: int, influence: float): 
+    db_ville = get_ville_by_id(db, villeID)
+    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+    db_religion = get_religion_by_id(db, v_religionid)
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if not db_ville:
+        return {"error": 404, "text": "La ville n'a pas été trouvée"}
+    if not db_religion:
+        return {"error": 404, "text": "La religion n'a pas été trouvée"}
+    else:
+        religion = {
+            "id": db_religion.id,
+            "title": db_religion.title,
+            "description": db_religion.description,
+            "created_at": db_religion.created_at,
+            "date_founded": db_religion.date_founded,
+            "is_public": db_religion.is_public,
+            "influence": influence
+        }
+
+    try:
+        db_ville_religion = models.VillesReligions(
+            ville_id=villeID,
+            religion_id=v_religionid,
+            influence=influence
+        )
+        db.add(db_ville_religion)
+        db.commit()
+        db.refresh(db_ville_religion)
+        return {"fonction": "add_religion_to_ville", "resultat": "Religion ajoutée à la ville", "religion": religion}
+    except Exception as e:
+        print(f"Erreur lors de l'ajout de la religion {v_religionid} à la ville {villeID}: {e}")
+        return {"fonction": "add_religion_to_ville", "erreur": "Une erreur est survenue lors de l'ajout de la religion à la ville", "details": str(e)}
+
+def update_influence_of_religion_in_ville(db: Session, user: schemas.Users, villeID: int, v_religionid: int, influence: float):
+    db_ville = get_ville_by_id(db, villeID)
+    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+    db_religion = get_religion_by_id(db, v_religionid)
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if not db_ville:
+        return {"error": 404, "text": "La ville n'a pas été trouvée"}
+    if not db_religion:
+        return {"error": 404, "text": "La religion n'a pas été trouvée"}
+    else:
+        religion = {
+            "id": db_religion.id,
+            "title": db_religion.title,
+            "description": db_religion.description,
+            "created_at": db_religion.created_at,
+            "date_founded": db_religion.date_founded,
+            "is_public": db_religion.is_public,
+            "influence": None
+        }
+
+    try:
+        db_ville_religion = db.exec(
+            select(models.VillesReligions).where(
+                models.VillesReligions.ville_id == villeID,
+                models.VillesReligions.religion_id == v_religionid
+            )
+        ).first()
+        if not db_ville_religion:
+            return {"error": 404, "text": "La religion n'est pas associée à la ville"}
+        db_ville_religion.influence = influence
+        db.add(db_ville_religion)
+        db.commit()
+        db.refresh(db_ville_religion)
+        religion["influence"] = db_ville_religion.influence
+        return {"fonction": "update_influence_of_religion_in_ville", "resultat": "Influence mise à jour", "religion": religion}
+    except Exception as e:
+        print(f"Erreur lors de la mise à jour de l'influence de la religion {v_religionid} dans la ville {villeID}: {e}")
+        return {"fonction": "update_influence_of_religion_in_ville", "erreur": "Une erreur est survenue lors de la mise à jour de l'influence", "details": str(e)}
+
+def delete_religion_from_ville(db: Session, user: schemas.Users, villeID: int, v_religionid: int):
+    db_ville = get_ville_by_id(db, villeID)
+    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
+    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
+    db_religion = get_religion_by_id(db, v_religionid)
+
+    # Vérifier de l'utilisateur actuel
+    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    if not db_ville:
+        return {"error": 404, "text": "La ville n'a pas été trouvée"}
+    if not db_religion:
+        return {"error": 404, "text": "La religion n'a pas été trouvée"}
+
+    try:
+        db_ville_religion = db.exec(
+            select(models.VillesReligions).where(
+                models.VillesReligions.ville_id == villeID,
+                models.VillesReligions.religion_id == v_religionid
+            )
+        ).first()
+        if not db_ville_religion:
+            return {"fonction": "delete_religion_from_ville", "erreur": "La relation ville-religion n'existe pas"}
+        db.delete(db_ville_religion)
+        db.commit()
+        return {"fonction": "delete_religion_from_ville", "resultat": "Relation supprimée"}
+    except Exception as e:
+        print(f"Erreur lors de la suppression de la religion {v_religionid} de la ville {villeID}: {e}")
+        return {"fonction": "delete_religion_from_ville", "erreur": "Une erreur est survenue lors de la suppression de la relation ville-religion", "details": str(e)}
 #endregion
 
 #region Cartographie
