@@ -1293,8 +1293,6 @@ def update_religion(db: Session, user: schemas.Users, religionID: int, v_religio
             db_religion.title = v_religion.title
         if v_religion.description is not None:
             db_religion.description = v_religion.description
-        if v_religion.founder is not None:
-            db_religion.founder = v_religion.founder
         if v_religion.date_founded is not None:
             db_religion.date_founded = v_religion.date_founded
         if v_religion.is_public is not None:
