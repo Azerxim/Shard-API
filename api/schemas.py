@@ -148,9 +148,12 @@ class Civilisation(BaseModel):
     description: str | None = None
     date_founded: datetime.datetime | None = None
     gouvernement_id: int | None = None
-
+    
     is_public: bool | None = None
     created_at: datetime.datetime | None = None
+
+    is_civilisation_dirigeante: bool | None = True
+    dirigeante_civilisation_id: int | None = 0
 
     class Config:
         from_attributes = True
@@ -161,6 +164,8 @@ class CivilisationCreate(BaseModel):
     date_founded: datetime.datetime | None = None
     gouvernement_id: int | None = None
     is_public: bool | None = None
+    is_civilisation_dirigeante: bool | None = True
+    dirigeante_civilisation_id: int | None = 0
 
 class Ville(BaseModel):
     id: int

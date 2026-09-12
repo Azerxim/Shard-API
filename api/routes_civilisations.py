@@ -35,6 +35,11 @@ def read_civilisation(CivilisationID: int, db: Session = Depends(get_db)):
             func = {'error': 200, 'civilisation': infos['civilisation'], 'members': jsonable_encoder(infos['members']) if infos['members'] else [], 'gouvernement': jsonable_encoder(infos['gouvernement']) if infos['gouvernement'] else None, 'villes': jsonable_encoder(infos['villes']) if infos['villes'] else []}
     return JSONResponse(content=jsonable_encoder(func))
 
+@router.get("/get/{CivilisationID}/dirigees", tags=["Civilisations"])
+def get_civilisation_dirigees(CivilisationID: int, db: Session = Depends(get_db)):
+    dirigees = crud.get_dirigees_of_civilisation(db=db, civilisationID=CivilisationID)
+    return JSONResponse(content=jsonable_encoder(dirigees))
+
 @router.post("/create", tags=["Civilisations"])
 def create_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], civilisation: schemas.CivilisationCreate, db: Session = Depends(get_db)):
     result = crud.create_civilisation(

@@ -115,6 +115,9 @@ class Civilisations(SQLModel, table=True):
     is_public: bool | None = Field(default=None)
     created_at: dt.datetime | None = Field(default=None)
 
+    is_civilisation_dirigeante: bool | None = Field(default=True)
+    dirigeante_civilisation_id: int | None = Field(default=0)
+
 class Villes(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str

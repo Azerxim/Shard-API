@@ -651,6 +651,11 @@ def get_civilisation_by_title(db: Session, title: str):
     results = db.exec(statement)
     return results.first()
 
+def get_dirigees_of_civilisation(db: Session, civilisationID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Civilisations).where(models.Civilisations.dirigeante_civilisation_id == civilisationID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
 def get_all_of_civilisation_by_id(db: Session, ID: int):
     statement = select(models.Civilisations).where(models.Civilisations.id == ID)
     results = db.exec(statement)
@@ -702,6 +707,8 @@ def create_civilisation(db: Session, user: schemas.Users, v_civilisation: schema
         description = v_civilisation.description,
         date_founded = v_civilisation.date_founded,
         is_public = v_civilisation.is_public,
+        is_civilisation_dirigeante = v_civilisation.is_civilisation_dirigeante,
+        dirigeante_civilisation_id = v_civilisation.dirigeante_civilisation_id,
         created_at = dt.datetime.today()
     )
     
@@ -780,6 +787,8 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
     db_civilisation = get_civilisation_by_id(db, civilisationID)
     db_members = get_members_of_civilisation(db, civilisationID)
 
+    # print(f"Updating civilisation {civilisationID} with values: {v_civilisation}")
+
     # Vérifier de l'utilisateur actuel
     if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
@@ -796,6 +805,12 @@ def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v
             db_civilisation.is_public = v_civilisation.is_public
         if v_civilisation.gouvernement_id is not None:
             db_civilisation.gouvernement_id = v_civilisation.gouvernement_id
+        if v_civilisation.is_civilisation_dirigeante is not None:
+            db_civilisation.is_civilisation_dirigeante = v_civilisation.is_civilisation_dirigeante
+            if v_civilisation.is_civilisation_dirigeante:
+                db_civilisation.dirigeante_civilisation_id = 0
+        if v_civilisation.dirigeante_civilisation_id is not None:
+            db_civilisation.dirigeante_civilisation_id = v_civilisation.dirigeante_civilisation_id
         db.add(db_civilisation)
         db.commit()
         db.refresh(db_civilisation)
