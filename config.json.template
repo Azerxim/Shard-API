@@ -24,7 +24,12 @@
 	},
 	"oauth2": {
 		"client_id": "your_client_id_here",
-		"client_secret": "your_client_secret_here"
+		"client_secret": "your_client_secret_here",
+		"discord": {
+			"client_id": "your_discord_application_id",
+			"client_secret": "your_discord_client_secret",
+			"redirect_uri": "https://tetrago.fr/auth/discord/callback"
+		}
 	},
 	"platforms": {
 		"local": {

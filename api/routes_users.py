@@ -6,7 +6,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.encoders import jsonable_encoder
 from sqlmodel import Session
 
-from . import crud, schemas, models
+from . import crud, schemas, models, oauth
 from .database import get_db
 
 # Créer un routeur pour les routes utilisateur
@@ -101,6 +101,36 @@ async def get_users_list(db: Session = Depends(get_db)):
 #endregion
 # -----------------------------------------------
 #region Authentification
+#region Comptes externes (voir oauth.py)
+@router.get("/oauth/providers")
+def read_oauth_providers():
+    # [{ provider, label, enabled }]
+    return JSONResponse(content=jsonable_encoder(oauth.providers_status()))
+
+@router.get("/oauth/{provider}/login")
+def start_oauth_login(provider: str, db: Session = Depends(get_db)):
+    # { url } : adresse d'autorisation du fournisseur, pour se connecter avec un compte déjà lié
+    return JSONResponse(content=jsonable_encoder(oauth.start_authorization(db, provider, "login")))
+
+@router.get("/oauth/{provider}/link")
+def start_oauth_link(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], provider: str, db: Session = Depends(get_db)):
+    # { url } : adresse d'autorisation du fournisseur, pour lier un compte à l'utilisateur connecté
+    return JSONResponse(content=jsonable_encoder(oauth.start_authorization(db, provider, "link", current_user)))
+
+@router.get("/oauth/{provider}/callback")
+def complete_oauth(provider: str, code: str, state: str, db: Session = Depends(get_db)):
+    # Connexion : { mode: "login", access_token, user } ; liaison : { mode: "link", platform }
+    return JSONResponse(content=jsonable_encoder(oauth.complete_authorization(db, provider, code, state)))
+
+@router.get("/platforms")
+def read_my_platforms(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder(oauth.list_platforms(db, current_user)))
+
+@router.delete("/platforms/{provider}")
+def unlink_my_platform(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], provider: str, db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder(oauth.unlink_platform(db, current_user, provider)))
+#endregion
+
 @router.post("/login")
 def login_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     username = "" if user.username is None else user.username

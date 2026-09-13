@@ -21,12 +21,25 @@ class Users(SQLModel, table=True):
     platforms: list["UserPlatforms"] = Relationship(back_populates="user")
 
 class UserPlatforms(SQLModel, table=True):
+    # Compte externe lié (Discord, Microsoft…) : un par plateforme et par utilisateur, un utilisateur par compte externe
     id: int | None = Field(default=None, primary_key=True)
     user_id: int | None = Field(default=None, foreign_key="users.id")
     platform: str
     uid: str
+    username: str | None = Field(default=None)
+    avatar_url: str | None = Field(default=None)
+    linked_at: dt.datetime | None = Field(default=None)
 
     user: Users = Relationship(back_populates="platforms")
+
+class OAuthStates(SQLModel, table=True):
+    # Jeton "state" d'une autorisation OAuth en cours : usage unique, courte durée
+    id: int | None = Field(default=None, primary_key=True)
+    state: str = Field(index=True, unique=True)
+    provider: str
+    mode: str  # "login" ou "link"
+    user_id: int | None = Field(default=None, foreign_key="users.id")  # utilisateur qui lie son compte
+    expires_at: dt.datetime
 
 class ActiveSession(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
