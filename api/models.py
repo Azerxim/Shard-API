@@ -13,6 +13,8 @@ class Users(SQLModel, table=True):
     arrival: dt.datetime | None = Field(default=None)
     is_disabled: bool = Field(default=False)
     is_admin: bool = Field(default=False)
+    # Modérateur RP : valide, refuse et clôt les guerres (les administrateurs le peuvent aussi)
+    is_moderateur: bool | None = Field(default=False)
     is_visible: bool = Field(default=True)
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
@@ -224,6 +226,70 @@ class QuartiersReligions(SQLModel, table=True):
     quartier_id: int | None = Field(default=None, foreign_key="quartiers.id")
     religion_id: int | None = Field(default=None, foreign_key="religions.id")
     influence: float | None = Field(default=None)
+
+############### Alliances ####################
+
+class Alliances(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+    type: str = Field(default="Militaire")  # "Militaire" ou "Diplomatique"
+    color: str | None = Field(default=None)
+    icon: str | None = Field(default=None)
+    flag_url: str | None = Field(default=None)
+    date_founded: dt.date | None = Field(default=None)
+    is_public: bool | None = Field(default=True)
+    created_at: dt.datetime | None = Field(default=None)
+
+class AllianceMembres(SQLModel, table=True):
+    # Les membres d'une alliance sont des civilisations : "Chef de file" (un seul), "Membre" ou "Observateur"
+    id: int | None = Field(default=None, primary_key=True)
+    alliance_id: int | None = Field(default=None, foreign_key="alliances.id")
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
+    role: str = Field(default="Membre")
+    joined_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class AllianceInvitations(SQLModel, table=True):
+    # direction "invitation" : l'alliance invite une civilisation ; "demande" : la civilisation demande à entrer
+    id: int | None = Field(default=None, primary_key=True)
+    alliance_id: int | None = Field(default=None, foreign_key="alliances.id")
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
+    direction: str = Field(default="invitation")
+    status: str = Field(default="en_attente")  # en_attente, acceptee, refusee, annulee
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    answered_at: dt.datetime | None = Field(default=None)
+
+############### Guerres ####################
+
+class Guerres(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    type: str = Field(default="Militaire")  # "Militaire" (entre civilisations) ou "Religion" (entre religions)
+    casus_belli: str | None = Field(default=None)
+    description: str | None = Field(default=None)
+    status: str = Field(default="en_attente")  # en_attente, en_cours, terminee, refusee
+    issue: str | None = Field(default=None)
+    moderation_note: str | None = Field(default=None)
+    date_debut: dt.date | None = Field(default=None)  # Dates RP
+    date_fin: dt.date | None = Field(default=None)
+    declared_by: int | None = Field(default=None, foreign_key="users.id")
+    declared_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    moderator_id: int | None = Field(default=None, foreign_key="users.id")
+    validated_at: dt.datetime | None = Field(default=None)
+    ended_at: dt.datetime | None = Field(default=None)
+
+class GuerreBelligerants(SQLModel, table=True):
+    # Une civilisation ou une religion dans un camp ; "appele" tant qu'elle n'a pas accepté l'appel aux armes
+    id: int | None = Field(default=None, primary_key=True)
+    guerre_id: int | None = Field(default=None, foreign_key="guerres.id")
+    camp: str = Field(default="attaquant")  # attaquant ou defenseur
+    entity_type: str = Field(default="civilisation")  # civilisation ou religion
+    entity_id: int
+    is_leader: bool | None = Field(default=False)
+    status: str = Field(default="engage")  # engage ou appele
+    alliance_id: int | None = Field(default=None, foreign_key="alliances.id")
+    joined_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 ############### Cartographie ####################
 

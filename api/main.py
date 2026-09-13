@@ -23,6 +23,8 @@ from .routes_civilisations import router as civilisations_router
 from .routes_cartographie import router as cartographie_router
 from .routes_religions import router as religions_router
 from .routes_commerces import router as commerces_router
+from .routes_alliances import router as alliances_router
+from .routes_guerres import router as guerres_router
 
 
 ################# App Initialization #################
@@ -151,6 +153,10 @@ app.include_router(civilisations_router)
 app.include_router(religions_router)
 
 app.include_router(commerces_router)
+
+app.include_router(alliances_router)
+
+app.include_router(guerres_router)
 
 app.include_router(cartographie_router)
 

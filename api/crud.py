@@ -199,6 +199,7 @@ def build_user_read(user: models.Users):
         arrival=user.arrival,
         is_disabled=user.is_disabled,
         is_admin=user.is_admin,
+        is_moderateur=user.is_moderateur,
         is_visible=user.is_visible,
         created_at=user.created_at
     )
@@ -236,6 +237,11 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate):
         user.is_visible = user_update.is_visible
     if user_update.image_url is not None:
         user.image_url = user_update.image_url
+    # Rôles : la route n'accepte ces champs que d'un administrateur
+    if user_update.is_admin is not None:
+        user.is_admin = user_update.is_admin
+    if user_update.is_moderateur is not None:
+        user.is_moderateur = user_update.is_moderateur
     db.add(user)
     db.commit()
     db.refresh(user)

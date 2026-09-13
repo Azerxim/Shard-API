@@ -39,6 +39,10 @@ async def update_current_user(current_user: Annotated[schemas.Users, Depends(cru
     if current_user.id != user_id and not current_user.is_admin and not current_user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
 
+    # Seul un administrateur attribue les rôles administrateur et modérateur RP
+    if not current_user.is_admin and (user_update.is_admin is not None or user_update.is_moderateur is not None):
+        raise HTTPException(status_code=403, detail="Seul un administrateur peut modifier les rôles")
+
     return crud.update_user(db=db, user_id=user_id, user_update=user_update)
 
 @router.delete("/delete/{user_id}", tags=["Users"])

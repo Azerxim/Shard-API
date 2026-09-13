@@ -21,6 +21,7 @@ class Users(BaseModel):
     arrival: datetime.datetime | None = None
     is_disabled: bool | None = None
     is_admin: bool | None = None
+    is_moderateur: bool | None = None
     is_visible: bool | None = None
     created_at: datetime.datetime | None = None
 
@@ -38,6 +39,9 @@ class UserUpdate(BaseModel):
     image_url: Optional[str] = None
     is_disabled: Optional[bool] = None
     is_visible: Optional[bool] = None
+    # Rôles : modifiables uniquement par un administrateur (vérifié par la route)
+    is_admin: Optional[bool] = None
+    is_moderateur: Optional[bool] = None
 
 class UserRead(BaseModel):
     id: int
@@ -48,6 +52,7 @@ class UserRead(BaseModel):
     arrival: datetime.datetime | None = None
     is_disabled: bool | None = None
     is_admin: bool | None = None
+    is_moderateur: bool | None = None
     is_visible: bool | None = None
     created_at: datetime.datetime | None = None
 
@@ -426,6 +431,72 @@ class QuartiersReligionsCreate(BaseModel):
     quartier_id: int
     religion_id: int
     influence: float | None = 0.0
+
+############### Alliances ####################
+
+class AllianceCreate(EmptyStringAsNone):
+    title: str
+    description: str | None = None
+    type: str | None = "Militaire"          # "Militaire" ou "Diplomatique"
+    color: str | None = None
+    icon: str | None = None
+    flag_url: str | None = None
+    date_founded: datetime.date | None = None
+    is_public: bool | None = True
+    civilisation_id: int                    # Civilisation fondatrice, chef de file
+
+class AllianceUpdate(EmptyStringAsNone):
+    title: str | None = None
+    description: str | None = None
+    type: str | None = None
+    color: str | None = None
+    icon: str | None = None
+    flag_url: str | None = None
+    date_founded: datetime.date | None = None
+    is_public: bool | None = None
+
+class AllianceCivilisation(BaseModel):
+    civilisation_id: int
+
+class AllianceMembreUpdate(BaseModel):
+    role: str                               # "Membre" ou "Observateur" (le chef de file change par transfert)
+
+class ReponseInvitation(BaseModel):
+    accepter: bool
+
+############### Guerres ####################
+
+class GuerreDeclaration(EmptyStringAsNone):
+    title: str
+    type: str | None = "Militaire"          # "Militaire" (civilisations) ou "Religion" (religions)
+    casus_belli: str | None = None
+    description: str | None = None
+    attaquant_id: int
+    defenseur_id: int
+
+class GuerreUpdate(EmptyStringAsNone):
+    title: str | None = None
+    casus_belli: str | None = None
+    description: str | None = None
+
+class GuerreValidation(EmptyStringAsNone):
+    date_debut: datetime.date | None = None
+    note: str | None = None
+
+class GuerreRefus(EmptyStringAsNone):
+    note: str | None = None
+
+class GuerreFin(EmptyStringAsNone):
+    issue: str
+    date_fin: datetime.date | None = None
+
+class GuerreAppel(EmptyStringAsNone):
+    camp: str                               # "attaquant" ou "defenseur"
+    civilisation_id: int | None = None
+    alliance_id: int | None = None          # Appelle toutes les civilisations de l'alliance
+
+class ReponseAppel(BaseModel):
+    accepter: bool
 
 ############### Cartographie ####################
 
