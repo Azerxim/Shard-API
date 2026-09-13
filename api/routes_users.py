@@ -19,11 +19,11 @@ def create_user(user: schemas.UserLogin, db: Session = Depends(get_db)):
     """Créer un nouvel utilisateur"""
     db_user = crud.get_user_by_username(db, username=user.username)
     if db_user:
-        raise HTTPException(status_code=400, detail="Le nom d'utilisateur ou l'email est incorrect")
-    
+        raise HTTPException(status_code=400, detail="Ce nom d'utilisateur est déjà pris, choisissez-en un autre")
+
     db_user = crud.get_user_by_email(db, email=user.email)
     if db_user:
-        raise HTTPException(status_code=400, detail="Le nom d'utilisateur ou l'email est incorrect")
+        raise HTTPException(status_code=400, detail="Un compte existe déjà avec cette adresse email : connectez-vous")
     return crud.create_user(db=db, user=user)
 
 @router.put("/update/{user_id}", response_model=schemas.UserRead)

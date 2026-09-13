@@ -206,7 +206,7 @@ def build_user_read(user: models.Users):
 def create_user(db: Session, user):
     db_user = models.Users(
         username=user.username,
-        full_name=user.username,
+        full_name=(user.full_name or "").strip() or user.username,
         email=user.email,
         hashed_password=hash_password(user.password),
         is_admin=False,
@@ -1447,7 +1447,7 @@ def get_all_of_religion_by_id(db: Session, ID: int):
     quartiers = get_quartiers_by_religion_id(db, religion.id)
     religion_all = {
         'religion': religion,
-        'members': get_members_of_religion(db, religion.id),
+        'members': members_table(db, get_members_of_religion(db, religion.id)),
         'villes': villes if villes else [],
         'quartiers': quartiers if quartiers else [],
     }

@@ -55,11 +55,19 @@ class UserLogin(BaseModel):
     username: str | None = None
     email: str | None = None
     password: str
+    full_name: str | None = None  # Pseudo affiché, saisi à l'inscription
 
 
 ############### Bibliothèque ####################
 
-class Journal(BaseModel):
+class EmptyDatesAsNone(BaseModel):
+    # Les formulaires envoient "" pour une date non renseignée : on la traite comme absente
+    @field_validator("date_founded", "founded_date", "published_date", mode="before", check_fields=False)
+    @classmethod
+    def empty_date_as_none(cls, value):
+        return None if value == "" else value
+
+class Journal(EmptyDatesAsNone):
     id: int | None = None
     user_id: int
     author: str
@@ -75,7 +83,7 @@ class Journal(BaseModel):
     is_public: bool | None = None
 
 
-class Livre(BaseModel):
+class Livre(EmptyDatesAsNone):
     id: int | None = None
     user_id: int
     author: str
@@ -165,7 +173,7 @@ class GouvernementCreate(BaseModel):
     devise: str | None = None
     hymne: str | None = None
 
-class Civilisation(BaseModel):
+class Civilisation(EmptyDatesAsNone):
     id: int
     title: str
     description: str | None = None
@@ -181,7 +189,7 @@ class Civilisation(BaseModel):
     class Config:
         from_attributes = True
 
-class CivilisationCreate(BaseModel):
+class CivilisationCreate(EmptyDatesAsNone):
     title: str
     description: str | None = None
     date_founded: datetime.datetime | None = None
@@ -190,7 +198,7 @@ class CivilisationCreate(BaseModel):
     is_civilisation_dirigeante: bool | None = True
     dirigeante_civilisation_id: int | None = 0
 
-class Ville(BaseModel):
+class Ville(EmptyDatesAsNone):
     id: int
     title: str
     description: str | None = None
@@ -207,7 +215,7 @@ class Ville(BaseModel):
     
     civilisation_id: int
 
-class VilleCreate(BaseModel):
+class VilleCreate(EmptyDatesAsNone):
     title: str
     description: str | None = None
     population: int | None = 0
@@ -221,7 +229,7 @@ class VilleCreate(BaseModel):
     is_public: bool | None = None
     civilisation_id: int
 
-class Quartier(BaseModel):
+class Quartier(EmptyDatesAsNone):
     id: int
     title: str
     description: str | None = None
@@ -236,7 +244,7 @@ class Quartier(BaseModel):
 
     ville_id: int
 
-class QuartierCreate(BaseModel):
+class QuartierCreate(EmptyDatesAsNone):
     title: str
     description: str | None = None
     population: int | None = 0
@@ -316,7 +324,7 @@ class MagasinUpdate(EmptyStringAsNone):
     is_public: bool | None = None
     ville_id: int | None = None
 
-class CommerceMagasin(BaseModel):
+class CommerceMagasin(EmptyDatesAsNone):
     id: int
     commerce_id: int
     title: str
@@ -333,7 +341,7 @@ class CommerceMagasin(BaseModel):
 
     ville_id: int
 
-class CommerceMagasinCreate(BaseModel):
+class CommerceMagasinCreate(EmptyDatesAsNone):
     commerce_id: int
     title: str
     description: str | None = None
@@ -351,7 +359,7 @@ class CommerceMagasinCreate(BaseModel):
 
 ############### Religions ####################
 
-class Religions(BaseModel):
+class Religions(EmptyDatesAsNone):
     id: int
     title: str
     description: str | None = None
@@ -362,7 +370,7 @@ class Religions(BaseModel):
     is_public: bool | None = None
     created_at: datetime.datetime | None = None
 
-class ReligionCreate(BaseModel):
+class ReligionCreate(EmptyDatesAsNone):
     title: str
     description: str | None = None
     date_founded: datetime.datetime | None = None
