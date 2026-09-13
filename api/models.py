@@ -155,9 +155,9 @@ class Quartiers(SQLModel, table=True):
 ############### Commerces ####################
 class Commerces(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    owner_id: int | None = Field(default=None, foreign_key="users.id")
     title: str
     description: str | None = Field(default=None)
+    date_founded: dt.date | None = Field(default=None)
 
     is_public: bool | None = Field(default=None)
     created_at: dt.datetime | None = Field(default=None)
@@ -165,6 +165,14 @@ class Commerces(SQLModel, table=True):
     # Comme les civilisations : un commerce dirigeant (défaut) ou dirigé par dirigeant_commerce_id
     is_commerce_dirigeant: bool | None = Field(default=True)
     dirigeant_commerce_id: int | None = Field(default=0)
+
+class CommerceMembers(SQLModel, table=True):
+    # Comme les religions : rôles "Fondateur" (un seul, changé par transfert), "Admin" ou "Membre"
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    commerce_id: int | None = Field(default=None, foreign_key="commerces.id")
+    role: str | None = Field(default=None)
+    joined_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 class CommerceMagasins(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)

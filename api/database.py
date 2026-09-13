@@ -19,6 +19,45 @@ def create_db_and_tables():
     from sqlmodel import SQLModel
     SQLModel.metadata.create_all(engine)
 
+def migrate_commerces_owner_to_members():
+    """
+    Ancienne colonne Commerces.owner_id -> ligne "Fondateur" dans CommerceMembers, puis suppression de la colonne.
+    À appeler après create_db_and_tables (la table commercemembers doit exister). Sans effet si déjà migré.
+    """
+    import datetime as dt
+    from sqlalchemy import inspect, text, MetaData
+    from . import models
+
+    inspector = inspect(engine)
+    if "commerces" not in inspector.get_table_names():
+        return
+    existing_columns = [col['name'] for col in inspector.get_columns("commerces")]
+    if "owner_id" not in existing_columns:
+        return
+
+    print("Migration : propriétaires des commerces -> membres Fondateur...")
+    with engine.begin() as connection:
+        commerces = connection.execute(text("SELECT id, owner_id, created_at FROM commerces WHERE owner_id IS NOT NULL")).all()
+        for commerce_id, owner_id, created_at in commerces:
+            params = {"commerce_id": commerce_id, "user_id": owner_id}
+            if connection.execute(text("SELECT 1 FROM commercemembers WHERE commerce_id = :commerce_id AND role = 'Fondateur'"), params).first():
+                continue
+            if connection.execute(text("SELECT 1 FROM commercemembers WHERE commerce_id = :commerce_id AND user_id = :user_id"), params).first():
+                connection.execute(text("UPDATE commercemembers SET role = 'Fondateur' WHERE commerce_id = :commerce_id AND user_id = :user_id"), params)
+            else:
+                connection.execute(
+                    text("INSERT INTO commercemembers (user_id, commerce_id, role, joined_at) VALUES (:user_id, :commerce_id, 'Fondateur', :joined_at)"),
+                    {**params, "joined_at": created_at or dt.datetime.now()}
+                )
+
+        # SQLite refuse DROP COLUMN sur une colonne à clé étrangère : reconstruction de la table sans owner_id
+        columns = ", ".join(col.name for col in models.Commerces.__table__.columns if col.name in existing_columns)
+        models.Commerces.__table__.to_metadata(MetaData(), name="commerces_new").create(connection)
+        connection.execute(text(f"INSERT INTO commerces_new ({columns}) SELECT {columns} FROM commerces"))
+        connection.execute(text("DROP TABLE commerces"))
+        connection.execute(text("ALTER TABLE commerces_new RENAME TO commerces"))
+    print(f"Migration terminée : {len(commerces)} commerce(s) avec fondateur, colonne owner_id supprimée.")
+
 def check_database_tables():
     """
     Vérifie et met à jour la structure des tables par rapport aux modèles SQLModel

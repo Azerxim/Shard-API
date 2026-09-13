@@ -12,7 +12,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 
 from sqlmodel import Session
-from .database import get_db, create_db_and_tables, check_database_tables
+from .database import get_db, create_db_and_tables, check_database_tables, migrate_commerces_owner_to_members
 
 from . import utils
 from topazdevsdk import colors
@@ -41,6 +41,7 @@ async def lifespan(app_: FastAPI):
     # Initialisation de la base de données
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Initialisation de la base de données...")
     create_db_and_tables()
+    migrate_commerces_owner_to_members()
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Base de données initialisée.")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     

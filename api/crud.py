@@ -1280,6 +1280,101 @@ def _check_member_rights(user: schemas.Users, db_members):
     if not any(member.user_id == user.id and member.role in ("Fondateur", "Admin") for member in db_members):
         raise HTTPException(status_code=403, detail="Accès refusé")
 
+# --- Membres (religions, commerces) : model = table des membres, fk = colonne de l'entité ---
+MEMBER_ROLES = ("Admin", "Membre")
+
+def members_table(db: Session, members):
+    # Même format que les membres de /civilisations/read
+    table = []
+    for member in members:
+        member_user = get_user_by_id(db=db, user_id=member.user_id)
+        table.append({
+            "user_id": member.user_id,
+            "role": member.role,
+            "joined_at": member.joined_at,
+            "username": member_user.username if member_user else None
+        })
+    return table
+
+def _get_member(db: Session, model, fk: str, entityID: int, userID: int):
+    statement = select(model).where(getattr(model, fk) == entityID, model.user_id == userID)
+    return db.exec(statement).first()
+
+def _check_member_role(role: str):
+    # Le rôle de Fondateur ne s'obtient que par transfert
+    if role == "Fondateur":
+        raise HTTPException(status_code=400, detail="Utiliser le transfert pour changer de fondateur")
+    if role not in MEMBER_ROLES:
+        raise HTTPException(status_code=400, detail="Le rôle doit être \"Admin\" ou \"Membre\"")
+
+def _add_member(db: Session, model, fk: str, entityID: int, new_member_id: int, role: str):
+    _check_member_role(role)
+    if not get_user_by_id(db=db, user_id=new_member_id):
+        raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
+    if _get_member(db, model, fk, entityID, new_member_id):
+        raise HTTPException(status_code=400, detail="Cet utilisateur est déjà membre")
+
+    db_member = model(user_id=new_member_id, role=role, joined_at=dt.datetime.today(), **{fk: entityID})
+    db.add(db_member)
+    db.commit()
+    db.refresh(db_member)
+    return {"resultat": "Membre ajouté", "member": db_member}
+
+def _remove_member(db: Session, model, fk: str, entityID: int, member_id: int):
+    db_member = _get_member(db, model, fk, entityID, member_id)
+    if not db_member:
+        raise HTTPException(status_code=404, detail="Cet utilisateur n'est pas membre")
+    if db_member.role == "Fondateur":
+        raise HTTPException(status_code=400, detail="Le fondateur ne peut pas être retiré : le transférer d'abord")
+    db.delete(db_member)
+    db.commit()
+    return {"resultat": "Membre retiré"}
+
+def _update_member(db: Session, model, fk: str, entityID: int, member_id: int, role: str):
+    db_member = _get_member(db, model, fk, entityID, member_id)
+    if not db_member:
+        raise HTTPException(status_code=404, detail="Cet utilisateur n'est pas membre")
+    if db_member.role == "Fondateur":
+        raise HTTPException(status_code=400, detail="Utiliser le transfert pour changer de fondateur")
+    _check_member_role(role)
+    db_member.role = role
+    db.add(db_member)
+    db.commit()
+    db.refresh(db_member)
+    return {"resultat": "Membre mis à jour", "member": db_member}
+
+def _transfer_founder(db: Session, user: schemas.Users, model, fk: str, entityID: int, new_founder_id: int, former_role: str, label: str):
+    # label : "la religion", "le commerce"… (messages d'erreur)
+    db_members = db.exec(select(model).where(getattr(model, fk) == entityID)).all()
+    db_founder = next((member for member in db_members if member.role == "Fondateur"), None)
+
+    # Seul le fondateur actuel ou un administrateur du site peut transférer
+    if not user.is_admin and (db_founder is None or db_founder.user_id != user.id):
+        raise HTTPException(status_code=403, detail=f"Seul le fondateur ou un administrateur peut transférer {label}")
+
+    if former_role not in MEMBER_ROLES:
+        raise HTTPException(status_code=400, detail="Le rôle de l'ancien fondateur doit être \"Admin\" ou \"Membre\"")
+    if not get_user_by_id(db=db, user_id=new_founder_id):
+        raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
+    if db_founder and db_founder.user_id == new_founder_id:
+        raise HTTPException(status_code=400, detail="Cet utilisateur est déjà le fondateur")
+
+    # L'ancien fondateur reste membre avec le rôle choisi
+    if db_founder:
+        db_founder.role = former_role
+        db.add(db_founder)
+
+    # Le nouveau fondateur est ajouté s'il n'est pas encore membre
+    db_new_founder = _get_member(db, model, fk, entityID, new_founder_id)
+    if db_new_founder:
+        db_new_founder.role = "Fondateur"
+    else:
+        db_new_founder = model(user_id=new_founder_id, role="Fondateur", joined_at=dt.datetime.today(), **{fk: entityID})
+    db.add(db_new_founder)
+    db.commit()
+
+    return db.exec(select(model).where(getattr(model, fk) == entityID)).all()
+
 def get_religions(db: Session, skip: int = 0, limit: int = 100):
     statement = select(models.Religions).offset(skip).limit(limit)
     results = db.exec(statement)
@@ -1560,56 +1655,73 @@ def transfer_founder_of_religion(db: Session, user: schemas.Users, religionID: i
     if not db_religion:
         raise HTTPException(status_code=404, detail="La religion n'existe pas")
 
-    db_members = get_members_of_religion(db, religionID, limit=10000)
-    db_founder = next((member for member in db_members if member.role == "Fondateur"), None)
+    return _transfer_founder(db, user, models.ReligionMembers, "religion_id", religionID, new_founder_id, former_role, "la religion")
 
-    # Seul le fondateur actuel ou un administrateur du site peut transférer
-    if not user.is_admin and (db_founder is None or db_founder.user_id != user.id):
-        raise HTTPException(status_code=403, detail="Seul le fondateur ou un administrateur peut transférer la religion")
+def _check_religion_member_rights(db: Session, user: schemas.Users, religionID: int):
+    if not get_religion_by_id(db, religionID):
+        raise HTTPException(status_code=404, detail="La religion n'existe pas")
+    # Fondateur ou Admin de la religion, ou administrateur du site
+    _check_member_rights(user, get_members_of_religion(db, religionID, limit=10000))
 
-    if former_role not in ("Admin", "Membre"):
-        raise HTTPException(status_code=400, detail="Le rôle de l'ancien fondateur doit être \"Admin\" ou \"Membre\"")
-    if not get_user_by_id(db=db, user_id=new_founder_id):
-        raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
-    if db_founder and db_founder.user_id == new_founder_id:
-        raise HTTPException(status_code=400, detail="Cet utilisateur est déjà le fondateur de la religion")
+def add_member_to_religion(db: Session, user: schemas.Users, religionID: int, new_member_id: int, role: str):
+    _check_religion_member_rights(db, user, religionID)
+    return _add_member(db, models.ReligionMembers, "religion_id", religionID, new_member_id, role)
 
-    # L'ancien fondateur reste membre avec le rôle choisi
-    if db_founder:
-        db_founder.role = former_role
-        db.add(db_founder)
+def remove_member_from_religion(db: Session, user: schemas.Users, religionID: int, member_id: int):
+    _check_religion_member_rights(db, user, religionID)
+    return _remove_member(db, models.ReligionMembers, "religion_id", religionID, member_id)
 
-    # Le nouveau fondateur est ajouté à la religion s'il n'en est pas encore membre
-    db_new_founder = get_member_of_religion(db, religionID, new_founder_id)
-    if db_new_founder:
-        db_new_founder.role = "Fondateur"
-    else:
-        db_new_founder = models.ReligionMembers(
-            user_id=new_founder_id,
-            religion_id=religionID,
-            role="Fondateur",
-            joined_at=dt.datetime.today()
-        )
-    db.add(db_new_founder)
-    db.commit()
-
-    return get_members_of_religion(db, religionID, limit=10000)
+def update_member_of_religion(db: Session, user: schemas.Users, religionID: int, member_id: int, member: schemas.ReligionMemberUpdate):
+    _check_religion_member_rights(db, user, religionID)
+    return _update_member(db, models.ReligionMembers, "religion_id", religionID, member_id, member.role)
 #endregion
 
 ################# Commerces #####################
 #region Commerces
 
-def _commerce_owner(db: Session, owner_id: int | None):
-    # Informations publiques du propriétaire (jamais le mot de passe haché)
-    user = get_user_by_id(db=db, user_id=owner_id) if owner_id else None
+def _commerce_fondateur(db: Session, db_members):
+    # Informations publiques du fondateur (jamais le mot de passe haché)
+    db_founder = next((member for member in db_members if member.role == "Fondateur"), None)
+    user = get_user_by_id(db=db, user_id=db_founder.user_id) if db_founder else None
     if not user:
         return None
     return {"id": user.id, "username": user.username, "full_name": user.full_name, "image_url": user.image_url}
 
-def _check_commerce_owner(user: schemas.Users, db_commerce: models.Commerces):
-    # Seul le propriétaire du commerce ou un administrateur du site peut le modifier
-    if user.is_disabled or not (user.is_admin or db_commerce.owner_id == user.id):
-        raise HTTPException(status_code=403, detail="Seul le propriétaire du commerce ou un administrateur peut le modifier")
+def _check_commerce_rights(db: Session, user: schemas.Users, db_commerce: models.Commerces):
+    # Comme les religions : Fondateur ou Admin du commerce, ou administrateur du site
+    _check_member_rights(user, get_members_of_commerce(db, db_commerce.id))
+
+def get_members_of_commerce(db: Session, commerceID: int, skip: int = 0, limit: int = 1000):
+    statement = select(models.CommerceMembers).where(models.CommerceMembers.commerce_id == commerceID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_member_of_commerce(db: Session, commerceID: int, userID: int):
+    return _get_member(db, models.CommerceMembers, "commerce_id", commerceID, userID)
+
+def _get_commerce_for_members(db: Session, user: schemas.Users, commerceID: int):
+    db_commerce = get_commerce_by_id(db, commerceID)
+    if not db_commerce:
+        raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
+    _check_commerce_rights(db, user, db_commerce)
+    return db_commerce
+
+def add_member_to_commerce(db: Session, user: schemas.Users, commerceID: int, new_member_id: int, role: str):
+    _get_commerce_for_members(db, user, commerceID)
+    return _add_member(db, models.CommerceMembers, "commerce_id", commerceID, new_member_id, role)
+
+def remove_member_from_commerce(db: Session, user: schemas.Users, commerceID: int, member_id: int):
+    _get_commerce_for_members(db, user, commerceID)
+    return _remove_member(db, models.CommerceMembers, "commerce_id", commerceID, member_id)
+
+def update_member_of_commerce(db: Session, user: schemas.Users, commerceID: int, member_id: int, member: schemas.CommerceMemberUpdate):
+    _get_commerce_for_members(db, user, commerceID)
+    return _update_member(db, models.CommerceMembers, "commerce_id", commerceID, member_id, member.role)
+
+def transfer_founder_of_commerce(db: Session, user: schemas.Users, commerceID: int, new_founder_id: int, former_role: str = "Admin"):
+    if not get_commerce_by_id(db, commerceID):
+        raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
+    return _transfer_founder(db, user, models.CommerceMembers, "commerce_id", commerceID, new_founder_id, former_role, "le commerce")
 
 def get_commerces(db: Session, skip: int = 0, limit: int = 100):
     statement = select(models.Commerces).offset(skip).limit(limit)
@@ -1621,8 +1733,13 @@ def get_commerce_by_id(db: Session, ID: int):
     results = db.exec(statement)
     return results.first()
 
-def get_commerces_by_owner_id(db: Session, ownerID: int, skip: int = 0, limit: int = 100):
-    statement = select(models.Commerces).where(models.Commerces.owner_id == ownerID).offset(skip).limit(limit)
+def get_commerces_by_member_id(db: Session, userID: int, skip: int = 0, limit: int = 100):
+    statement = (
+        select(models.Commerces)
+        .join(models.CommerceMembers, models.CommerceMembers.commerce_id == models.Commerces.id)
+        .where(models.CommerceMembers.user_id == userID)
+        .offset(skip).limit(limit)
+    )
     results = db.exec(statement)
     return results.all()
 
@@ -1656,9 +1773,11 @@ def get_all_of_commerce_by_id(db: Session, ID: int):
     db_commerce = get_commerce_by_id(db, ID)
     if not db_commerce:
         return None
+    db_members = get_members_of_commerce(db, db_commerce.id)
     return {
         'commerce': db_commerce,
-        'owner': _commerce_owner(db, db_commerce.owner_id),
+        'fondateur': _commerce_fondateur(db, db_members),
+        'members': members_table(db, db_members),
         'magasins': get_magasins_by_commerce_id(db, db_commerce.id),
     }
 
@@ -1668,7 +1787,7 @@ def get_diriges_of_commerce(db: Session, commerceID: int, skip: int = 0, limit: 
     return results.all()
 
 def get_commerce_links(db: Session, db_commerce: models.Commerces):
-    # Commerce dirigeant (résumé) et commerces dirigés (avec propriétaire et magasins)
+    # Commerce dirigeant (résumé) et commerces dirigés (avec fondateur, membres et magasins)
     dirigeant = get_commerce_by_id(db, db_commerce.dirigeant_commerce_id) if db_commerce.dirigeant_commerce_id else None
     return {
         'dirigeant': {"id": dirigeant.id, "title": dirigeant.title, "is_public": dirigeant.is_public} if dirigeant else None,
@@ -1693,7 +1812,8 @@ def _apply_commerce_dirigeant(db: Session, user: schemas.Users, db_commerce: mod
             raise HTTPException(status_code=404, detail="Le commerce dirigeant n'existe pas")
         if db_dirigeant.is_commerce_dirigeant is False:
             raise HTTPException(status_code=400, detail="Le commerce choisi n'est pas un commerce dirigeant")
-        if not (user.is_admin or db_dirigeant.owner_id == user.id):
+        dirigeant_members = get_members_of_commerce(db, db_dirigeant.id)
+        if not (user.is_admin or any(member.user_id == user.id and member.role in ("Fondateur", "Admin") for member in dirigeant_members)):
             raise HTTPException(status_code=403, detail="Rattacher un commerce demande les droits sur le commerce dirigeant")
 
     db_commerce.is_commerce_dirigeant = False
@@ -1703,23 +1823,25 @@ def create_commerce(db: Session, user: schemas.Users, v_commerce: schemas.Commer
     if user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
 
-    owner_id = user.id
-    if v_commerce.owner_id and v_commerce.owner_id != user.id:
-        if not user.is_admin:
-            raise HTTPException(status_code=403, detail="Seul un administrateur peut créer un commerce pour un autre utilisateur")
-        if not get_user_by_id(db=db, user_id=v_commerce.owner_id):
-            raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
-        owner_id = v_commerce.owner_id
-
     db_commerce = models.Commerces(
-        owner_id = owner_id,
         title = v_commerce.title,
         description = v_commerce.description,
+        date_founded = v_commerce.date_founded,
         is_public = v_commerce.is_public if v_commerce.is_public is not None else True,
         created_at = dt.datetime.today()
     )
     _apply_commerce_dirigeant(db, user, db_commerce, v_commerce.is_commerce_dirigeant is not False, v_commerce.dirigeant_commerce_id)
     db.add(db_commerce)
+    db.commit()
+    db.refresh(db_commerce)
+
+    # Le créateur devient Fondateur du commerce
+    db.add(models.CommerceMembers(
+        user_id=user.id,
+        commerce_id=db_commerce.id,
+        role="Fondateur",
+        joined_at=dt.datetime.today()
+    ))
     db.commit()
     db.refresh(db_commerce)
     return db_commerce
@@ -1728,23 +1850,15 @@ def update_commerce(db: Session, user: schemas.Users, commerceID: int, v_commerc
     db_commerce = get_commerce_by_id(db, commerceID)
     if not db_commerce:
         raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
-    _check_commerce_owner(user, db_commerce)
+    _check_commerce_rights(db, user, db_commerce)
 
     data = v_commerce.model_dump(exclude_unset=True)
-    owner_id = data.pop("owner_id", None)
     is_dirigeant = data.pop("is_commerce_dirigeant", None)
     dirigeant_id = data.pop("dirigeant_commerce_id", None)
     if data.get("title") is None:
         data.pop("title", None)
     for key, value in data.items():
         setattr(db_commerce, key, value)
-
-    if owner_id is not None and owner_id != db_commerce.owner_id:
-        if not user.is_admin:
-            raise HTTPException(status_code=403, detail="Seul un administrateur peut changer le propriétaire d'un commerce")
-        if not get_user_by_id(db=db, user_id=owner_id):
-            raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
-        db_commerce.owner_id = owner_id
 
     # Lien dirigeant : revalidé seulement s'il change (le formulaire renvoie aussi les valeurs actuelles)
     if is_dirigeant is not None or dirigeant_id is not None:
@@ -1764,7 +1878,8 @@ def delete_commerce(db: Session, user: schemas.Users, commerceID: int):
     db_commerce = get_commerce_by_id(db, commerceID)
     if not db_commerce:
         raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
-    _check_commerce_owner(user, db_commerce)
+    # Comme les religions : Fondateur ou Admin du commerce, ou administrateur du site
+    _check_commerce_rights(db, user, db_commerce)
 
     # Les commerces dirigés redeviennent indépendants
     for db_dirige in get_diriges_of_commerce(db, commerceID):
@@ -1773,6 +1888,8 @@ def delete_commerce(db: Session, user: schemas.Users, commerceID: int):
         db.add(db_dirige)
     for db_magasin in get_magasins_by_commerce_id(db, commerceID):
         db.delete(db_magasin)
+    for db_member in get_members_of_commerce(db, commerceID):
+        db.delete(db_member)
     db.delete(db_commerce)
     db.commit()
     return True
@@ -1797,7 +1914,7 @@ def create_magasin(db: Session, user: schemas.Users, v_magasin: schemas.MagasinC
     db_commerce = get_commerce_by_id(db, v_magasin.commerce_id)
     if not db_commerce:
         raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
-    _check_commerce_owner(user, db_commerce)
+    _check_commerce_rights(db, user, db_commerce)
     _check_magasin_references(db, v_magasin.dimension_id, v_magasin.ville_id)
 
     db_magasin = models.CommerceMagasins(
@@ -1823,7 +1940,7 @@ def update_magasin(db: Session, user: schemas.Users, magasinID: int, v_magasin: 
     db_magasin = get_magasin_by_id(db, magasinID)
     if not db_magasin:
         raise HTTPException(status_code=404, detail="Le magasin n'existe pas")
-    _check_commerce_owner(user, get_commerce_by_id(db, db_magasin.commerce_id))
+    _check_commerce_rights(db, user, get_commerce_by_id(db, db_magasin.commerce_id))
 
     # Seuls les champs envoyés sont modifiés (null permet d'effacer une ville ou une description)
     data = v_magasin.model_dump(exclude_unset=True)
@@ -1843,7 +1960,7 @@ def delete_magasin(db: Session, user: schemas.Users, magasinID: int):
     db_magasin = get_magasin_by_id(db, magasinID)
     if not db_magasin:
         raise HTTPException(status_code=404, detail="Le magasin n'existe pas")
-    _check_commerce_owner(user, get_commerce_by_id(db, db_magasin.commerce_id))
+    _check_commerce_rights(db, user, get_commerce_by_id(db, db_magasin.commerce_id))
 
     db.delete(db_magasin)
     db.commit()

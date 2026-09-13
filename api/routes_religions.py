@@ -71,6 +71,35 @@ def transfer_religion_founder(current_user: Annotated[schemas.Users, Depends(cru
     # Même format que "members" de /religions/read
     return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le fondateur de la religion a été transféré", 'members': members}))
 
+@router.get("/members/{ReligionID}/list", tags=["Religions"])
+def list_religion_members(ReligionID: int, db: Session = Depends(get_db)):
+    members = crud.get_members_of_religion(db=db, religionID=ReligionID, limit=10000)
+    return JSONResponse(content=jsonable_encoder(crud.members_table(db, members)))
+
+@router.get("/members/{ReligionID}/{MemberID}/read", tags=["Religions"])
+def read_religion_member(ReligionID: int, MemberID: int, db: Session = Depends(get_db)):
+    member = crud.get_member_of_religion(db=db, religionID=ReligionID, userID=MemberID)
+    if member is None:
+        raise HTTPException(status_code=404, detail=f"L'utilisateur {MemberID} n'est pas membre de la religion {ReligionID}")
+    infos = crud.members_table(db, [member])[0]
+    # "religion_member_edit" : clé lue par la modale d'édition (Config_Modal_Religion_Member_Edit)
+    return JSONResponse(content=jsonable_encoder({'error': 200, 'member': infos, 'religion_member_edit': infos}))
+
+@router.post("/members/{ReligionID}/add", tags=["Religions"])
+def add_religion_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], ReligionID: int, member: schemas.ReligionMemberAdd, db: Session = Depends(get_db)):
+    result = crud.add_member_to_religion(db=db, user=current_user, religionID=ReligionID, new_member_id=member.user_id, role=member.role)
+    return JSONResponse(content=jsonable_encoder(result))
+
+@router.delete("/members/{ReligionID}/remove", tags=["Religions"])
+def remove_religion_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], ReligionID: int, member_id: int, db: Session = Depends(get_db)):
+    result = crud.remove_member_from_religion(db=db, user=current_user, religionID=ReligionID, member_id=member_id)
+    return JSONResponse(content=jsonable_encoder(result))
+
+@router.put("/members/{ReligionID}/{MemberID}/update", tags=["Religions"])
+def update_religion_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], ReligionID: int, MemberID: int, member: schemas.ReligionMemberUpdate, db: Session = Depends(get_db)):
+    result = crud.update_member_of_religion(db=db, user=current_user, religionID=ReligionID, member_id=MemberID, member=member)
+    return JSONResponse(content=jsonable_encoder(result))
+
 @router.post("/create", tags=["Religions"])
 def create_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], religion: schemas.ReligionCreate, db: Session = Depends(get_db)):
     result = crud.create_religion(

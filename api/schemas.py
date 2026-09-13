@@ -128,6 +128,22 @@ class CivilisationFounderTransfer(BaseModel):
 class ReligionFounderTransfer(CivilisationFounderTransfer):
     pass
 
+# Religions et commerces : mêmes formulaires que les membres de civilisation
+class ReligionMemberAdd(CivilisationMemberAdd):
+    pass
+
+class ReligionMemberUpdate(CivilisationMemberUpdate):
+    pass
+
+class CommerceMemberAdd(CivilisationMemberAdd):
+    pass
+
+class CommerceMemberUpdate(CivilisationMemberUpdate):
+    pass
+
+class CommerceFounderTransfer(CivilisationFounderTransfer):
+    pass
+
 class Gouvernement(BaseModel):
     id: int
     civilisation_id: int
@@ -233,7 +249,6 @@ class QuartierCreate(BaseModel):
 
 class Commerce(BaseModel):
     id: int
-    owner_id: int
     title: str
     description: str | None = None
 
@@ -241,10 +256,10 @@ class Commerce(BaseModel):
     created_at: datetime.datetime | None = None
 
 class CommerceCreate(BaseModel):
-    # Propriétaire : l'utilisateur connecté par défaut, un autre utilisateur uniquement pour un administrateur
-    owner_id: int | None = None
+    # L'utilisateur connecté devient Fondateur du commerce
     title: str
     description: str | None = None
+    date_founded: datetime.date | None = None
     is_public: bool | None = None
     is_commerce_dirigeant: bool | None = True
     dirigeant_commerce_id: int | None = 0
@@ -254,6 +269,11 @@ class CommerceCreate(BaseModel):
     def empty_dirigeant_as_zero(cls, value):
         return 0 if value in ("", None) else value
 
+    @field_validator("date_founded", mode="before")
+    @classmethod
+    def empty_date_as_none(cls, value):
+        return None if value == "" else value
+
 class EmptyStringAsNone(BaseModel):
     # Les formulaires envoient "" pour un champ vide (select sans choix, nombre effacé)
     @field_validator("*", mode="before")
@@ -262,9 +282,9 @@ class EmptyStringAsNone(BaseModel):
         return None if value == "" else value
 
 class CommerceUpdate(EmptyStringAsNone):
-    owner_id: int | None = None
     title: str | None = None
     description: str | None = None
+    date_founded: datetime.date | None = None
     is_public: bool | None = None
     is_commerce_dirigeant: bool | None = None
     dirigeant_commerce_id: int | None = None
