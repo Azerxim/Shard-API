@@ -642,6 +642,14 @@ def get_members_of_civilisation(db: Session, civilisationID: int, skip: int = 0,
     results = db.exec(statement)
     return results.all()
 
+def get_member_of_civilisation(db: Session, civilisationID: int, userID: int):
+    statement = select(models.CivilisationMembers).where(
+        models.CivilisationMembers.civilisation_id == civilisationID,
+        models.CivilisationMembers.user_id == userID
+    )
+    results = db.exec(statement)
+    return results.first()
+
 def get_civilisation_by_id(db: Session, ID: int):
     statement = select(models.Civilisations).where(models.Civilisations.id == ID)
     results = db.exec(statement)
@@ -904,6 +912,46 @@ def update_member_of_civilisation(db: Session, user: schemas.Users, civilisation
     except Exception as e:
         print(f"Erreur lors de la mise à jour du membre {member_id} de la civilisation {civilisationID}: {e}")
         return {"fonction": "update_member_of_civilisation", "erreur": "Une erreur est survenue lors de la mise à jour du membre de la civilisation", "details": str(e)}
+
+def transfer_founder_of_civilisation(db: Session, user: schemas.Users, civilisationID: int, new_founder_id: int, former_role: str = "Admin"):
+    db_civilisation = get_civilisation_by_id(db, civilisationID)
+    if not db_civilisation:
+        raise HTTPException(status_code=404, detail="La civilisation n'existe pas")
+
+    db_members = get_members_of_civilisation(db, civilisationID, limit=10000)
+    db_founder = next((member for member in db_members if member.role == "Fondateur"), None)
+
+    # Seul le fondateur actuel ou un administrateur du site peut transférer
+    if not user.is_admin and (db_founder is None or db_founder.user_id != user.id):
+        raise HTTPException(status_code=403, detail="Seul le fondateur ou un administrateur peut transférer la civilisation")
+
+    if former_role not in ("Admin", "Membre"):
+        raise HTTPException(status_code=400, detail="Le rôle de l'ancien fondateur doit être \"Admin\" ou \"Membre\"")
+    if not get_user_by_id(db=db, user_id=new_founder_id):
+        raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
+    if db_founder and db_founder.user_id == new_founder_id:
+        raise HTTPException(status_code=400, detail="Cet utilisateur est déjà le fondateur de la civilisation")
+
+    # L'ancien fondateur reste membre avec le rôle choisi
+    if db_founder:
+        db_founder.role = former_role
+        db.add(db_founder)
+
+    # Le nouveau fondateur est ajouté à la civilisation s'il n'en est pas encore membre
+    db_new_founder = get_member_of_civilisation(db, civilisationID, new_founder_id)
+    if db_new_founder:
+        db_new_founder.role = "Fondateur"
+    else:
+        db_new_founder = models.CivilisationMembers(
+            user_id=new_founder_id,
+            civilisation_id=civilisationID,
+            role="Fondateur",
+            joined_at=dt.datetime.today()
+        )
+    db.add(db_new_founder)
+    db.commit()
+
+    return get_members_of_civilisation(db, civilisationID, limit=10000)
 #endregion
 
 #region Gouvernements
@@ -1191,6 +1239,14 @@ def get_members_of_religion(db: Session, religionID: int, skip: int = 0, limit: 
     results = db.exec(statement)
     return results.all()
 
+def get_member_of_religion(db: Session, religionID: int, userID: int):
+    statement = select(models.ReligionMembers).where(
+        models.ReligionMembers.religion_id == religionID,
+        models.ReligionMembers.user_id == userID
+    )
+    results = db.exec(statement)
+    return results.first()
+
 def get_religion_by_id(db: Session, ID: int):
     statement = select(models.Religions).where(models.Religions.id == ID)
     results = db.exec(statement)
@@ -1446,6 +1502,46 @@ def delete_religion_from_ville(db: Session, user: schemas.Users, villeID: int, v
     except Exception as e:
         print(f"Erreur lors de la suppression de la religion {v_religionid} de la ville {villeID}: {e}")
         return {"fonction": "delete_religion_from_ville", "erreur": "Une erreur est survenue lors de la suppression de la relation ville-religion", "details": str(e)}
+
+def transfer_founder_of_religion(db: Session, user: schemas.Users, religionID: int, new_founder_id: int, former_role: str = "Admin"):
+    db_religion = get_religion_by_id(db, religionID)
+    if not db_religion:
+        raise HTTPException(status_code=404, detail="La religion n'existe pas")
+
+    db_members = get_members_of_religion(db, religionID, limit=10000)
+    db_founder = next((member for member in db_members if member.role == "Fondateur"), None)
+
+    # Seul le fondateur actuel ou un administrateur du site peut transférer
+    if not user.is_admin and (db_founder is None or db_founder.user_id != user.id):
+        raise HTTPException(status_code=403, detail="Seul le fondateur ou un administrateur peut transférer la religion")
+
+    if former_role not in ("Admin", "Membre"):
+        raise HTTPException(status_code=400, detail="Le rôle de l'ancien fondateur doit être \"Admin\" ou \"Membre\"")
+    if not get_user_by_id(db=db, user_id=new_founder_id):
+        raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
+    if db_founder and db_founder.user_id == new_founder_id:
+        raise HTTPException(status_code=400, detail="Cet utilisateur est déjà le fondateur de la religion")
+
+    # L'ancien fondateur reste membre avec le rôle choisi
+    if db_founder:
+        db_founder.role = former_role
+        db.add(db_founder)
+
+    # Le nouveau fondateur est ajouté à la religion s'il n'en est pas encore membre
+    db_new_founder = get_member_of_religion(db, religionID, new_founder_id)
+    if db_new_founder:
+        db_new_founder.role = "Fondateur"
+    else:
+        db_new_founder = models.ReligionMembers(
+            user_id=new_founder_id,
+            religion_id=religionID,
+            role="Fondateur",
+            joined_at=dt.datetime.today()
+        )
+    db.add(db_new_founder)
+    db.commit()
+
+    return get_members_of_religion(db, religionID, limit=10000)
 #endregion
 
 #region Cartographie

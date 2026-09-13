@@ -59,6 +59,18 @@ def read_religions_by_ville(VilleID: int, skip: int = 0, limit: int = 100, db: S
     result = crud.get_religions_by_ville_id(db=db, villeID=VilleID, skip=skip, limit=limit)
     return JSONResponse(content=jsonable_encoder(result))
 
+@router.put("/members/{ReligionID}/transfer", tags=["Religions"])
+def transfer_religion_founder(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], ReligionID: int, transfer: schemas.ReligionFounderTransfer, db: Session = Depends(get_db)):
+    members = crud.transfer_founder_of_religion(
+        db=db,
+        user=current_user,
+        religionID=ReligionID,
+        new_founder_id=transfer.user_id,
+        former_role=transfer.former_role
+    )
+    # Même format que "members" de /religions/read
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le fondateur de la religion a été transféré", 'members': members}))
+
 @router.post("/create", tags=["Religions"])
 def create_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], religion: schemas.ReligionCreate, db: Session = Depends(get_db)):
     result = crud.create_religion(

@@ -121,6 +121,13 @@ class CivilisationMemberAdd(BaseModel):
 class CivilisationMemberUpdate(BaseModel):
     role: str
 
+class CivilisationFounderTransfer(BaseModel):
+    user_id: int                      # Nouveau fondateur
+    former_role: str = "Admin"        # Rôle de l'ancien fondateur : "Admin" ou "Membre"
+
+class ReligionFounderTransfer(CivilisationFounderTransfer):
+    pass
+
 class Gouvernement(BaseModel):
     id: int
     civilisation_id: int

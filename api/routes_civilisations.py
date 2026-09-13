@@ -67,19 +67,50 @@ def update_civilisation(current_user: Annotated[schemas.Users, Depends(crud.secu
 # -----------------------------------------------
 # region Members
 
-@router.get("/members/{CivilisationID}/list", tags=["Civilisations"])
-def list_civilisation_members(CivilisationID: int, db: Session = Depends(get_db)):
-    members = crud.get_members_of_civilisation(db=db, civilisationID=CivilisationID)
-    members_table = []
+def members_table(db: Session, members):
+    table = []
     for member in members:
         user = crud.get_user_by_id(db=db, user_id=member.user_id)
-        members_table.append({
+        table.append({
             "user_id": member.user_id,
             "role": member.role,
             "joined_at": member.joined_at,
             "username": user.username if user else None
         })
-    return JSONResponse(content=jsonable_encoder(members_table))
+    return table
+
+@router.get("/members/{CivilisationID}/list", tags=["Civilisations"])
+def list_civilisation_members(CivilisationID: int, db: Session = Depends(get_db)):
+    members = crud.get_members_of_civilisation(db=db, civilisationID=CivilisationID)
+    return JSONResponse(content=jsonable_encoder(members_table(db, members)))
+
+@router.put("/members/{CivilisationID}/transfer", tags=["Civilisations"])
+def transfer_civilisation_founder(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, transfer: schemas.CivilisationFounderTransfer, db: Session = Depends(get_db)):
+    members = crud.transfer_founder_of_civilisation(
+        db=db,
+        user=current_user,
+        civilisationID=CivilisationID,
+        new_founder_id=transfer.user_id,
+        former_role=transfer.former_role
+    )
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le fondateur de la civilisation a été transféré", 'members': members_table(db, members)}))
+
+@router.get("/members/{CivilisationID}/{MemberID}/read", tags=["Civilisations"])
+def read_civilisation_member(CivilisationID: int, MemberID: int, db: Session = Depends(get_db)):
+    member = crud.get_member_of_civilisation(db=db, civilisationID=CivilisationID, userID=MemberID)
+    if member is None:
+        func = {'error': 404, 'message': f"User {MemberID} is not a member of civilisation {CivilisationID}"}
+    else:
+        user = crud.get_user_by_id(db=db, user_id=member.user_id)
+        infos = {
+            "user_id": member.user_id,
+            "role": member.role,
+            "joined_at": member.joined_at,
+            "username": user.username if user else None
+        }
+        # "civilisation_member_edit" : clé lue par la modale d'édition (Config_Modal_Civilisation_Member_Edit)
+        func = {'error': 200, 'member': infos, 'civilisation_member_edit': infos}
+    return JSONResponse(content=jsonable_encoder(func))
 
 @router.post("/members/{CivilisationID}/add", tags=["Civilisations"])
 def add_civilisation_member(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, member: schemas.CivilisationMemberAdd, db: Session = Depends(get_db)):
