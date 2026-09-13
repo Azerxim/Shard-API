@@ -246,6 +246,11 @@ def read_quartier(QuartierID: int, db: Session = Depends(get_db)):
         func = {'error': 200, 'quartier': quartier}
     return JSONResponse(content=jsonable_encoder(func))
 
+@router.get("/quartiers/ville/{VilleID}", tags=["Quartiers"])
+def read_quartiers_by_ville(VilleID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    result = crud.get_quartiers_by_ville_id(db=db, villeID=VilleID, skip=skip, limit=limit)
+    return JSONResponse(content=jsonable_encoder(result))
+
 @router.post("/quartiers/create", tags=["Quartiers"])
 def create_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], quartier: schemas.QuartierCreate, db: Session = Depends(get_db)):
     return crud.create_quartier(
