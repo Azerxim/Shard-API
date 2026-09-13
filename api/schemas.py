@@ -1,5 +1,5 @@
 from typing import Optional, List
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import datetime
 
 ################# Users ########################
@@ -228,6 +228,106 @@ class QuartierCreate(BaseModel):
     
     is_public: bool | None = None
     ville_id: int
+    
+############### Commerces ####################
+
+class Commerce(BaseModel):
+    id: int
+    owner_id: int
+    title: str
+    description: str | None = None
+
+    is_public: bool | None = None
+    created_at: datetime.datetime | None = None
+
+class CommerceCreate(BaseModel):
+    # Propriétaire : l'utilisateur connecté par défaut, un autre utilisateur uniquement pour un administrateur
+    owner_id: int | None = None
+    title: str
+    description: str | None = None
+    is_public: bool | None = None
+    is_commerce_dirigeant: bool | None = True
+    dirigeant_commerce_id: int | None = 0
+
+    @field_validator("dirigeant_commerce_id", mode="before")
+    @classmethod
+    def empty_dirigeant_as_zero(cls, value):
+        return 0 if value in ("", None) else value
+
+class EmptyStringAsNone(BaseModel):
+    # Les formulaires envoient "" pour un champ vide (select sans choix, nombre effacé)
+    @field_validator("*", mode="before")
+    @classmethod
+    def empty_string_as_none(cls, value):
+        return None if value == "" else value
+
+class CommerceUpdate(EmptyStringAsNone):
+    owner_id: int | None = None
+    title: str | None = None
+    description: str | None = None
+    is_public: bool | None = None
+    is_commerce_dirigeant: bool | None = None
+    dirigeant_commerce_id: int | None = None
+
+class MagasinCreate(EmptyStringAsNone):
+    commerce_id: int
+    title: str
+    description: str | None = None
+    founded_date: datetime.date | None = None
+
+    dimension_id: int | None = None
+    x: int | None = None
+    z: int | None = None
+
+    is_siege: bool | None = None
+    is_public: bool | None = None
+    ville_id: int | None = None
+
+class MagasinUpdate(EmptyStringAsNone):
+    title: str | None = None
+    description: str | None = None
+    founded_date: datetime.date | None = None
+
+    dimension_id: int | None = None
+    x: int | None = None
+    z: int | None = None
+
+    is_siege: bool | None = None
+    is_public: bool | None = None
+    ville_id: int | None = None
+
+class CommerceMagasin(BaseModel):
+    id: int
+    commerce_id: int
+    title: str
+    description: str | None = None
+    founded_date: datetime.datetime | None = None
+
+    dimension_id: int
+    x: int
+    z: int
+
+    is_siege: bool | None = None
+    is_public: bool | None = None
+    created_at: datetime.datetime | None = None
+
+    ville_id: int
+
+class CommerceMagasinCreate(BaseModel):
+    commerce_id: int
+    title: str
+    description: str | None = None
+    founded_date: datetime.datetime | None = None
+
+    dimension_id: int
+    x: int
+    z: int
+
+    is_siege: bool | None = None
+    is_public: bool | None = None
+    
+    ville_id: int
+
 
 ############### Religions ####################
 

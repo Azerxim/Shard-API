@@ -82,8 +82,9 @@ Un template d'API moderne construit avec **FastAPI** et **SQLModel**.
      "version": "3",
      "api": {
        "name": "Mon API",
-       "ip": "0.0.0.0",
-       "port": 8000
+       "mode": "production",
+       "production": { "ip": "0.0.0.0", "port": 8000 },
+       "development": { "ip": "127.0.0.1", "port": 8002 }
      },
      "database": {
        "name": "database",
@@ -101,6 +102,24 @@ Un template d'API moderne construit avec **FastAPI** et **SQLModel**.
      }
    }
    ```
+
+3. **(Optionnel) Surcharge pour le développement**
+
+   `npm run dev` et `npm run verbose` définissent `API_ENV=development` : le fichier `config.development.json` (non versionné) est alors fusionné par-dessus `config.json`, et l'IP / le port viennent de `api.development`. `npm run start` n'utilise que `config.json`.
+
+   ```bash
+   cp config.development.json.template config.development.json
+   ```
+
+   N'y garder que les valeurs à remplacer : les objets sont fusionnés clé par clé, les autres valeurs remplacent celles de `config.json`. Par exemple, pour travailler sur une base séparée :
+
+   ```json
+   {
+     "database": { "name": "ShardDB-dev", "debug": true }
+   }
+   ```
+
+   Les fichiers chargés sont affichés au démarrage (`Configuration: config.json + config.development.json`).
 
 ## 🚀 Démarrage
 

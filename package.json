@@ -5,9 +5,9 @@
   "description": "Scripts npm pour piloter l'API Python",
   "scripts": {
     "init": "python3 -m venv .venv && . .venv/bin/activate && python -m pip install --upgrade pip && python -m pip install --upgrade -r requirements.txt",
-    "dev": ". .venv/bin/activate && python -m uvicorn api.main:app --reload --host $(python -c \"import json; print(json.load(open('config.json'))['api']['development']['ip'])\") --port $(python -c \"import json; print(json.load(open('config.json'))['api']['development']['port'])\")",
+    "dev": ". .venv/bin/activate && export API_ENV=development && python -m uvicorn api.main:app --reload --host $(python -c \"from api import utils; print(utils.API_IP)\") --port $(python -c \"from api import utils; print(utils.API_PORT)\")",
     "start": ". .venv/bin/activate && python -m uvicorn api.main:app --host $(python -c \"import json; print(json.load(open('config.json'))['api']['production']['ip'])\") --port $(python -c \"import json; print(json.load(open('config.json'))['api']['production']['port'])\")",
-    "verbose": ". .venv/bin/activate && python -m uvicorn api.main:app --reload --host $(python -c \"import json; print(json.load(open('config.json'))['api']['development']['ip'])\") --port $(python -c \"import json; print(json.load(open('config.json'))['api']['development']['port'])\") --log-level debug",
+    "verbose": ". .venv/bin/activate && export API_ENV=development && python -m uvicorn api.main:app --reload --host $(python -c \"from api import utils; print(utils.API_IP)\") --port $(python -c \"from api import utils; print(utils.API_PORT)\") --log-level debug",
     "pm2:start": "pm2 start npm --name shard-api -- run start",
     "pm2:stop": "pm2 stop shard-api",
     "pm2:restart": "pm2 restart shard-api",

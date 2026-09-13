@@ -5,11 +5,24 @@ from .version import __version__, __version_dev__, __version_short__
 # CONFIGURATION
 path = f"{os.path.realpath(os.path.dirname(__file__))}/../config.json"
 path_template = f"{os.path.realpath(os.path.dirname(__file__))}/../config.json.template"
+# Surcharge chargée par-dessus config.json quand API_ENV=development (npm run dev / verbose)
+path_development = f"{os.path.realpath(os.path.dirname(__file__))}/../config.development.json"
 
 HOSTNAME = socket.gethostname()
 VERSION = __version__
 VERSION_DEV = __version_dev__
 VERSION_SHORT = __version_short__
+ENVIRONMENT = "development" if os.environ.get("API_ENV", "").strip().lower() == "development" else "production"
+
+def deep_merge(base, override):
+	# Les objets sont fusionnés récursivement, les autres valeurs de la surcharge remplacent celles de base
+	merged = dict(base)
+	for key, value in override.items():
+		if isinstance(value, dict) and isinstance(merged.get(key), dict):
+			merged[key] = deep_merge(merged[key], value)
+		else:
+			merged[key] = value
+	return merged
 
 if not file.exist(path):
 	file.create(path)
@@ -19,11 +32,17 @@ if not file.exist(path):
 		data = {}
 	file.json_write(path, data)
 
+CONFIG_FILES = []
 if file.exist(path):
 	CONFIG = file.json_read(path)
+	CONFIG_FILES.append("config.json")
+	if ENVIRONMENT == "development" and file.exist(path_development):
+		CONFIG = deep_merge(CONFIG, file.json_read(path_development))
+		CONFIG_FILES.append("config.development.json")
 	SECURITY = CONFIG['security']
 	DATABASE = CONFIG['database']
-	API_MODE = CONFIG['api']['mode']
+	# En développement, l'IP et le port viennent toujours de api.development
+	API_MODE = "development" if ENVIRONMENT == "development" else CONFIG['api']['mode']
 	API_IP = CONFIG['api'][API_MODE]['ip']
 	API_PORT = CONFIG['api'][API_MODE]['port']
 	OAUTH2 = CONFIG.get('oauth2', {})
@@ -33,6 +52,7 @@ if file.exist(path):
 else:
 	DATABASE = {"name": "database", "debug": True}
 	PLATFORMS = {}
+	API_MODE = ENVIRONMENT
 	API_IP = "127.0.0.1"
 	API_PORT = 8000
 	SECURITY = {}

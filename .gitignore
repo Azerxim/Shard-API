@@ -157,3 +157,5 @@ _work/
 .old/
 *.db
 config.json
+# Surcharge locale de config.json pour npm run dev (voir config.development.json.template)
+config.development.json

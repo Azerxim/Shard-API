@@ -22,6 +22,7 @@ from .routes_bibliotheque import router as bibliotheque_router
 from .routes_civilisations import router as civilisations_router
 from .routes_cartographie import router as cartographie_router
 from .routes_religions import router as religions_router
+from .routes_commerces import router as commerces_router
 
 
 ################# App Initialization #################
@@ -34,6 +35,7 @@ async def lifespan(app_: FastAPI):
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Version: {colors.BColors.LIGHTBLUE}{utils.VERSION}{colors.BColors.END}")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Hostname: {colors.BColors.LIGHTBLUE}{utils.HOSTNAME}{colors.BColors.END}")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     API Mode: {colors.BColors.LIGHTBLUE}{utils.API_MODE}{colors.BColors.END}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Configuration: {colors.BColors.LIGHTBLUE}{' + '.join(utils.CONFIG_FILES) or 'aucune'}{colors.BColors.END}")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     
     # Initialisation de la base de données
@@ -146,6 +148,8 @@ app.include_router(bibliotheque_router)
 app.include_router(civilisations_router)
 
 app.include_router(religions_router)
+
+app.include_router(commerces_router)
 
 app.include_router(cartographie_router)
 

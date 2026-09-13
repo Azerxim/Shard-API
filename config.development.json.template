@@ -1,0 +1,13 @@
+{
+	"api": {
+		"mode": "development",
+		"development": {
+			"ip": "127.0.0.1",
+			"port": 8002
+		}
+	},
+	"database": {
+		"name": "ShardDB-dev",
+		"debug": true
+	}
+}

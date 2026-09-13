@@ -54,7 +54,6 @@ class Journaux(SQLModel, table=True):
 
     is_public: bool | None = Field(default=None)
 
-
 class Livres(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int | None = Field(default=None, foreign_key="users.id")
@@ -151,7 +150,40 @@ class Quartiers(SQLModel, table=True):
     created_at: dt.datetime | None = Field(default=None)
     
     ville_id: int | None = Field(default=None, foreign_key="villes.id")
+
+
+############### Commerces ####################
+class Commerces(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    owner_id: int | None = Field(default=None, foreign_key="users.id")
+    title: str
+    description: str | None = Field(default=None)
+
+    is_public: bool | None = Field(default=None)
+    created_at: dt.datetime | None = Field(default=None)
+
+    # Comme les civilisations : un commerce dirigeant (défaut) ou dirigé par dirigeant_commerce_id
+    is_commerce_dirigeant: bool | None = Field(default=True)
+    dirigeant_commerce_id: int | None = Field(default=0)
+
+class CommerceMagasins(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    commerce_id: int | None = Field(default=None, foreign_key="commerces.id")
+    title: str
+    description: str | None = Field(default=None)
+
+    founded_date: dt.date | None = Field(default=None)
+
+    dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
+    x: int | None = Field(default=None)
+    z: int | None = Field(default=None)
+
+    is_siege: bool | None = Field(default=None)
+    is_public: bool | None = Field(default=None)
+    created_at: dt.datetime | None = Field(default=None)
     
+    ville_id: int | None = Field(default=None, foreign_key="villes.id")
+
 
 ############### Religions ####################
 
@@ -208,9 +240,5 @@ class Cartographie(SQLModel, table=True):
 
 ############### Templates ####################
 
-############### Tables importées des dumps mbu-s1 / mbu-tetrago ####################
-# Modèles bruts définis dans models_shards.py, exposés ici pour la découverte
-# automatique des tables (check_database_tables / create_db_and_tables).
-# from .mbu_models import *  # noqa: E402,F401,F403
 
 

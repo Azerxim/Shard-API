@@ -379,16 +379,25 @@ def create_journal_db(db: Session, user: schemas.Users, v_journal: schemas.Journ
     db.refresh(db_journal)
     return db_journal
 
+def _check_owner_rights(user: schemas.Users, owner_id: int | None):
+    # Auteur de la ressource ou administrateur du site, jamais un compte désactivé
+    if user.is_disabled or not (user.is_admin or (owner_id is not None and owner_id == user.id)):
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+def _check_civilisation_rights(db: Session, user: schemas.Users, civilisationID: int | None):
+    # Fondateur ou Admin de la civilisation, ou administrateur du site
+    db_members = get_members_of_civilisation(db, civilisationID, limit=10000) if civilisationID else []
+    _check_member_rights(user, db_members)
+
 def delete_journal(db: Session, user: schemas.Users, v_journalid: int):
+    # Récupérer le journal pour obtenir son UID Discord
+    journal = get_journal(db, v_journalid)
+    if not journal:
+        raise HTTPException(status_code=404, detail="Le journal n'existe pas")
+    _check_owner_rights(user, journal.user_id)
+
     try:
-        # Récupérer le journal pour obtenir son UID Discord
-        journal = get_journal(db, v_journalid)
-
-        # Vérifier de l'utilisateur actuel
-        if user.id != journal.user_id and not user.is_admin and user.is_disabled:
-            raise HTTPException(status_code=403, detail="Accès refusé")
-
-        if journal and journal.uid:
+        if journal.uid:
             try:
                 # Supprimer le salon Discord associé
                 loop = asyncio.new_event_loop()
@@ -416,10 +425,9 @@ def delete_journal(db: Session, user: schemas.Users, v_journalid: int):
 async def update_journal(db: Session, user: schemas.Users, journalID: int, v_journal: schemas.Journal):
     # Vérification de l'existence du journal
     db_journal = get_journal(db, journalID)
-
-    # Vérifier de l'utilisateur actuel
-    if user.id != db_journal.user_id and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_journal:
+        raise HTTPException(status_code=404, detail="Le journal n'existe pas")
+    _check_owner_rights(user, db_journal.user_id)
 
     if db_journal:
         # Mise à jour des informations
@@ -496,13 +504,22 @@ def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
     db.refresh(db_livre)
     return db_livre
 
-def delete_livre(db: Session, user: schemas.Users, livreID: int):
-    try:
-        livre = get_livre(db, livreID)
+def _check_livre_rights(db: Session, user: schemas.Users, livre: models.Livres):
+    # Mêmes règles que LivreDetail côté ShardUI-2 : livre d'une civilisation -> Fondateur ou Admin
+    # de la civilisation ; sinon -> son auteur. L'administrateur du site a toujours accès.
+    if livre.civilisation_id:
+        _check_civilisation_rights(db, user, livre.civilisation_id)
+    else:
+        _check_owner_rights(user, livre.user_id)
 
-        # Vérifier de l'utilisateur actuel
-        if user.id != livre.user_id and not user.is_admin and user.is_disabled:
-            raise HTTPException(status_code=403, detail="Accès refusé")
+def delete_livre(db: Session, user: schemas.Users, livreID: int):
+    livre = get_livre(db, livreID)
+    if not livre:
+        raise HTTPException(status_code=404, detail="Le livre n'existe pas")
+    _check_livre_rights(db, user, livre)
+
+    try:
+        # Suppression du livre
         
         db.delete(livre)
         db.commit()
@@ -514,10 +531,12 @@ def delete_livre(db: Session, user: schemas.Users, livreID: int):
 def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schemas.Livre):
     # Vérification de l'existence du livre
     db_livre = get_livre(db, livreID)
-
-    # Vérifier de l'utilisateur actuel
-    if user.id != db_livre.user_id and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_livre:
+        raise HTTPException(status_code=404, detail="Le livre n'existe pas")
+    _check_livre_rights(db, user, db_livre)
+    # Rattacher le livre à une autre civilisation demande aussi des droits sur celle-ci
+    if v_livre.civilisation_id and v_livre.civilisation_id != db_livre.civilisation_id:
+        _check_civilisation_rights(db, user, v_livre.civilisation_id)
 
     if db_livre:
         # Mise à jour des informations
@@ -562,6 +581,11 @@ def get_livre_contenus(db: Session, livreID: int):
     return results.all()
 
 def create_livre_contenu(db: Session, user: schemas.Users, v_livre: schemas.LivreContenu):
+    db_livre = get_livre(db, v_livre.livre_id)
+    if not db_livre:
+        raise HTTPException(status_code=404, detail="Le livre n'existe pas")
+    _check_livre_rights(db, user, db_livre)
+
     last_ordre_livre = db.exec(
         select(models.LivresContenus).where(models.LivresContenus.livre_id == v_livre.livre_id).order_by(models.LivresContenus.ordre.desc())
     ).first()
@@ -582,13 +606,16 @@ def create_livre_contenu(db: Session, user: schemas.Users, v_livre: schemas.Livr
     return db_livre_contenu
 
 def delete_livre_contenu(db: Session, user: schemas.Users, contenuID: int):
-    try:
-        contenu = get_livre_contenu(db, contenuID)
-        livre = get_livre(db, contenu.livre_id) if contenu else None
+    contenu = get_livre_contenu(db, contenuID)
+    if not contenu:
+        raise HTTPException(status_code=404, detail="Le contenu n'existe pas")
+    livre = get_livre(db, contenu.livre_id)
+    if not livre:
+        raise HTTPException(status_code=404, detail="Le livre n'existe pas")
+    _check_livre_rights(db, user, livre)
 
-        # Vérifier de l'utilisateur actuel
-        if not livre or (user.id != livre.user_id and not user.is_admin and user.is_disabled):
-            raise HTTPException(status_code=403, detail="Accès refusé")
+    try:
+        # Suppression du contenu
         
         db.delete(contenu)
         db.commit()
@@ -600,11 +627,18 @@ def delete_livre_contenu(db: Session, user: schemas.Users, contenuID: int):
 def update_livre_contenu(db: Session, user: schemas.Users, contenuID: int, v_livre: schemas.LivreContenu):
     # Vérification de l'existence du livre
     db_contenu = get_livre_contenu(db, contenuID)
-    db_livre = get_livre(db, db_contenu.livre_id) if db_contenu else None
-
-    # Vérifier de l'utilisateur actuel
-    if not db_livre or (user.id != db_livre.user_id and not user.is_admin and user.is_disabled):
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_contenu:
+        raise HTTPException(status_code=404, detail="Le contenu n'existe pas")
+    db_livre = get_livre(db, db_contenu.livre_id)
+    if not db_livre:
+        raise HTTPException(status_code=404, detail="Le livre n'existe pas")
+    _check_livre_rights(db, user, db_livre)
+    # Déplacer le contenu vers un autre livre demande aussi des droits sur celui-ci
+    if v_livre.livre_id is not None and v_livre.livre_id != db_contenu.livre_id:
+        target_livre = get_livre(db, v_livre.livre_id)
+        if not target_livre:
+            raise HTTPException(status_code=404, detail="Le livre n'existe pas")
+        _check_livre_rights(db, user, target_livre)
 
     if db_contenu:
         # Mise à jour des informations
@@ -755,12 +789,11 @@ def create_civilisation(db: Session, user: schemas.Users, v_civilisation: schema
 def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
     # Vérification de l'existence de la civilisation
     db_civilisation = get_civilisation_by_id(db, civilisationID)
-    db_members = get_members_of_civilisation(db, civilisationID)
-    db_gouvernement = get_gouvernement_by_id(db, db_civilisation.gouvernement_id) if db_civilisation and db_civilisation.gouvernement_id else None
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_civilisation:
+        raise HTTPException(status_code=404, detail="La civilisation n'existe pas")
+    _check_civilisation_rights(db, user, civilisationID)
+    db_members = get_members_of_civilisation(db, civilisationID, limit=10000)
+    db_gouvernement = get_gouvernement_by_id(db, db_civilisation.gouvernement_id) if db_civilisation.gouvernement_id else None
     
     try:
         delete_cartographies_by_types(db, "civilisation", civilisationID)
@@ -795,13 +828,12 @@ def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
 def update_civilisation(db: Session, user: schemas.Users, civilisationID: int, v_civilisation: schemas.Civilisation):
     # Vérification de l'existence de la civilisation
     db_civilisation = get_civilisation_by_id(db, civilisationID)
-    db_members = get_members_of_civilisation(db, civilisationID)
+    if not db_civilisation:
+        raise HTTPException(status_code=404, detail="La civilisation n'existe pas")
 
     # print(f"Updating civilisation {civilisationID} with values: {v_civilisation}")
 
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    _check_civilisation_rights(db, user, civilisationID)
     
     if db_civilisation:
         # Mise à jour des informations
@@ -832,12 +864,14 @@ def add_member_to_civilisation(db: Session, user: schemas.Users, civilisationID:
     db_civilisation = get_civilisation_by_id(db, civilisationID)
     if not db_civilisation:
         return {"fonction": "add_member_to_civilisation", "erreur": "La civilisation n'existe pas"}
-    db_members = get_members_of_civilisation(db, civilisationID)
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    _check_civilisation_rights(db, user, civilisationID)
     
+    # Le rôle de Fondateur ne s'obtient que par transfert
+    if role == "Fondateur":
+        raise HTTPException(status_code=400, detail="Utiliser le transfert pour changer de fondateur")
+    if get_member_of_civilisation(db, civilisationID, new_member_id):
+        raise HTTPException(status_code=400, detail="Cet utilisateur est déjà membre de la civilisation")
+
     try:
         db_member = models.CivilisationMembers(
             user_id=new_member_id,
@@ -858,12 +892,13 @@ def remove_member_from_civilisation(db: Session, user: schemas.Users, civilisati
     db_civilisation = get_civilisation_by_id(db, civilisationID)
     if not db_civilisation:
         return {"fonction": "remove_member_from_civilisation", "erreur": "La civilisation n'existe pas"}
-    db_members = get_members_of_civilisation(db, civilisationID)
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    _check_civilisation_rights(db, user, civilisationID)
     
+    # Le fondateur ne peut pas être retiré : transférer d'abord la civilisation
+    target = get_member_of_civilisation(db, civilisationID, member_id)
+    if target and target.role == "Fondateur":
+        raise HTTPException(status_code=400, detail="Le fondateur ne peut pas être retiré : transférer d'abord la civilisation")
+
     try:
         member = db.exec(
             select(models.CivilisationMembers).where(
@@ -886,12 +921,13 @@ def update_member_of_civilisation(db: Session, user: schemas.Users, civilisation
     db_civilisation = get_civilisation_by_id(db, civilisationID)
     if not db_civilisation:
         return {"fonction": "update_member_of_civilisation", "erreur": "La civilisation n'existe pas"}
-    db_members = get_members_of_civilisation(db, civilisationID)
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    _check_civilisation_rights(db, user, civilisationID)
     
+    # Le rôle de Fondateur ne se modifie que par transfert
+    target = get_member_of_civilisation(db, civilisationID, member_id)
+    if (target and target.role == "Fondateur") or member.role == "Fondateur":
+        raise HTTPException(status_code=400, detail="Utiliser le transfert pour changer de fondateur")
+
     try:
         db_member = db.exec(
             select(models.CivilisationMembers).where(
@@ -966,6 +1002,7 @@ def get_gouvernement_by_id(db: Session, ID: int):
     return results.first()
 
 def create_gouvernement(db: Session, user: schemas.Users, v_gouvernement: schemas.GouvernementCreate):
+    _check_civilisation_rights(db, user, v_gouvernement.civilisation_id)
     db_gouvernement = models.Gouvernements(
         civilisation_id = v_gouvernement.civilisation_id,
         title = v_gouvernement.title,
@@ -983,15 +1020,14 @@ def create_gouvernement(db: Session, user: schemas.Users, v_gouvernement: schema
 
 def delete_gouvernement(db: Session, user: schemas.Users, v_gouvernementid: int):
     db_gouvernement = get_gouvernement_by_id(db, v_gouvernementid)
-    db_civilisation = get_civilisation_by_id(db, db_gouvernement.civilisation_id) if db_gouvernement else None
-    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_gouvernement:
+        raise HTTPException(status_code=404, detail="Le gouvernement n'existe pas")
+    _check_civilisation_rights(db, user, db_gouvernement.civilisation_id)
+    db_civilisation = get_civilisation_by_id(db, db_gouvernement.civilisation_id) if db_gouvernement.civilisation_id else None
     try:
-        db_civilisation.gouvernement_id = None
-        db.add(db_civilisation)
+        if db_civilisation:
+            db_civilisation.gouvernement_id = None
+            db.add(db_civilisation)
         db.delete(db_gouvernement)
         db.commit()
         return {"fonction": "delete_gouvernement", "resultat": "Gouvernement supprimé"}
@@ -1002,12 +1038,12 @@ def delete_gouvernement(db: Session, user: schemas.Users, v_gouvernementid: int)
 def update_gouvernement(db: Session, user: schemas.Users, gouvernementID: int, v_gouvernement: schemas.GouvernementCreate):
     # Vérification de l'existence du gouvernement
     db_gouvernement = get_gouvernement_by_id(db, gouvernementID)
-    db_civilisation = get_civilisation_by_id(db, db_gouvernement.civilisation_id) if db_gouvernement else None
-    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_gouvernement:
+        raise HTTPException(status_code=404, detail="Le gouvernement n'existe pas")
+    _check_civilisation_rights(db, user, db_gouvernement.civilisation_id)
+    # Rattacher le gouvernement à une autre civilisation demande aussi des droits sur celle-ci
+    if v_gouvernement.civilisation_id is not None and v_gouvernement.civilisation_id != db_gouvernement.civilisation_id:
+        _check_civilisation_rights(db, user, v_gouvernement.civilisation_id)
 
     if db_gouvernement:
         # Mise à jour des informations
@@ -1051,6 +1087,9 @@ def get_villes_by_dimension_id(db: Session, dimensionID: int, skip: int = 0, lim
     return results.all()
 
 def create_ville(db: Session, user: schemas.Users, v_ville: schemas.VilleCreate):
+    if not get_civilisation_by_id(db, v_ville.civilisation_id):
+        raise HTTPException(status_code=404, detail="La civilisation n'existe pas")
+    _check_civilisation_rights(db, user, v_ville.civilisation_id)
     db_ville = models.Villes(
         civilisation_id = v_ville.civilisation_id,
         title = v_ville.title,
@@ -1072,13 +1111,10 @@ def create_ville(db: Session, user: schemas.Users, v_ville: schemas.VilleCreate)
 
 def delete_ville(db: Session, user: schemas.Users, v_villeid: int):
     db_ville = get_ville_by_id(db, v_villeid)
-    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
-    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
-    db_quartiers = get_quartiers_by_ville_id(db, v_villeid) if db_ville else []
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_ville:
+        raise HTTPException(status_code=404, detail="La ville n'existe pas")
+    _check_civilisation_rights(db, user, db_ville.civilisation_id)
+    db_quartiers = get_quartiers_by_ville_id(db, v_villeid, limit=10000)
     try:
         for quartier in db_quartiers:
             delete_cartographies_by_types(db, "quartier", quartier.id)
@@ -1098,12 +1134,14 @@ def delete_ville(db: Session, user: schemas.Users, v_villeid: int):
 def update_ville(db: Session, user: schemas.Users, villeID: int, v_ville: schemas.Ville):
     # Vérification de l'existence de la ville
     db_ville = get_ville_by_id(db, villeID)
-    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
-    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_ville:
+        raise HTTPException(status_code=404, detail="La ville n'existe pas")
+    _check_civilisation_rights(db, user, db_ville.civilisation_id)
+    # Déplacer la ville vers une autre civilisation demande aussi des droits sur celle-ci
+    if v_ville.civilisation_id is not None and v_ville.civilisation_id != db_ville.civilisation_id:
+        if not get_civilisation_by_id(db, v_ville.civilisation_id):
+            raise HTTPException(status_code=404, detail="La civilisation n'existe pas")
+        _check_civilisation_rights(db, user, v_ville.civilisation_id)
 
     if db_ville:
         # Mise à jour des informations
@@ -1151,7 +1189,11 @@ def get_quartiers_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: i
     results = db.exec(statement)
     return results.all()
 
-def create_quartier(db: Session, v_quartier: schemas.QuartierCreate):
+def create_quartier(db: Session, user: schemas.Users, v_quartier: schemas.QuartierCreate):
+    db_ville = get_ville_by_id(db, v_quartier.ville_id)
+    if not db_ville:
+        raise HTTPException(status_code=404, detail="La ville n'existe pas")
+    _check_civilisation_rights(db, user, db_ville.civilisation_id)
     db_quartier = models.Quartiers(
         ville_id = v_quartier.ville_id,
         title = v_quartier.title,
@@ -1171,13 +1213,10 @@ def create_quartier(db: Session, v_quartier: schemas.QuartierCreate):
 
 def delete_quartier(db: Session, user: schemas.Users, v_quartierid: int):
     db_quartier = get_quartier_by_id(db, v_quartierid)
-    db_ville = get_ville_by_id(db, db_quartier.ville_id) if db_quartier else None
-    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
-    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_quartier:
+        raise HTTPException(status_code=404, detail="Le quartier n'existe pas")
+    db_ville = get_ville_by_id(db, db_quartier.ville_id)
+    _check_civilisation_rights(db, user, db_ville.civilisation_id if db_ville else None)
 
     try:
         db.delete(db_quartier)
@@ -1193,13 +1232,16 @@ def delete_quartier(db: Session, user: schemas.Users, v_quartierid: int):
 def update_quartier(db: Session, user: schemas.Users, quartierID: int, v_quartier: schemas.Quartier):
     # Vérification de l'existence du quartier
     db_quartier = get_quartier_by_id(db, quartierID)
-    db_ville = get_ville_by_id(db, db_quartier.ville_id) if db_quartier else None
-    db_civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville else None
-    db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
-
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    if not db_quartier:
+        raise HTTPException(status_code=404, detail="Le quartier n'existe pas")
+    db_ville = get_ville_by_id(db, db_quartier.ville_id)
+    _check_civilisation_rights(db, user, db_ville.civilisation_id if db_ville else None)
+    # Déplacer le quartier vers une autre ville demande aussi des droits sur la civilisation de celle-ci
+    if v_quartier.ville_id is not None and v_quartier.ville_id != db_quartier.ville_id:
+        target_ville = get_ville_by_id(db, v_quartier.ville_id)
+        if not target_ville:
+            raise HTTPException(status_code=404, detail="La ville n'existe pas")
+        _check_civilisation_rights(db, user, target_ville.civilisation_id)
 
     if db_quartier:
         # Mise à jour des informations
@@ -1228,6 +1270,15 @@ def update_quartier(db: Session, user: schemas.Users, quartierID: int, v_quartie
 
 ################# Religions #####################
 #region Religions
+
+def _check_member_rights(user: schemas.Users, db_members):
+    # Mêmes règles que checkMemberAuth côté ShardUI-2 : Fondateur ou Admin, ou administrateur du site
+    if user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    if user.is_admin:
+        return
+    if not any(member.user_id == user.id and member.role in ("Fondateur", "Admin") for member in db_members):
+        raise HTTPException(status_code=403, detail="Accès refusé")
 
 def get_religions(db: Session, skip: int = 0, limit: int = 100):
     statement = select(models.Religions).offset(skip).limit(limit)
@@ -1338,17 +1389,20 @@ def delete_religion(db: Session, user: schemas.Users, v_religionid: int):
     db_religion = get_religion_by_id(db, v_religionid)
     db_villes_religions = get_villes_by_religion_id(db, v_religionid, skip=0, limit=1000)
     db_quartiers_religions = get_quartiers_by_religion_id(db, v_religionid, skip=0, limit=1000)
-    db_members = get_members_of_religion(db, v_religionid) if db_religion else []
+    if not db_religion:
+        raise HTTPException(status_code=404, detail="La religion n'existe pas")
+    db_members = get_members_of_religion(db, v_religionid, limit=10000)
 
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    # Fondateur ou Admin de la religion, ou administrateur du site
+    _check_member_rights(user, db_members)
     
     try:
         for villereligion in db_villes_religions:
             db.delete(villereligion["villes_religions"])
         for quartierreligion in db_quartiers_religions:
             db.delete(quartierreligion["quartiers_religions"])
+        for member in db_members:
+            db.delete(member)
         db.delete(db_religion)
         db.commit()
         return {"fonction": "delete_religion", "resultat": "Religion supprimée"}
@@ -1359,11 +1413,12 @@ def delete_religion(db: Session, user: schemas.Users, v_religionid: int):
 def update_religion(db: Session, user: schemas.Users, religionID: int, v_religion: schemas.Religions):
     # Vérification de l'existence de la religion
     db_religion = get_religion_by_id(db, religionID)
-    db_members = get_members_of_religion(db, religionID) if db_religion else []
+    if not db_religion:
+        raise HTTPException(status_code=404, detail="La religion n'existe pas")
+    db_members = get_members_of_religion(db, religionID, limit=10000)
 
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    # Fondateur ou Admin de la religion, ou administrateur du site
+    _check_member_rights(user, db_members)
 
     if db_religion:
         # Mise à jour des informations
@@ -1391,12 +1446,11 @@ def add_religion_to_ville(db: Session, user: schemas.Users, villeID: int, v_reli
     db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
     db_religion = get_religion_by_id(db, v_religionid)
 
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
-
     if not db_ville:
         return {"error": 404, "text": "La ville n'a pas été trouvée"}
+
+    # Fondateur ou Admin de la civilisation de la ville, ou administrateur du site
+    _check_member_rights(user, db_members)
     if not db_religion:
         return {"error": 404, "text": "La religion n'a pas été trouvée"}
     else:
@@ -1432,12 +1486,11 @@ def update_influence_of_religion_in_ville(db: Session, user: schemas.Users, vill
     db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
     db_religion = get_religion_by_id(db, v_religionid)
 
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
-
     if not db_ville:
         return {"error": 404, "text": "La ville n'a pas été trouvée"}
+
+    # Fondateur ou Admin de la civilisation de la ville, ou administrateur du site
+    _check_member_rights(user, db_members)
     if not db_religion:
         return {"error": 404, "text": "La religion n'a pas été trouvée"}
     else:
@@ -1478,12 +1531,11 @@ def delete_religion_from_ville(db: Session, user: schemas.Users, villeID: int, v
     db_members = get_members_of_civilisation(db, db_civilisation.id) if db_civilisation else []
     db_religion = get_religion_by_id(db, v_religionid)
 
-    # Vérifier de l'utilisateur actuel
-    if user.id not in [member.user_id for member in db_members] and not user.is_admin and user.is_disabled:
-        raise HTTPException(status_code=403, detail="Accès refusé")
-
     if not db_ville:
         return {"error": 404, "text": "La ville n'a pas été trouvée"}
+
+    # Fondateur ou Admin de la civilisation de la ville, ou administrateur du site
+    _check_member_rights(user, db_members)
     if not db_religion:
         return {"error": 404, "text": "La religion n'a pas été trouvée"}
 
@@ -1544,6 +1596,260 @@ def transfer_founder_of_religion(db: Session, user: schemas.Users, religionID: i
     return get_members_of_religion(db, religionID, limit=10000)
 #endregion
 
+################# Commerces #####################
+#region Commerces
+
+def _commerce_owner(db: Session, owner_id: int | None):
+    # Informations publiques du propriétaire (jamais le mot de passe haché)
+    user = get_user_by_id(db=db, user_id=owner_id) if owner_id else None
+    if not user:
+        return None
+    return {"id": user.id, "username": user.username, "full_name": user.full_name, "image_url": user.image_url}
+
+def _check_commerce_owner(user: schemas.Users, db_commerce: models.Commerces):
+    # Seul le propriétaire du commerce ou un administrateur du site peut le modifier
+    if user.is_disabled or not (user.is_admin or db_commerce.owner_id == user.id):
+        raise HTTPException(status_code=403, detail="Seul le propriétaire du commerce ou un administrateur peut le modifier")
+
+def get_commerces(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.Commerces).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_commerce_by_id(db: Session, ID: int):
+    statement = select(models.Commerces).where(models.Commerces.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_commerces_by_owner_id(db: Session, ownerID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.Commerces).where(models.Commerces.owner_id == ownerID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_magasins(db: Session, skip: int = 0, limit: int = 100):
+    statement = select(models.CommerceMagasins).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_magasin_by_id(db: Session, ID: int):
+    statement = select(models.CommerceMagasins).where(models.CommerceMagasins.id == ID)
+    results = db.exec(statement)
+    return results.first()
+
+def get_magasins_by_commerce_id(db: Session, commerceID: int, skip: int = 0, limit: int = 1000):
+    # Le siège en premier
+    statement = (
+        select(models.CommerceMagasins)
+        .where(models.CommerceMagasins.commerce_id == commerceID)
+        .order_by(models.CommerceMagasins.is_siege.desc(), models.CommerceMagasins.title)
+        .offset(skip).limit(limit)
+    )
+    results = db.exec(statement)
+    return results.all()
+
+def get_magasins_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: int = 100):
+    statement = select(models.CommerceMagasins).where(models.CommerceMagasins.ville_id == villeID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_all_of_commerce_by_id(db: Session, ID: int):
+    db_commerce = get_commerce_by_id(db, ID)
+    if not db_commerce:
+        return None
+    return {
+        'commerce': db_commerce,
+        'owner': _commerce_owner(db, db_commerce.owner_id),
+        'magasins': get_magasins_by_commerce_id(db, db_commerce.id),
+    }
+
+def get_diriges_of_commerce(db: Session, commerceID: int, skip: int = 0, limit: int = 1000):
+    statement = select(models.Commerces).where(models.Commerces.dirigeant_commerce_id == commerceID).offset(skip).limit(limit)
+    results = db.exec(statement)
+    return results.all()
+
+def get_commerce_links(db: Session, db_commerce: models.Commerces):
+    # Commerce dirigeant (résumé) et commerces dirigés (avec propriétaire et magasins)
+    dirigeant = get_commerce_by_id(db, db_commerce.dirigeant_commerce_id) if db_commerce.dirigeant_commerce_id else None
+    return {
+        'dirigeant': {"id": dirigeant.id, "title": dirigeant.title, "is_public": dirigeant.is_public} if dirigeant else None,
+        'diriges': [get_all_of_commerce_by_id(db, dirige.id) for dirige in get_diriges_of_commerce(db, db_commerce.id) if dirige.id != db_commerce.id],
+    }
+
+def _apply_commerce_dirigeant(db: Session, user: schemas.Users, db_commerce: models.Commerces, is_dirigeant: bool, dirigeant_id: int | None):
+    # Un commerce dirigeant n'a pas de dirigeant. Un commerce dirigé est rattaché à un commerce dirigeant
+    # existant (pas de chaîne), autre que lui-même, sur lequel l'utilisateur a des droits.
+    if is_dirigeant:
+        db_commerce.is_commerce_dirigeant = True
+        db_commerce.dirigeant_commerce_id = 0
+        return
+
+    if db_commerce.id and get_diriges_of_commerce(db, db_commerce.id, limit=1):
+        raise HTTPException(status_code=400, detail="Ce commerce dirige d'autres commerces : il ne peut pas être rattaché à un commerce dirigeant")
+    if dirigeant_id:
+        if db_commerce.id and dirigeant_id == db_commerce.id:
+            raise HTTPException(status_code=400, detail="Un commerce ne peut pas se diriger lui-même")
+        db_dirigeant = get_commerce_by_id(db, dirigeant_id)
+        if not db_dirigeant:
+            raise HTTPException(status_code=404, detail="Le commerce dirigeant n'existe pas")
+        if db_dirigeant.is_commerce_dirigeant is False:
+            raise HTTPException(status_code=400, detail="Le commerce choisi n'est pas un commerce dirigeant")
+        if not (user.is_admin or db_dirigeant.owner_id == user.id):
+            raise HTTPException(status_code=403, detail="Rattacher un commerce demande les droits sur le commerce dirigeant")
+
+    db_commerce.is_commerce_dirigeant = False
+    db_commerce.dirigeant_commerce_id = dirigeant_id or 0
+
+def create_commerce(db: Session, user: schemas.Users, v_commerce: schemas.CommerceCreate):
+    if user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+
+    owner_id = user.id
+    if v_commerce.owner_id and v_commerce.owner_id != user.id:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Seul un administrateur peut créer un commerce pour un autre utilisateur")
+        if not get_user_by_id(db=db, user_id=v_commerce.owner_id):
+            raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
+        owner_id = v_commerce.owner_id
+
+    db_commerce = models.Commerces(
+        owner_id = owner_id,
+        title = v_commerce.title,
+        description = v_commerce.description,
+        is_public = v_commerce.is_public if v_commerce.is_public is not None else True,
+        created_at = dt.datetime.today()
+    )
+    _apply_commerce_dirigeant(db, user, db_commerce, v_commerce.is_commerce_dirigeant is not False, v_commerce.dirigeant_commerce_id)
+    db.add(db_commerce)
+    db.commit()
+    db.refresh(db_commerce)
+    return db_commerce
+
+def update_commerce(db: Session, user: schemas.Users, commerceID: int, v_commerce: schemas.CommerceUpdate):
+    db_commerce = get_commerce_by_id(db, commerceID)
+    if not db_commerce:
+        raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
+    _check_commerce_owner(user, db_commerce)
+
+    data = v_commerce.model_dump(exclude_unset=True)
+    owner_id = data.pop("owner_id", None)
+    is_dirigeant = data.pop("is_commerce_dirigeant", None)
+    dirigeant_id = data.pop("dirigeant_commerce_id", None)
+    if data.get("title") is None:
+        data.pop("title", None)
+    for key, value in data.items():
+        setattr(db_commerce, key, value)
+
+    if owner_id is not None and owner_id != db_commerce.owner_id:
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Seul un administrateur peut changer le propriétaire d'un commerce")
+        if not get_user_by_id(db=db, user_id=owner_id):
+            raise HTTPException(status_code=404, detail="L'utilisateur n'existe pas")
+        db_commerce.owner_id = owner_id
+
+    # Lien dirigeant : revalidé seulement s'il change (le formulaire renvoie aussi les valeurs actuelles)
+    if is_dirigeant is not None or dirigeant_id is not None:
+        current_is = db_commerce.is_commerce_dirigeant is not False
+        current_id = db_commerce.dirigeant_commerce_id or 0
+        new_is = current_is if is_dirigeant is None else is_dirigeant
+        new_id = current_id if dirigeant_id is None else (dirigeant_id or 0)
+        if new_is != current_is or (not new_is and new_id != current_id):
+            _apply_commerce_dirigeant(db, user, db_commerce, new_is, new_id)
+
+    db.add(db_commerce)
+    db.commit()
+    db.refresh(db_commerce)
+    return db_commerce
+
+def delete_commerce(db: Session, user: schemas.Users, commerceID: int):
+    db_commerce = get_commerce_by_id(db, commerceID)
+    if not db_commerce:
+        raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
+    _check_commerce_owner(user, db_commerce)
+
+    # Les commerces dirigés redeviennent indépendants
+    for db_dirige in get_diriges_of_commerce(db, commerceID):
+        db_dirige.is_commerce_dirigeant = True
+        db_dirige.dirigeant_commerce_id = 0
+        db.add(db_dirige)
+    for db_magasin in get_magasins_by_commerce_id(db, commerceID):
+        db.delete(db_magasin)
+    db.delete(db_commerce)
+    db.commit()
+    return True
+
+def _check_magasin_references(db: Session, dimension_id: int | None, ville_id: int | None):
+    if dimension_id is not None and not get_dimension_by_id(db, dimension_id):
+        raise HTTPException(status_code=404, detail="La dimension n'existe pas")
+    if ville_id is not None and not get_ville_by_id(db, ville_id):
+        raise HTTPException(status_code=404, detail="La ville n'existe pas")
+
+def _keep_single_siege(db: Session, db_magasin: models.CommerceMagasins):
+    # Un seul siège par commerce : le magasin désigné remplace l'ancien siège
+    if not db_magasin.is_siege:
+        return
+    for other in get_magasins_by_commerce_id(db, db_magasin.commerce_id):
+        if other.id != db_magasin.id and other.is_siege:
+            other.is_siege = False
+            db.add(other)
+    db.commit()
+
+def create_magasin(db: Session, user: schemas.Users, v_magasin: schemas.MagasinCreate):
+    db_commerce = get_commerce_by_id(db, v_magasin.commerce_id)
+    if not db_commerce:
+        raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
+    _check_commerce_owner(user, db_commerce)
+    _check_magasin_references(db, v_magasin.dimension_id, v_magasin.ville_id)
+
+    db_magasin = models.CommerceMagasins(
+        commerce_id = v_magasin.commerce_id,
+        title = v_magasin.title,
+        description = v_magasin.description,
+        founded_date = v_magasin.founded_date,
+        dimension_id = v_magasin.dimension_id,
+        x = v_magasin.x,
+        z = v_magasin.z,
+        is_siege = bool(v_magasin.is_siege),
+        is_public = v_magasin.is_public if v_magasin.is_public is not None else True,
+        ville_id = v_magasin.ville_id,
+        created_at = dt.datetime.today()
+    )
+    db.add(db_magasin)
+    db.commit()
+    db.refresh(db_magasin)
+    _keep_single_siege(db, db_magasin)
+    return get_magasin_by_id(db, db_magasin.id)
+
+def update_magasin(db: Session, user: schemas.Users, magasinID: int, v_magasin: schemas.MagasinUpdate):
+    db_magasin = get_magasin_by_id(db, magasinID)
+    if not db_magasin:
+        raise HTTPException(status_code=404, detail="Le magasin n'existe pas")
+    _check_commerce_owner(user, get_commerce_by_id(db, db_magasin.commerce_id))
+
+    # Seuls les champs envoyés sont modifiés (null permet d'effacer une ville ou une description)
+    data = v_magasin.model_dump(exclude_unset=True)
+    if data.get("title") is None:
+        data.pop("title", None)
+    _check_magasin_references(db, data.get("dimension_id"), data.get("ville_id"))
+    for key, value in data.items():
+        setattr(db_magasin, key, value)
+
+    db.add(db_magasin)
+    db.commit()
+    db.refresh(db_magasin)
+    _keep_single_siege(db, db_magasin)
+    return get_magasin_by_id(db, magasinID)
+
+def delete_magasin(db: Session, user: schemas.Users, magasinID: int):
+    db_magasin = get_magasin_by_id(db, magasinID)
+    if not db_magasin:
+        raise HTTPException(status_code=404, detail="Le magasin n'existe pas")
+    _check_commerce_owner(user, get_commerce_by_id(db, db_magasin.commerce_id))
+
+    db.delete(db_magasin)
+    db.commit()
+    return True
+#endregion
+
 #region Cartographie
 ################# Cartographie #####################
 
@@ -1584,11 +1890,17 @@ def delete_dimension(db: Session, user: schemas.Users, v_dimensionid: int):
     db_dimension = get_dimension_by_id(db, v_dimensionid)
 
     # Vérifier de l'utilisateur actuel
-    if not user.is_admin and user.is_disabled:
+    if not user.is_admin or user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
-    
+
     if not db_dimension:
         return {"fonction": "delete_dimension", "erreur": "La dimension n'existe pas"}
+
+    # Une dimension encore référencée ne peut pas être supprimée
+    nb_villes = len(get_villes_by_dimension_id(db, v_dimensionid, limit=1))
+    nb_marqueurs = len(get_cartographies_by_dimension(db, v_dimensionid, limit=1))
+    if nb_villes or nb_marqueurs:
+        return {"fonction": "delete_dimension", "erreur": "La dimension est encore utilisée par des villes ou des marqueurs de cartographie"}
     try:
         db.delete(db_dimension)
         db.commit()
@@ -1602,7 +1914,7 @@ def update_dimension(db: Session, user: schemas.Users, dimensionID: int, v_dimen
     db_dimension = get_dimension_by_id(db, dimensionID)
 
     # Vérifier de l'utilisateur actuel
-    if not user.is_admin and user.is_disabled:
+    if not user.is_admin or user.is_disabled:
         raise HTTPException(status_code=403, detail="Accès refusé")
 
     if db_dimension:

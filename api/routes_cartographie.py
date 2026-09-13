@@ -91,7 +91,7 @@ def read_dimensions_by_title(DimensionTitle: str, db: Session = Depends(get_db))
     return JSONResponse(content=jsonable_encoder(func))
 
 @router.post("/dimensions/create", tags=["Dimensions"])
-def create_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], dimension: schemas.DimensionCreate, db: Session = Depends(get_db)):
+def create_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_admin)], dimension: schemas.DimensionCreate, db: Session = Depends(get_db)):
     return crud.create_dimension(
         db=db,
         user=current_user,
@@ -99,14 +99,15 @@ def create_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_ge
     )
 
 @router.delete("/dimensions/delete", tags=["Dimensions"])
-def delete_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], DimensionID: int, db: Session = Depends(get_db)):
+def delete_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_admin)], DimensionID: int, db: Session = Depends(get_db)):
     delete=crud.delete_dimension(db=db, user=current_user, v_dimensionid=DimensionID)
-    if not delete:
-        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression de la dimension"}))
+    if not delete or delete.get("erreur"):
+        text = delete.get("erreur") if delete else "Une erreur est survenue lors de la suppression de la dimension"
+        raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': text}))
     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"La dimension a été supprimée"}))
 
 @router.put("/dimensions/update", tags=["Dimensions"])
-def update_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], dimension: schemas.Dimension, db: Session = Depends(get_db)):
+def update_dimension(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_admin)], dimension: schemas.Dimension, db: Session = Depends(get_db)):
     return crud.update_dimension(
         db=db,
         user=current_user,

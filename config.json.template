@@ -2,8 +2,15 @@
 	"version": "3",
 	"api": {
 		"name": "NAME API",
-		"ip": "0.0.0.0",
-		"port": 8000
+		"mode": "production",
+		"production": {
+			"ip": "0.0.0.0",
+			"port": 8000
+		},
+		"development": {
+			"ip": "127.0.0.1",
+			"port": 8002
+		}
 	},
 	"database": {
 		"name": "database",
