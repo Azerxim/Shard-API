@@ -1117,7 +1117,7 @@ def delete_ville(db: Session, user: schemas.Users, v_villeid: int):
     db_quartiers = get_quartiers_by_ville_id(db, v_villeid, limit=10000)
     try:
         for quartier in db_quartiers:
-            delete_cartographies_by_types(db, "quartier", quartier.id)
+            _delete_quartier_dependencies(db, quartier.id)
             db.delete(quartier)
         delete_cartographies_by_types(db, "ville", v_villeid)
         db.delete(db_ville)
@@ -1199,8 +1199,9 @@ def create_quartier(db: Session, user: schemas.Users, v_quartier: schemas.Quarti
         title = v_quartier.title,
         description = v_quartier.description,
         population = v_quartier.population,
-        x = v_quartier.x,
-        z = v_quartier.z,
+        # Sans coordonnées, le quartier est placé au centre de sa ville
+        x = v_quartier.x if v_quartier.x is not None else db_ville.x,
+        z = v_quartier.z if v_quartier.z is not None else db_ville.z,
         founded_date = v_quartier.founded_date,
         is_public = v_quartier.is_public,
         created_at = dt.datetime.today()
@@ -1219,6 +1220,7 @@ def delete_quartier(db: Session, user: schemas.Users, v_quartierid: int):
     _check_civilisation_rights(db, user, db_ville.civilisation_id if db_ville else None)
 
     try:
+        _delete_quartier_dependencies(db, v_quartierid)
         db.delete(db_quartier)
         db.commit()
         return {"fonction": "delete_quartier", "resultat": "Quartier supprimé"}
@@ -1266,6 +1268,87 @@ def update_quartier(db: Session, user: schemas.Users, quartierID: int, v_quartie
         db.refresh(db_quartier)
         return get_quartier_by_id(db=db, ID=quartierID)
     return {"error": 404, "text": "Le quartier n'a pas été trouvé"}
+
+def _delete_quartier_dependencies(db: Session, quartierID: int):
+    # Frontières et religions du quartier ; la suppression du quartier et le commit restent à l'appelant
+    delete_cartographies_by_types(db, "quartier", quartierID)
+    links = db.exec(select(models.QuartiersReligions).where(models.QuartiersReligions.quartier_id == quartierID)).all()
+    for db_link in links:
+        db.delete(db_link)
+
+def get_all_of_quartier_by_id(db: Session, ID: int):
+    db_quartier = get_quartier_by_id(db, ID)
+    if not db_quartier:
+        return None
+    return {
+        'quartier': db_quartier,
+        'ville': get_ville_by_id(db, db_quartier.ville_id),
+        'religions': get_religions_by_quartier_id(db, ID),
+    }
+
+def _check_quartier_rights(db: Session, user: schemas.Users, quartierID: int):
+    # Fondateur ou Admin de la civilisation de la ville du quartier, ou administrateur du site
+    db_quartier = get_quartier_by_id(db, quartierID)
+    if not db_quartier:
+        raise HTTPException(status_code=404, detail="Le quartier n'existe pas")
+    db_ville = get_ville_by_id(db, db_quartier.ville_id)
+    _check_civilisation_rights(db, user, db_ville.civilisation_id if db_ville else None)
+    return db_quartier
+
+def _quartier_religion_link(db: Session, quartierID: int, religionID: int):
+    statement = select(models.QuartiersReligions).where(
+        models.QuartiersReligions.quartier_id == quartierID,
+        models.QuartiersReligions.religion_id == religionID
+    )
+    return db.exec(statement).first()
+
+def _religion_with_influence(db_religion: models.Religions, influence: float | None):
+    # Même format que les religions d'une ville (get_religions_by_ville_id)
+    return {
+        "id": db_religion.id,
+        "title": db_religion.title,
+        "color": db_religion.color,
+        "icon": db_religion.icon,
+        "description": db_religion.description,
+        "date_founded": db_religion.date_founded,
+        "created_at": db_religion.created_at,
+        "is_public": db_religion.is_public,
+        "influence": influence
+    }
+
+def add_religion_to_quartier(db: Session, user: schemas.Users, quartierID: int, religionID: int, influence: float):
+    _check_quartier_rights(db, user, quartierID)
+    db_religion = get_religion_by_id(db, religionID)
+    if not db_religion:
+        raise HTTPException(status_code=404, detail="La religion n'existe pas")
+    if _quartier_religion_link(db, quartierID, religionID):
+        raise HTTPException(status_code=400, detail="Cette religion est déjà présente dans le quartier")
+
+    db.add(models.QuartiersReligions(quartier_id=quartierID, religion_id=religionID, influence=influence))
+    db.commit()
+    return {"resultat": "Religion ajoutée au quartier", "religion": _religion_with_influence(db_religion, influence)}
+
+def update_influence_of_religion_in_quartier(db: Session, user: schemas.Users, quartierID: int, religionID: int, influence: float):
+    _check_quartier_rights(db, user, quartierID)
+    db_link = _quartier_religion_link(db, quartierID, religionID)
+    if not db_link:
+        raise HTTPException(status_code=404, detail="La religion n'est pas associée au quartier")
+
+    db_link.influence = influence
+    db.add(db_link)
+    db.commit()
+    db.refresh(db_link)
+    return {"resultat": "Influence mise à jour", "religion": _religion_with_influence(get_religion_by_id(db, religionID), db_link.influence)}
+
+def delete_religion_from_quartier(db: Session, user: schemas.Users, quartierID: int, religionID: int):
+    _check_quartier_rights(db, user, quartierID)
+    db_link = _quartier_religion_link(db, quartierID, religionID)
+    if not db_link:
+        raise HTTPException(status_code=404, detail="La religion n'est pas associée au quartier")
+
+    db.delete(db_link)
+    db.commit()
+    return {"resultat": "Religion retirée du quartier"}
 #endregion
 
 ################# Religions #####################
@@ -1429,7 +1512,7 @@ def get_villes_by_religion_id(db: Session, religionID: int, skip: int = 0, limit
 def get_religions_by_quartier_id(db: Session, quartierID: int, skip: int = 0, limit: int = 100):
     statement = select(models.QuartiersReligions, models.Religions).join(models.Religions, models.QuartiersReligions.religion_id == models.Religions.id).where(models.QuartiersReligions.quartier_id == quartierID).offset(skip).limit(limit)
     results = db.exec(statement)
-    return [{"quartiers_religions": quartier_religion, "religion": religion} for quartier_religion, religion in results.all()]
+    return [_religion_with_influence(religion, quartier_religion.influence) for quartier_religion, religion in results.all()]
 
 def get_quartiers_by_religion_id(db: Session, religionID: int, skip: int = 0, limit: int = 100):
     statement = select(models.QuartiersReligions, models.Quartiers).join(models.Quartiers, models.QuartiersReligions.quartier_id == models.Quartiers.id).where(models.QuartiersReligions.religion_id == religionID).offset(skip).limit(limit)

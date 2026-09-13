@@ -246,6 +246,14 @@ def read_quartier(QuartierID: int, db: Session = Depends(get_db)):
         func = {'error': 200, 'quartier': quartier}
     return JSONResponse(content=jsonable_encoder(func))
 
+@router.get("/quartiers/read/{QuartierID}", tags=["Quartiers"])
+def read_quartier_all(QuartierID: int, db: Session = Depends(get_db)):
+    # quartier, ville et religions (même format que les religions d'une ville)
+    infos = crud.get_all_of_quartier_by_id(db=db, ID=QuartierID)
+    if infos is None:
+        raise HTTPException(status_code=404, detail=f"Le quartier {QuartierID} n'existe pas")
+    return JSONResponse(content=jsonable_encoder({'error': 200, **infos}))
+
 @router.get("/quartiers/ville/{VilleID}", tags=["Quartiers"])
 def read_quartiers_by_ville(VilleID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     result = crud.get_quartiers_by_ville_id(db=db, villeID=VilleID, skip=skip, limit=limit)
@@ -253,11 +261,12 @@ def read_quartiers_by_ville(VilleID: int, skip: int = 0, limit: int = 100, db: S
 
 @router.post("/quartiers/create", tags=["Quartiers"])
 def create_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], quartier: schemas.QuartierCreate, db: Session = Depends(get_db)):
-    return crud.create_quartier(
+    result = crud.create_quartier(
         db=db,
         user=current_user,
         v_quartier=quartier
     )
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le quartier a été créé", 'quartier': result}))
 
 @router.delete("/quartiers/delete", tags=["Quartiers"])
 def delete_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], QuartierID: int, db: Session = Depends(get_db)):
@@ -267,13 +276,14 @@ def delete_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get
     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le quartier a été supprimé"}))
 
 @router.put("/quartiers/update/{QuartierID}", tags=["Quartiers"])
-def update_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], QuartierID: int, quartier: schemas.Quartier, db: Session = Depends(get_db)):
-    return crud.update_quartier(
+def update_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], QuartierID: int, quartier: schemas.QuartierUpdate, db: Session = Depends(get_db)):
+    result = crud.update_quartier(
         db=db,
         user=current_user,
         quartierID=QuartierID,
         v_quartier=quartier
     )
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le quartier a été mis à jour", 'quartier': result}))
 
 #endregion
 # -----------------------------------------------

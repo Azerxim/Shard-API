@@ -245,14 +245,27 @@ class Quartier(EmptyDatesAsNone):
     ville_id: int
 
 class QuartierCreate(EmptyDatesAsNone):
+    # Sans x / z, le quartier est placé au centre de sa ville
     title: str
     description: str | None = None
     population: int | None = 0
     founded_date: datetime.datetime | None = None
-    
+    x: int | None = None
+    z: int | None = None
     is_public: bool | None = None
     ville_id: int
-    
+
+    @field_validator("population", "x", "z", mode="before")
+    @classmethod
+    def empty_number_as_none(cls, value):
+        return None if value == "" else value
+
+class QuartierUpdate(QuartierCreate):
+    # Seuls les champs renseignés sont modifiés
+    title: str | None = None
+    population: int | None = None
+    ville_id: int | None = None
+
 ############### Commerces ####################
 
 class Commerce(BaseModel):

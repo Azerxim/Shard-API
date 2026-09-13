@@ -128,6 +128,25 @@ def update_religion(current_user: Annotated[schemas.Users, Depends(crud.secu_get
         raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la mise à jour de la religion"}))
     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"La religion a été mise à jour", 'religion': update}))
 
+@router.get("/quartier/{QuartierID}", tags=["Religions"])
+def read_religions_by_quartier(QuartierID: int, db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder(crud.get_religions_by_quartier_id(db=db, quartierID=QuartierID)))
+
+@router.post("/quartier/{QuartierID}/add", tags=["Religions"])
+def add_religion_to_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], QuartierID: int, body: schemas.VillesReligionsUpdate, db: Session = Depends(get_db)):
+    result = crud.add_religion_to_quartier(db=db, user=current_user, quartierID=QuartierID, religionID=body.ReligionID, influence=body.influence)
+    return JSONResponse(content=jsonable_encoder(result))
+
+@router.put("/quartier/{QuartierID}/update/influence", tags=["Religions"])
+def update_influence_of_religion_in_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], QuartierID: int, body: schemas.VillesReligionsUpdate, db: Session = Depends(get_db)):
+    result = crud.update_influence_of_religion_in_quartier(db=db, user=current_user, quartierID=QuartierID, religionID=body.ReligionID, influence=body.influence)
+    return JSONResponse(content=jsonable_encoder(result))
+
+@router.delete("/quartier/{QuartierID}/delete/{religionID}", tags=["Religions"])
+def delete_religion_from_quartier(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], QuartierID: int, religionID: int, db: Session = Depends(get_db)):
+    result = crud.delete_religion_from_quartier(db=db, user=current_user, quartierID=QuartierID, religionID=religionID)
+    return JSONResponse(content=jsonable_encoder(result))
+
 @router.post("/ville/{VilleID}/add", tags=["Religions"])
 def add_religion_to_ville(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], VilleID: int, body: schemas.VillesReligionsUpdate, db: Session = Depends(get_db)):
     return crud.add_religion_to_ville(
