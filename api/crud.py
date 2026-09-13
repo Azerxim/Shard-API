@@ -5,6 +5,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 import hashlib
+import json
 import asyncio
 import datetime as dt
 import secrets
@@ -754,6 +755,7 @@ def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
         raise HTTPException(status_code=403, detail="Accès refusé")
     
     try:
+        delete_cartographies_by_types(db, "civilisation", civilisationID)
         db.delete(db_civilisation)
         for member in db_members:
             db.delete(member)
@@ -1031,7 +1033,9 @@ def delete_ville(db: Session, user: schemas.Users, v_villeid: int):
         raise HTTPException(status_code=403, detail="Accès refusé")
     try:
         for quartier in db_quartiers:
+            delete_cartographies_by_types(db, "quartier", quartier.id)
             db.delete(quartier)
+        delete_cartographies_by_types(db, "ville", v_villeid)
         db.delete(db_ville)
         db.commit()
         return {"fonction": "delete_ville", "resultat": "Ville supprimée"}
@@ -1205,7 +1209,8 @@ def get_religions_by_ville_id(db: Session, villeID: int, skip: int = 0, limit: i
         resultlist.append({
             "id": religion.id,
             "title": religion.title,
-            # "icon": religion.icon,
+            "color": religion.color,
+            "icon": religion.icon,
             "description": religion.description,
             "date_founded": religion.date_founded,
             "created_at": religion.created_at,
@@ -1252,6 +1257,8 @@ def create_religion(db: Session, user: schemas.Users, v_religion: schemas.Religi
         description = v_religion.description,
         date_founded = v_religion.date_founded,
         is_public = v_religion.is_public,
+        color = v_religion.color,
+        icon = v_religion.icon,
         created_at = dt.datetime.today()
     )
     
@@ -1310,6 +1317,10 @@ def update_religion(db: Session, user: schemas.Users, religionID: int, v_religio
             db_religion.description = v_religion.description
         if v_religion.date_founded is not None:
             db_religion.date_founded = v_religion.date_founded
+        if v_religion.color is not None:
+            db_religion.color = v_religion.color
+        if v_religion.icon is not None:
+            db_religion.icon = v_religion.icon
         if v_religion.is_public is not None:
             db_religion.is_public = v_religion.is_public
         db.add(db_religion)
@@ -1339,6 +1350,8 @@ def add_religion_to_ville(db: Session, user: schemas.Users, villeID: int, v_reli
             "description": db_religion.description,
             "created_at": db_religion.created_at,
             "date_founded": db_religion.date_founded,
+            "color": db_religion.color,
+            "icon": db_religion.icon,
             "is_public": db_religion.is_public,
             "influence": influence
         }
@@ -1378,6 +1391,8 @@ def update_influence_of_religion_in_ville(db: Session, user: schemas.Users, vill
             "description": db_religion.description,
             "created_at": db_religion.created_at,
             "date_founded": db_religion.date_founded,
+            "color": db_religion.color,
+            "icon": db_religion.icon,
             "is_public": db_religion.is_public,
             "influence": None
         }
@@ -1543,61 +1558,98 @@ def get_cartographies_by_types(db: Session, type: str, id: int, skip: int = 0, l
     results = db.exec(statement)
     return results.all()
 
-# def create_cartographie(db: Session, v_cartographie: schemas.CartographieCreate):
-#     db_cartographie = models.Cartographie(
-#         title = v_cartographie.title,
-#         description = v_cartographie.description,
-#         text = v_cartographie.text,
-#         color = v_cartographie.color,
-#         dimension_id = v_cartographie.dimension_id,
-#         shape_type = v_cartographie.shape_type,
-#         coordinates = v_cartographie.coordinates,
-#         type = v_cartographie.type,
-#         type_id = v_cartographie.type_id
-#     )
-    
-#     db.add(db_cartographie)
-#     db.commit()
-#     db.refresh(db_cartographie)
-#     return db_cartographie
+def get_cartographie_civilisation_id(db: Session, type: str, type_id: int):
+    # Retrouve la civilisation propriétaire d'une entité cartographiée
+    if type == "civilisation":
+        db_civilisation = get_civilisation_by_id(db, type_id)
+        return db_civilisation.id if db_civilisation else None
+    if type == "ville":
+        db_ville = get_ville_by_id(db, type_id)
+        return db_ville.civilisation_id if db_ville else None
+    if type == "quartier":
+        db_quartier = get_quartier_by_id(db, type_id)
+        db_ville = get_ville_by_id(db, db_quartier.ville_id) if db_quartier else None
+        return db_ville.civilisation_id if db_ville else None
+    return None
 
-# def delete_cartographie(db: Session, v_cartographieid: int):
-#     try:
-#         script = f"DELETE FROM `Cartographie` WHERE `id` = '{v_cartographieid}'"
-#         db.execute(script)
-#         db.commit()
-#         return True
-#     except Exception as e:
-#         print(f"Erreur lors de la suppression de la cartographie {v_cartographieid}: {e}")
-#     return False
+def check_cartographie_authorisation(db: Session, user: schemas.Users, type: str, type_id: int):
+    if type not in get_cartographies_type(db):
+        raise HTTPException(status_code=400, detail=f"Type de cartographie inconnu : {type}")
+    civilisationID = get_cartographie_civilisation_id(db, type, type_id)
+    if civilisationID is None:
+        raise HTTPException(status_code=404, detail=f"L'entité {type} {type_id} n'existe pas")
+    if user.is_admin:
+        return
+    # Mêmes règles que checkMemberAuth côté ShardUI-2 : Fondateur ou Admin de la civilisation
+    db_members = get_members_of_civilisation(db, civilisationID)
+    if not any(member.user_id == user.id and member.role in ("Fondateur", "Admin") for member in db_members):
+        raise HTTPException(status_code=403, detail="Accès refusé")
 
-# def update_cartographie(db: Session, cartographieID: int, v_cartographie: schemas.Cartographie):
-#     # Vérification de l'existence de la cartographie
-#     db_cartographie = get_cartographie_by_id(db, cartographieID)
+def check_cartographie_coordinates(coordinates: str):
+    try:
+        json.loads(coordinates)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Les coordonnées doivent être au format JSON")
 
-#     if db_cartographie:
-#         # Mise à jour des informations
-#         if v_cartographie.title is not None:
-#             db_cartographie.title = v_cartographie.title
-#         if v_cartographie.description is not None:
-#             db_cartographie.description = v_cartographie.description
-#         if v_cartographie.text is not None:
-#             db_cartographie.text = v_cartographie.text
-#         if v_cartographie.color is not None:
-#             db_cartographie.color = v_cartographie.color
-#         if v_cartographie.type is not None:
-#             db_cartographie.type = v_cartographie.type
-#         if v_cartographie.type_id is not None:
-#             db_cartographie.type_id = v_cartographie.type_id
-#         if v_cartographie.dimension_id is not None:
-#             db_cartographie.dimension_id = v_cartographie.dimension_id
-#         if v_cartographie.shape_type is not None:
-#             db_cartographie.shape_type = v_cartographie.shape_type
-#         if v_cartographie.coordinates is not None:
-#             db_cartographie.coordinates = v_cartographie.coordinates
-#         db.add(db_cartographie)
-#         db.commit()
-#         db.refresh(db_cartographie)
-#         return get_cartographie_by_id(db=db, ID=cartographieID)
-#     return {"error": 404, "text": "La cartographie n'a pas été trouvée"}
+def create_cartographie(db: Session, user: schemas.Users, v_cartographie: schemas.CartographieCreate):
+    check_cartographie_authorisation(db, user, v_cartographie.type, v_cartographie.type_id)
+    check_cartographie_coordinates(v_cartographie.coordinates)
+    if not get_dimension_by_id(db, v_cartographie.dimension_id):
+        raise HTTPException(status_code=404, detail="La dimension n'existe pas")
+
+    db_cartographie = models.Cartographie(
+        title = v_cartographie.title or "",
+        description = v_cartographie.description,
+        text = v_cartographie.text,
+        color = v_cartographie.color,
+        dimension_id = v_cartographie.dimension_id,
+        shape_type = v_cartographie.shape_type,
+        coordinates = v_cartographie.coordinates,
+        type = v_cartographie.type,
+        type_id = v_cartographie.type_id
+    )
+
+    db.add(db_cartographie)
+    db.commit()
+    db.refresh(db_cartographie)
+    return db_cartographie
+
+def delete_cartographie(db: Session, user: schemas.Users, cartographieID: int):
+    db_cartographie = get_cartographie_by_id(db, cartographieID)
+    if not db_cartographie:
+        raise HTTPException(status_code=404, detail="La cartographie n'a pas été trouvée")
+    check_cartographie_authorisation(db, user, db_cartographie.type, db_cartographie.type_id)
+
+    db.delete(db_cartographie)
+    db.commit()
+    return True
+
+def delete_cartographies_by_types(db: Session, type: str, id: int):
+    # Nettoyage des marqueurs / frontières lors de la suppression de l'entité associée
+    for db_cartographie in get_cartographies_by_types(db, type, id, limit=10000):
+        db.delete(db_cartographie)
+
+def update_cartographie(db: Session, user: schemas.Users, cartographieID: int, v_cartographie: schemas.CartographieUpdate):
+    db_cartographie = get_cartographie_by_id(db, cartographieID)
+    if not db_cartographie:
+        raise HTTPException(status_code=404, detail="La cartographie n'a pas été trouvée")
+    check_cartographie_authorisation(db, user, db_cartographie.type, db_cartographie.type_id)
+
+    # Déplacement vers une autre entité : il faut aussi les droits sur la nouvelle
+    new_type = v_cartographie.type if v_cartographie.type is not None else db_cartographie.type
+    new_type_id = v_cartographie.type_id if v_cartographie.type_id is not None else db_cartographie.type_id
+    if (new_type, new_type_id) != (db_cartographie.type, db_cartographie.type_id):
+        check_cartographie_authorisation(db, user, new_type, new_type_id)
+    if v_cartographie.coordinates is not None:
+        check_cartographie_coordinates(v_cartographie.coordinates)
+    if v_cartographie.dimension_id is not None and not get_dimension_by_id(db, v_cartographie.dimension_id):
+        raise HTTPException(status_code=404, detail="La dimension n'existe pas")
+
+    for field, value in v_cartographie.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(db_cartographie, field, value)
+    db.add(db_cartographie)
+    db.commit()
+    db.refresh(db_cartographie)
+    return db_cartographie
 #endregion

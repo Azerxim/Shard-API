@@ -27,29 +27,34 @@ def read_cartographie(CartographieID: int, db: Session = Depends(get_db)):
         func = {'error': 200, 'cartographie': cartographie}
     return JSONResponse(content=jsonable_encoder(func))
 
-# @router.post("/create", tags=["Cartographie"])
-# def create_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], cartographie: schemas.CartographieCreate, db: Session = Depends(get_db)):
-#     return crud.create_cartographie(
-#         db=db,
-#         user=current_user,
-#         v_cartographie=cartographie
-#     )
+@router.get("/entity/{Type}/{TypeID}", tags=["Cartographie"])
+def read_cartographies_of_entity(Type: str, TypeID: int, db: Session = Depends(get_db)):
+    result = crud.get_cartographies_by_types(db=db, type=Type, id=TypeID, limit=10000)
+    return JSONResponse(content=jsonable_encoder(result))
 
-# @router.delete("/delete", tags=["Cartographie"])
-# def delete_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], cartographieID: int, db: Session = Depends(get_db)):
-#     delete=crud.delete_cartographie(db=db, user=current_user, v_cartographieid=cartographieID)
-#     if not delete:
-#         raise HTTPException(status_code=400, detail=jsonable_encoder({'error': 400, 'text': f"Une erreur est survenue lors de la suppression du marqueur de cartographie"}))
-#     return JSONResponse(content=jsonable_encoder({'error': 200, 'text': f"Le marqueur de cartographie a été supprimé"}))
+@router.post("/create", tags=["Cartographie"])
+def create_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], cartographie: schemas.CartographieCreate, db: Session = Depends(get_db)):
+    result = crud.create_cartographie(
+        db=db,
+        user=current_user,
+        v_cartographie=cartographie
+    )
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le marqueur de cartographie a été créé", 'cartographie': result}))
 
-# @router.put("/update", tags=["Cartographie"])
-# def update_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], cartographie: schemas.Cartographie, db: Session = Depends(get_db)):
-#     return crud.update_cartographie(
-#         db=db,
-#         user=current_user,
-#         cartographieID=cartographie.id,
-#         v_cartographie=cartographie
-#     )
+@router.delete("/delete/{CartographieID}", tags=["Cartographie"])
+def delete_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CartographieID: int, db: Session = Depends(get_db)):
+    crud.delete_cartographie(db=db, user=current_user, cartographieID=CartographieID)
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le marqueur de cartographie a été supprimé"}))
+
+@router.put("/update/{CartographieID}", tags=["Cartographie"])
+def update_cartographie(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CartographieID: int, cartographie: schemas.CartographieUpdate, db: Session = Depends(get_db)):
+    result = crud.update_cartographie(
+        db=db,
+        user=current_user,
+        cartographieID=CartographieID,
+        v_cartographie=cartographie
+    )
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le marqueur de cartographie a été mis à jour", 'cartographie': result}))
 
 #endregion
 # -----------------------------------------------

@@ -160,6 +160,8 @@ class Religions(SQLModel, table=True):
     title: str
     description: str | None = Field(default=None)
     date_founded: dt.date | None = Field(default=None)
+    color: str | None = Field(default=None)
+    icon: str | None = Field(default=None)
 
     is_public: bool | None = Field(default=None)
     created_at: dt.datetime | None = Field(default=None)

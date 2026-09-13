@@ -229,6 +229,8 @@ class Religions(BaseModel):
     title: str
     description: str | None = None
     date_founded: datetime.datetime | None = None
+    color: str | None = None
+    icon: str | None = None
 
     is_public: bool | None = None
     created_at: datetime.datetime | None = None
@@ -237,6 +239,8 @@ class ReligionCreate(BaseModel):
     title: str
     description: str | None = None
     date_founded: datetime.datetime | None = None
+    color: str | None = None
+    icon: str | None = None
     is_public: bool | None = None
 
 class ReligionMember(BaseModel):
@@ -310,5 +314,16 @@ class CartographieCreate(BaseModel):
     dimension_id: int
     shape_type: str
     coordinates: str
+
+class CartographieUpdate(BaseModel):
+    title: str | None = None
+    description: str | None = None
+    text: str | None = None
+    color: str | None = None
+    type: str | None = None
+    type_id: int | None = None
+    dimension_id: int | None = None
+    shape_type: str | None = None
+    coordinates: str | None = None
 
 ############### Templates ####################
