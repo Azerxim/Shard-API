@@ -316,31 +316,7 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
             
             # Récupérer les messages
             async for message in channel.history(limit=limit):
-                msg_data = {
-                    "id": str(message.id),
-                    "author": {
-                        "name": message.author.name,
-                        "id": str(message.author.id),
-                        "is_bot": message.author.bot
-                    },
-                    "content": message.content,
-                    "timestamp": message.created_at.isoformat(),
-                    "edited_at": message.edited_at.isoformat() if message.edited_at else None,
-                    "attachments": [
-                        {
-                            "url": att.url,
-                            "filename": att.filename,
-                            "size": att.size
-                        }
-                        for att in message.attachments
-                    ],
-                    "embeds": len(message.embeds),
-                    "reactions": {
-                        str(reaction.emoji): reaction.count
-                        for reaction in message.reactions
-                    }
-                }
-                messages.append(msg_data)
+                messages.append(_message_data(message))
         except Exception as e:
             print(f"Erreur lors de la récupération des messages: {e}")
         finally:
@@ -372,6 +348,143 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
                     pass
     
     return messages
+
+def _message_data(message) -> dict:
+    # Message Discord sérialisé pour l'API (fil des journaux, association aux personnages)
+    return {
+        "id": str(message.id),
+        "author": {
+            "name": message.author.name,
+            "id": str(message.author.id),
+            "is_bot": message.author.bot
+        },
+        "content": message.content,
+        "timestamp": message.created_at.isoformat(),
+        "edited_at": message.edited_at.isoformat() if message.edited_at else None,
+        "attachments": [
+            {
+                "url": att.url,
+                "filename": att.filename,
+                "size": att.size
+            }
+            for att in message.attachments
+        ],
+        "embeds": len(message.embeds),
+        "reactions": {
+            str(reaction.emoji): reaction.count
+            for reaction in message.reactions
+        }
+    }
+
+async def get_channel_message(channel_id: str, message_id: str) -> dict | None:
+    """
+    Récupère un seul message d'un salon Discord (sans relire tout l'historique).
+
+    Returns:
+        dict | None: Le message, ou None s'il n'existe pas dans ce salon
+    Raises:
+        ValueError: Configuration incomplète ou bot injoignable
+    """
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
+    if not token or not guild_id:
+        raise ValueError("Configuration Discord incomplète")
+
+    intents = discord.Intents.default()
+    intents.message_content = True
+    bot = commands.Bot(command_prefix="!", intents=intents)
+
+    result = {"message": None, "error": None}
+    bot_ready = asyncio.Event()
+
+    @bot.event
+    async def on_ready():
+        try:
+            guild = bot.get_guild(guild_id)
+            channel = guild.get_channel(int(channel_id)) if guild else None
+            if channel:
+                try:
+                    result["message"] = _message_data(await channel.fetch_message(int(message_id)))
+                except discord.NotFound:
+                    result["message"] = None
+        except Exception as e:
+            result["error"] = e
+        finally:
+            bot_ready.set()
+
+    bot_task = asyncio.create_task(bot.start(token))
+    try:
+        try:
+            await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
+    finally:
+        await bot.close()
+        if not bot_task.done():
+            try:
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
+
+    if result["error"]:
+        raise ValueError(f"Lecture du message Discord impossible : {result['error']}")
+    return result["message"]
+
+async def send_channel_message(channel_id: str, content: str) -> bool:
+    """
+    Publie un message dans un salon Discord (annonces : guerres…).
+
+    Returns:
+        bool: True si le message a été envoyé
+    """
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
+    if not token or not guild_id:
+        raise ValueError("Configuration Discord incomplète")
+
+    intents = discord.Intents.default()
+    bot = commands.Bot(command_prefix="!", intents=intents)
+    result = {"sent": False}
+    bot_ready = asyncio.Event()
+
+    @bot.event
+    async def on_ready():
+        try:
+            guild = bot.get_guild(guild_id)
+            channel = guild.get_channel(int(channel_id)) if guild else None
+            if channel:
+                # Limite Discord : 2000 caractères par message
+                await channel.send(content[:2000])
+                result["sent"] = True
+            else:
+                print(f"Avertissement: Salon d'annonces Discord {channel_id} non trouvé")
+        except Exception as e:
+            print(f"Erreur lors de l'envoi du message Discord: {e}")
+        finally:
+            bot_ready.set()
+
+    bot_task = asyncio.create_task(bot.start(token))
+    try:
+        try:
+            await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
+    finally:
+        await bot.close()
+        if not bot_task.done():
+            try:
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
+    return result["sent"]
 
 async def update_channel_name(channel_id: str, new_name: str) -> bool:
     """

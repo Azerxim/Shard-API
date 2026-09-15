@@ -464,6 +464,40 @@ class AllianceMembreUpdate(BaseModel):
 class ReponseInvitation(BaseModel):
     accepter: bool
 
+############### Personnages ####################
+
+class PersonnageCreate(EmptyStringAsNone):
+    name: str
+    description: str | None = None
+    image_url: str | None = None
+    status: str | None = "vivant"           # vivant, mort ou disparu
+    date_naissance: datetime.date | None = None
+    date_deces: datetime.date | None = None
+    civilisation_id: int | None = None
+    ville_id: int | None = None
+    quartier_id: int | None = None
+    espece_id: int | None = None
+    classe_id: int | None = None
+    grade: str | None = None
+    skin_source: str | None = "aucun"       # aucun, minecraft (compte lié du joueur) ou lien
+    skin_url: str | None = None
+
+class PersonnageUpdate(PersonnageCreate):
+    # Seuls les champs envoyés sont modifiés ; un champ envoyé vide est effacé
+    name: str | None = None
+    status: str | None = None
+    skin_source: str | None = None
+
+class ReferentielItem(EmptyStringAsNone):
+    # Espèce ou classe de personnage
+    title: str | None = None
+    description: str | None = None
+
+class PersonnageMessageLink(BaseModel):
+    journal_id: int
+    message_id: str
+    personnage_id: int
+
 ############### Guerres ####################
 
 class GuerreDeclaration(EmptyStringAsNone):
@@ -497,6 +531,13 @@ class GuerreAppel(EmptyStringAsNone):
 
 class ReponseAppel(BaseModel):
     accepter: bool
+
+class GuerreEvenementCreate(EmptyStringAsNone):
+    type: str | None = "bataille"           # bataille, siege, traite ou autre
+    title: str
+    description: str | None = None
+    camp: str | None = None                 # attaquant, defenseur, ou vide pour les deux camps
+    date_rp: datetime.date | None = None
 
 ############### Cartographie ####################
 

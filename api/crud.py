@@ -6,12 +6,14 @@ from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 import hashlib
 import json
+import os
 import asyncio
+import threading
 import datetime as dt
 import secrets
 from . import discord_handler
 
-from . import models, schemas
+from . import models, schemas, crud_nettoyage, utils
 from .database import get_db
 from topazdevsdk import colors
 
@@ -251,6 +253,11 @@ def delete_user(db: Session, user_id: int):
     user = get_user_by_id(db, user_id)
     if not user:
         return {"fonction": "delete_user", "erreur": "L'utilisateur n'existe pas"}
+    # Un fondateur doit d'abord transmettre son rôle : sinon civilisation, religion ou commerce resteraient sans fondateur
+    fondations = crud_nettoyage.fondations_utilisateur(db, user.id)
+    if fondations:
+        raise HTTPException(status_code=400, detail=f"Ce compte est encore fondateur de {', '.join(fondations)} : transférez d'abord ce rôle")
+    crud_nettoyage.detacher_utilisateur(db, user)
     db.delete(user)
     db.commit()
     return {"fonction": "delete_user", "resultat": "Utilisateur supprimé"}
@@ -274,6 +281,55 @@ def get_journaux_by_user(db: Session, userID: int, skip: int = 0, limit: int = 1
     statement = select(models.Journaux).where(models.Journaux.user_id == userID).offset(skip).limit(limit)
     results = db.exec(statement)
     return results.all()
+
+def _channel_messages(channel_id: str, limit: int):
+    # Tests : SHARD_FAKE_JOURNAL_MESSAGES désigne un fichier JSON { "<id du salon>": [messages] } lu à la place de Discord
+    fake_file = os.environ.get("SHARD_FAKE_JOURNAL_MESSAGES")
+    if fake_file:
+        try:
+            with open(fake_file, encoding="utf-8") as file:
+                return (json.load(file).get(str(channel_id)) or [])[:limit]
+        except FileNotFoundError:
+            return []
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(discord_handler.get_channel_messages(channel_id, limit=limit))
+    finally:
+        loop.close()
+
+def announce_discord(channel_key: str, content: str):
+    # Annonce dans le salon platforms.discord.channels.<channel_key>, en tâche de fond : ne bloque ni ne fait échouer la requête.
+    # Sans salon configuré, rien n'est envoyé. Tests : SHARD_FAKE_DISCORD_ANNOUNCEMENTS désigne un fichier (une annonce JSON par ligne).
+    fake_file = os.environ.get("SHARD_FAKE_DISCORD_ANNOUNCEMENTS")
+    if fake_file:
+        with open(fake_file, "a", encoding="utf-8") as file:
+            file.write(json.dumps({"channel": channel_key, "content": content}, ensure_ascii=False) + "\n")
+        return True
+    channel_id = ((utils.PLATFORMS.get("discord") or {}).get("channels") or {}).get(channel_key)
+    if not channel_id:
+        return False
+
+    def send():
+        try:
+            asyncio.run(discord_handler.send_channel_message(str(channel_id), content))
+        except Exception as error:
+            print(f"Annonce Discord ({channel_key}) impossible : {error}")
+
+    threading.Thread(target=send, daemon=True).start()
+    return True
+
+def get_channel_message(channel_id: str, message_id: str):
+    # Un seul message du salon (association aux personnages) ; None s'il n'existe pas. Même simulation que ci-dessus.
+    fake_file = os.environ.get("SHARD_FAKE_JOURNAL_MESSAGES")
+    if fake_file:
+        return next((message for message in _channel_messages(channel_id, limit=100000) if str(message.get("id")) == str(message_id)), None)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        return loop.run_until_complete(discord_handler.get_channel_message(channel_id, message_id))
+    finally:
+        loop.close()
 
 def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int = 10000):
     """
@@ -299,12 +355,7 @@ def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int 
             return {"error": 400, "message": "Ce journal n'a pas de canal Discord associé"}
         
         # Récupérer les messages du canal Discord
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        messages = loop.run_until_complete(
-            discord_handler.get_channel_messages(journal.uid, limit=limit + skip)
-        )
-        loop.close()
+        messages = _channel_messages(journal.uid, limit=limit + skip)
         
         # Appliquer skip et limit
         paginated_messages = messages[skip:skip + limit]
@@ -421,6 +472,7 @@ def delete_journal(db: Session, user: schemas.Users, v_journalid: int):
         
         # Supprimer le journal de la base de données
         journal = get_journal(db, v_journalid)
+        crud_nettoyage.supprimer_liens_journal(db, v_journalid)
         db.delete(journal)
         db.commit()
         return {"fonction": "delete_journal", "resultat": "Journal supprimé"}
@@ -802,6 +854,10 @@ def delete_civilisation(db: Session, user: schemas.Users, civilisationID: int):
     db_gouvernement = get_gouvernement_by_id(db, db_civilisation.gouvernement_id) if db_civilisation.gouvernement_id else None
     
     try:
+        # Villes et quartiers disparaissent avec la civilisation ; alliances, guerres, personnages… sont détachés
+        for db_ville in get_villes_by_civilisation_id(db, civilisationID, limit=10000):
+            _delete_ville_tree(db, db_ville)
+        crud_nettoyage.detacher_civilisation(db, civilisationID, db_civilisation.title)
         delete_cartographies_by_types(db, "civilisation", civilisationID)
         db.delete(db_civilisation)
         for member in db_members:
@@ -1115,18 +1171,22 @@ def create_ville(db: Session, user: schemas.Users, v_ville: schemas.VilleCreate)
     db.refresh(db_ville)
     return db_ville
 
+def _delete_ville_tree(db: Session, db_ville: models.Villes):
+    # Ville, quartiers et leurs dépendances ; le commit reste à l'appelant
+    for quartier in get_quartiers_by_ville_id(db, db_ville.id, limit=10000):
+        _delete_quartier_dependencies(db, quartier.id)
+        db.delete(quartier)
+    delete_cartographies_by_types(db, "ville", db_ville.id)
+    crud_nettoyage.detacher_ville(db, db_ville.id)
+    db.delete(db_ville)
+
 def delete_ville(db: Session, user: schemas.Users, v_villeid: int):
     db_ville = get_ville_by_id(db, v_villeid)
     if not db_ville:
         raise HTTPException(status_code=404, detail="La ville n'existe pas")
     _check_civilisation_rights(db, user, db_ville.civilisation_id)
-    db_quartiers = get_quartiers_by_ville_id(db, v_villeid, limit=10000)
     try:
-        for quartier in db_quartiers:
-            _delete_quartier_dependencies(db, quartier.id)
-            db.delete(quartier)
-        delete_cartographies_by_types(db, "ville", v_villeid)
-        db.delete(db_ville)
+        _delete_ville_tree(db, db_ville)
         db.commit()
         return {"fonction": "delete_ville", "resultat": "Ville supprimée"}
         # script = f'; DELETE FROM `Cartographie` WHERE `type` = "quartier" AND `type_id` IN (SELECT `id` FROM `Quartiers` WHERE `ville_id` = "{v_villeid}")'
@@ -1276,8 +1336,9 @@ def update_quartier(db: Session, user: schemas.Users, quartierID: int, v_quartie
     return {"error": 404, "text": "Le quartier n'a pas été trouvé"}
 
 def _delete_quartier_dependencies(db: Session, quartierID: int):
-    # Frontières et religions du quartier ; la suppression du quartier et le commit restent à l'appelant
+    # Frontières, religions et habitants du quartier ; la suppression du quartier et le commit restent à l'appelant
     delete_cartographies_by_types(db, "quartier", quartierID)
+    crud_nettoyage.detacher_quartier(db, quartierID)
     links = db.exec(select(models.QuartiersReligions).where(models.QuartiersReligions.quartier_id == quartierID)).all()
     for db_link in links:
         db.delete(db_link)
@@ -1587,6 +1648,7 @@ def delete_religion(db: Session, user: schemas.Users, v_religionid: int):
             db.delete(quartierreligion["quartiers_religions"])
         for member in db_members:
             db.delete(member)
+        crud_nettoyage.detacher_religion(db, v_religionid, db_religion.title)
         db.delete(db_religion)
         db.commit()
         return {"fonction": "delete_religion", "resultat": "Religion supprimée"}
@@ -2164,7 +2226,7 @@ def get_cartographies_by_type_and_dimension(db: Session, type: str, dimensionID:
     return results.all()
 
 def get_cartographies_type(db: Session):
-    types = ["civilisation", "ville", "quartier"]
+    types = ["civilisation", "ville", "quartier", "guerre"]
     return types
 
 def get_cartographies_by_types(db: Session, type: str, id: int, skip: int = 0, limit: int = 100):
@@ -2189,6 +2251,15 @@ def get_cartographie_civilisation_id(db: Session, type: str, type_id: int):
 def check_cartographie_authorisation(db: Session, user: schemas.Users, type: str, type_id: int):
     if type not in get_cartographies_type(db):
         raise HTTPException(status_code=400, detail=f"Type de cartographie inconnu : {type}")
+    if type == "guerre":
+        # Zones de conflit : guerre en cours, chefs de camp ou modérateurs RP (import local : crud_conflits importe crud)
+        from . import crud_conflits
+        db_guerre = crud_conflits.get_guerre(db, type_id)
+        if not db_guerre:
+            raise HTTPException(status_code=404, detail=f"L'entité {type} {type_id} n'existe pas")
+        if not crud_conflits.can_edit_zones(db, user, db_guerre):
+            raise HTTPException(status_code=403, detail="Seuls les chefs de camp et les modérateurs RP tracent les zones d'une guerre en cours")
+        return
     civilisationID = get_cartographie_civilisation_id(db, type, type_id)
     if civilisationID is None:
         raise HTTPException(status_code=404, detail=f"L'entité {type} {type_id} n'existe pas")

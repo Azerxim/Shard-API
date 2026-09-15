@@ -299,10 +299,74 @@ class GuerreBelligerants(SQLModel, table=True):
     camp: str = Field(default="attaquant")  # attaquant ou defenseur
     entity_type: str = Field(default="civilisation")  # civilisation ou religion
     entity_id: int
+    entity_title: str | None = Field(default=None)  # nom conservé quand l'entité est supprimée (archives)
     is_leader: bool | None = Field(default=False)
     status: str = Field(default="engage")  # engage ou appele
     alliance_id: int | None = Field(default=None, foreign_key="alliances.id")
     joined_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class GuerreEvenements(SQLModel, table=True):
+    # Chronologie : étapes inscrites automatiquement (declaration, validation, refus, ralliement, retrait, fin)
+    # et faits racontés par les chefs de camp ou les modérateurs RP (bataille, siege, traite, autre)
+    id: int | None = Field(default=None, primary_key=True)
+    guerre_id: int | None = Field(default=None, foreign_key="guerres.id")
+    type: str = Field(default="autre")
+    title: str
+    description: str | None = Field(default=None)
+    camp: str | None = Field(default=None)  # attaquant, defenseur, ou aucun (les deux camps)
+    date_rp: dt.date | None = Field(default=None)
+    is_auto: bool | None = Field(default=False)
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+############### Personnages ####################
+
+class PersonnageEspeces(SQLModel, table=True):
+    # Référentiel géré par les administrateurs et modérateurs RP (valeurs de départ reprises de s2)
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+
+class PersonnageClasses(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+
+class Personnages(SQLModel, table=True):
+    # Personnage RP d'un joueur : autant qu'il le souhaite, sans validation
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    name: str
+    description: str | None = Field(default=None)
+    image_url: str | None = Field(default=None)
+    status: str = Field(default="vivant")  # vivant, mort ou disparu
+    espece_id: int | None = Field(default=None, foreign_key="personnageespeces.id")
+    classe_id: int | None = Field(default=None, foreign_key="personnageclasses.id")
+    grade: str | None = Field(default=None)  # rang ou titre libre (« Capitaine de la garde »)
+    # Skin : aucun, celui du compte Minecraft lié du joueur (UUID copié) ou un lien vers un fichier de skin
+    skin_source: str | None = Field(default="aucun")
+    skin_url: str | None = Field(default=None)
+    minecraft_uuid: str | None = Field(default=None)
+    date_naissance: dt.date | None = Field(default=None)  # Dates RP
+    date_deces: dt.date | None = Field(default=None)
+    # Résidence : civilisation, puis ville et quartier de cette civilisation
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
+    ville_id: int | None = Field(default=None, foreign_key="villes.id")
+    quartier_id: int | None = Field(default=None, foreign_key="quartiers.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    updated_at: dt.datetime | None = Field(default=None)
+
+class PersonnageMessages(SQLModel, table=True):
+    # Message Discord d'un journal attribué à un personnage (un personnage par message), par l'auteur Discord du message
+    id: int | None = Field(default=None, primary_key=True)
+    personnage_id: int | None = Field(default=None, foreign_key="personnages.id")
+    journal_id: int | None = Field(default=None, foreign_key="journaux.id")
+    message_id: str = Field(index=True)
+    author_uid: str
+    excerpt: str | None = Field(default=None)
+    message_timestamp: dt.datetime | None = Field(default=None)
+    linked_by: int | None = Field(default=None, foreign_key="users.id")
+    linked_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 ############### Cartographie ####################
 

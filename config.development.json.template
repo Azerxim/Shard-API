@@ -17,6 +17,11 @@
 			"client_id": "your_discord_application_id",
 			"client_secret": "your_discord_client_secret",
 			"redirect_uri": "http://localhost:5173/auth/discord/callback"
+		},
+		"microsoft": {
+			"client_id": "your_azure_application_id",
+			"client_secret": "your_azure_client_secret",
+			"redirect_uri": "http://127.0.0.1:5173/auth/microsoft/callback"
 		}
 	}
 }

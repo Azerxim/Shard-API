@@ -16,7 +16,7 @@ from .database import get_db, create_db_and_tables, check_database_tables, migra
 
 from . import utils
 from topazdevsdk import colors
-from . import schemas, crud, models
+from . import schemas, crud, models, crud_nettoyage, crud_personnages
 from .routes_users import router as users_router
 from .routes_bibliotheque import router as bibliotheque_router
 from .routes_civilisations import router as civilisations_router
@@ -25,6 +25,7 @@ from .routes_religions import router as religions_router
 from .routes_commerces import router as commerces_router
 from .routes_alliances import router as alliances_router
 from .routes_guerres import router as guerres_router
+from .routes_personnages import router as personnages_router
 
 
 ################# App Initialization #################
@@ -58,6 +59,13 @@ async def lifespan(app_: FastAPI):
     db = next(get_db())
     result = crud.loadsecurity(db, utils.SECURITY)
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Sécurité initialisée. Résultat: {result.get('result') if result.get('result') is not None else result.get('erreur', 'Erreur inconnue')}")
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
+
+    # Références laissées par d'anciennes suppressions (alliances, guerres, personnages)
+    cleanup = crud_nettoyage.nettoyer_references_orphelines(db)
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Références orphelines corrigées : {cleanup}")
+    seeded = crud_personnages.seed_referentiels(db)
+    print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Espèces et classes de personnages ajoutées : {seeded}")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
 
     # Import des données historiques des dumps mbu-s1 / mbu-tetrago (tables s1/s2)
@@ -157,6 +165,8 @@ app.include_router(commerces_router)
 app.include_router(alliances_router)
 
 app.include_router(guerres_router)
+
+app.include_router(personnages_router)
 
 app.include_router(cartographie_router)
 

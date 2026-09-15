@@ -29,6 +29,11 @@
 			"client_id": "your_discord_application_id",
 			"client_secret": "your_discord_client_secret",
 			"redirect_uri": "https://tetrago.fr/auth/discord/callback"
+		},
+		"microsoft": {
+			"client_id": "your_azure_application_id",
+			"client_secret": "your_azure_client_secret",
+			"redirect_uri": "https://tetrago.fr/auth/microsoft/callback"
 		}
 	},
 	"platforms": {
@@ -38,7 +43,11 @@
 		},
 		"discord": {
 			"token": "DISCORD TOKEN",
-			"guild_id": 1234567890987654321
+			"guild_id": 1234567890987654321,
+			"site_url": "https://tetrago.fr",
+			"channels": {
+				"guerres": 1234567890987654321
+			}
 		}
 	}
 }

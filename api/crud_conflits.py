@@ -14,8 +14,10 @@ import datetime as dt
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from . import models, schemas
+from . import models, schemas, utils
 from .crud import (
+    announce_discord,
+    delete_cartographies_by_types,
     get_civilisation_by_id,
     get_members_of_civilisation,
     get_members_of_religion,
@@ -29,6 +31,10 @@ GUERRE_TYPES = {"Militaire": "civilisation", "Religion": "religion"}
 CAMPS = ("attaquant", "defenseur")
 GUERRE_STATUTS_PUBLICS = ("en_cours", "terminee")
 ENTITY_LABELS = {"civilisation": "la civilisation", "religion": "la religion"}
+CAMP_NAMES = {"attaquant": "attaquant", "defenseur": "défenseur"}
+# Faits racontés dans la chronologie (les autres types sont inscrits automatiquement) ; les premiers sont annoncés sur Discord
+EVENEMENTS_RACONTES = {"bataille": "Bataille", "siege": "Siège", "traite": "Traité", "autre": "Événement"}
+EVENEMENTS_ANNONCES = ("bataille", "siege", "traite")
 
 
 #region Droits et entités
@@ -60,10 +66,11 @@ def _require_entity_rights(db: Session, user: schemas.Users, entity_type: str, e
     if not can_manage_entity(db, user, entity_type, entity_id):
         raise HTTPException(status_code=403, detail=f"Seuls le fondateur et les admins de {ENTITY_LABELS[entity_type]} peuvent agir en son nom")
 
-def _entity_summary(db: Session, entity_type: str, entity_id: int):
+def _entity_summary(db: Session, entity_type: str, entity_id: int, archived_title: str | None = None):
     entity = _get_entity(db, entity_type, entity_id)
     if not entity:
-        return {"type": entity_type, "id": entity_id, "title": "Entité supprimée", "is_public": False}
+        # deleted : l'entité n'existe plus (lien inutile) ; son nom reste dans les archives des guerres
+        return {"type": entity_type, "id": entity_id, "title": archived_title or "Entité supprimée", "is_public": False, "deleted": True}
     summary = {"type": entity_type, "id": entity.id, "title": entity.title, "is_public": entity.is_public}
     if entity_type == "religion":
         summary.update({"color": entity.color, "icon": entity.icon})
@@ -375,7 +382,7 @@ def guerre_infos(db: Session, db_guerre: models.Guerres):
             "is_leader": bool(b.is_leader),
             "status": b.status,
             "joined_at": b.joined_at,
-            "entite": _entity_summary(db, b.entity_type, b.entity_id),
+            "entite": _entity_summary(db, b.entity_type, b.entity_id, b.entity_title),
             "alliance": {"id": db_alliance.id, "title": db_alliance.title} if db_alliance else None,
         })
     return {
@@ -384,6 +391,50 @@ def guerre_infos(db: Session, db_guerre: models.Guerres):
         "declarant": _user_summary(db, db_guerre.declared_by),
         "moderateur": _user_summary(db, db_guerre.moderator_id),
     }
+
+def _leaders(db: Session, guerreID: int):
+    # Noms des chefs de camp : (attaquant, défenseur)
+    titles = {}
+    for b in _belligerants(db, guerreID):
+        if b.is_leader and b.camp not in titles:
+            titles[b.camp] = _entity_summary(db, b.entity_type, b.entity_id, b.entity_title)["title"]
+    return titles.get("attaquant", "?"), titles.get("defenseur", "?")
+
+def _add_evenement(db: Session, guerreID: int, kind: str, title: str, description: str | None = None, camp: str | None = None,
+                   date_rp: dt.date | None = None, user: schemas.Users | None = None, auto: bool = True):
+    # Sans commit : l'étape est validée avec l'action qui la produit
+    db.add(models.GuerreEvenements(
+        guerre_id=guerreID, type=kind, title=title, description=description, camp=camp,
+        date_rp=date_rp, is_auto=auto, created_by=user.id if user else None,
+    ))
+
+def evenement_infos(db: Session, evenement: models.GuerreEvenements):
+    return {
+        "id": evenement.id,
+        "type": evenement.type,
+        "title": evenement.title,
+        "description": evenement.description,
+        "camp": evenement.camp,
+        "date_rp": evenement.date_rp,
+        "is_auto": bool(evenement.is_auto),
+        "created_at": evenement.created_at,
+        "created_by": evenement.created_by,
+        "auteur": _user_summary(db, evenement.created_by),
+    }
+
+def _evenements(db: Session, guerreID: int):
+    # Ordre d'inscription : les dates RP sont affichées, mais ne se comparent pas aux dates réelles des étapes automatiques
+    statement = select(models.GuerreEvenements).where(models.GuerreEvenements.guerre_id == guerreID)
+    return sorted(db.exec(statement).all(), key=lambda evenement: (evenement.created_at, evenement.id))
+
+def guerre_details(db: Session, db_guerre: models.Guerres):
+    # Fiche complète : camps et chronologie
+    return {**guerre_infos(db, db_guerre), "evenements": [evenement_infos(db, e) for e in _evenements(db, db_guerre.id)]}
+
+def _annoncer(db_guerre: models.Guerres, text: str):
+    # Salon Discord « guerres » (platforms.discord.channels.guerres), avec le lien de la guerre si site_url est configuré
+    site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
+    announce_discord("guerres", f"{text}\n{str(site).rstrip('/')}/guerre/{db_guerre.id}" if site else text)
 
 def _require_visible_guerre(db: Session, user: schemas.Users | None, ID: int):
     db_guerre = get_guerre(db, ID)
@@ -397,7 +448,7 @@ def list_guerres_publiques(db: Session):
     return [guerre_infos(db, g) for g in guerres]
 
 def read_guerre(db: Session, ID: int, user: schemas.Users | None = None):
-    return guerre_infos(db, _require_visible_guerre(db, user, ID))
+    return guerre_details(db, _require_visible_guerre(db, user, ID))
 
 def guerres_of_entity(db: Session, entity_type: str, entity_id: int):
     if entity_type not in ENTITY_LABELS:
@@ -418,7 +469,7 @@ def guerres_for_user(db: Session, user: schemas.Users):
     for b in db.exec(statement).all():
         db_guerre = get_guerre(db, b.guerre_id)
         if db_guerre and db_guerre.status in ("en_attente", "en_cours") and can_manage_entity(db, user, b.entity_type, b.entity_id):
-            appels.append({"belligerant_id": b.id, "camp": b.camp, "entite": _entity_summary(db, b.entity_type, b.entity_id), "guerre": db_guerre})
+            appels.append({"belligerant_id": b.id, "camp": b.camp, "entite": _entity_summary(db, b.entity_type, b.entity_id, b.entity_title), "guerre": db_guerre})
     return {"a_valider": a_valider, "mes_guerres": mes_guerres, "appels": appels}
 
 def declare_guerre(db: Session, user: schemas.Users, v_guerre: schemas.GuerreDeclaration):
@@ -452,6 +503,9 @@ def declare_guerre(db: Session, user: schemas.Users, v_guerre: schemas.GuerreDec
     db.refresh(db_guerre)
     for camp, entity_id in (("attaquant", v_guerre.attaquant_id), ("defenseur", v_guerre.defenseur_id)):
         db.add(models.GuerreBelligerants(guerre_id=db_guerre.id, camp=camp, entity_type=entity_type, entity_id=entity_id, is_leader=True, status="engage"))
+    attaquant = _get_entity(db, entity_type, v_guerre.attaquant_id)
+    defenseur = _get_entity(db, entity_type, v_guerre.defenseur_id)
+    _add_evenement(db, db_guerre.id, "declaration", f"Déclaration de guerre de {attaquant.title} contre {defenseur.title}", v_guerre.casus_belli, camp="attaquant", user=user)
     db.commit()
     return guerre_infos(db, db_guerre)
 
@@ -489,9 +543,12 @@ def valider_guerre(db: Session, user: schemas.Users, ID: int, v_validation: sche
     db_guerre.moderation_note = v_validation.note
     db_guerre.moderator_id = user.id
     db_guerre.validated_at = dt.datetime.now()
+    _add_evenement(db, ID, "validation", "La guerre commence", v_validation.note, date_rp=db_guerre.date_debut, user=user)
     db.add(db_guerre)
     db.commit()
     db.refresh(db_guerre)
+    attaquant, defenseur = _leaders(db, ID)
+    _annoncer(db_guerre, f"⚔️ **{db_guerre.title}** : {attaquant} contre {defenseur}. La guerre commence.")
     return guerre_infos(db, db_guerre)
 
 def refuser_guerre(db: Session, user: schemas.Users, ID: int, v_refus: schemas.GuerreRefus):
@@ -502,6 +559,7 @@ def refuser_guerre(db: Session, user: schemas.Users, ID: int, v_refus: schemas.G
     db_guerre.status = "refusee"
     db_guerre.moderation_note = v_refus.note
     db_guerre.moderator_id = user.id
+    _add_evenement(db, ID, "refus", "Déclaration refusée par la modération", v_refus.note, user=user)
     db.add(db_guerre)
     db.commit()
     db.refresh(db_guerre)
@@ -520,9 +578,11 @@ def terminer_guerre(db: Session, user: schemas.Users, ID: int, v_fin: schemas.Gu
     db_guerre.ended_at = dt.datetime.now()
     if not db_guerre.moderator_id:
         db_guerre.moderator_id = user.id
+    _add_evenement(db, ID, "fin", f"Fin de la guerre : {db_guerre.issue}", date_rp=db_guerre.date_fin, user=user)
     db.add(db_guerre)
     db.commit()
     db.refresh(db_guerre)
+    _annoncer(db_guerre, f"🏳️ **{db_guerre.title}** est terminée : {db_guerre.issue}")
     return guerre_infos(db, db_guerre)
 
 def annuler_declaration(db: Session, user: schemas.Users, ID: int):
@@ -533,6 +593,9 @@ def annuler_declaration(db: Session, user: schemas.Users, ID: int):
         raise HTTPException(status_code=403, detail="Seul le camp attaquant ou un modérateur peut retirer la déclaration")
     for b in _belligerants(db, ID):
         db.delete(b)
+    for evenement in _evenements(db, ID):
+        db.delete(evenement)
+    delete_cartographies_by_types(db, "guerre", ID)
     db.delete(db_guerre)
     db.commit()
     return {"resultat": "Déclaration retirée"}
@@ -589,6 +652,8 @@ def repondre_appel(db: Session, user: schemas.Users, ID: int, belligerantID: int
         b.status = "engage"
         b.joined_at = dt.datetime.now()
         db.add(b)
+        titre = _entity_summary(db, b.entity_type, b.entity_id)["title"]
+        _add_evenement(db, ID, "ralliement", f"{titre} rejoint le camp {CAMP_NAMES.get(b.camp, b.camp)}", camp=b.camp, user=user)
     else:
         db.delete(b)
     db.commit()
@@ -604,8 +669,58 @@ def retirer_belligerant(db: Session, user: schemas.Users, ID: int, belligerantID
         raise HTTPException(status_code=400, detail="Un chef de camp ne peut pas se retirer de la guerre")
     if not can_manage_entity(db, user, b.entity_type, b.entity_id) and not _can_manage_camp(db, user, ID, b.camp):
         raise HTTPException(status_code=403, detail="Vous ne pouvez pas retirer ce belligérant")
+    if b.status == "engage":
+        titre = _entity_summary(db, b.entity_type, b.entity_id, b.entity_title)["title"]
+        _add_evenement(db, ID, "retrait", f"{titre} quitte le camp {CAMP_NAMES.get(b.camp, b.camp)}", camp=b.camp, user=user)
     db.delete(b)
     db.commit()
     return guerre_infos(db, db_guerre)
+
+#endregion
+#region Chronologie et zones de conflit
+
+def can_raconter(db: Session, user: schemas.Users | None, db_guerre: models.Guerres) -> bool:
+    # Chefs de camp (fondateur ou admin) pendant la guerre ; modérateurs RP aussi une fois terminée
+    if not user or user.is_disabled:
+        return False
+    if is_moderateur(user):
+        return db_guerre.status in GUERRE_STATUTS_PUBLICS
+    return db_guerre.status == "en_cours" and any(_can_manage_camp(db, user, db_guerre.id, camp) for camp in CAMPS)
+
+def can_edit_zones(db: Session, user: schemas.Users | None, db_guerre: models.Guerres) -> bool:
+    return db_guerre.status == "en_cours" and can_raconter(db, user, db_guerre)
+
+def ajouter_evenement(db: Session, user: schemas.Users, ID: int, body: schemas.GuerreEvenementCreate):
+    db_guerre = _require_guerre(db, ID)
+    if not can_raconter(db, user, db_guerre):
+        raise HTTPException(status_code=403, detail="Seuls les chefs de camp d'une guerre en cours et les modérateurs RP complètent sa chronologie")
+    kind = body.type or "bataille"
+    if kind not in EVENEMENTS_RACONTES:
+        raise HTTPException(status_code=400, detail="Type d'événement inconnu : bataille, siege, traite ou autre")
+    title = (body.title or "").strip()
+    if not title:
+        raise HTTPException(status_code=400, detail="Donnez un titre à l'événement")
+    if len(title) > 120:
+        raise HTTPException(status_code=400, detail="Le titre d'un événement ne dépasse pas 120 caractères")
+    if body.camp is not None and body.camp not in CAMPS:
+        raise HTTPException(status_code=400, detail="Le camp doit être « attaquant » ou « defenseur »")
+    _add_evenement(db, ID, kind, title, (body.description or "").strip() or None, camp=body.camp, date_rp=body.date_rp, user=user, auto=False)
+    db.commit()
+    if kind in EVENEMENTS_ANNONCES:
+        _annoncer(db_guerre, f"📜 **{db_guerre.title}** — {EVENEMENTS_RACONTES[kind]} : {title}")
+    return guerre_details(db, db_guerre)
+
+def supprimer_evenement(db: Session, user: schemas.Users, ID: int, evenementID: int):
+    db_guerre = _require_guerre(db, ID)
+    evenement = db.get(models.GuerreEvenements, evenementID)
+    if not evenement or evenement.guerre_id != ID:
+        raise HTTPException(status_code=404, detail="Cet événement n'appartient pas à cette guerre")
+    if evenement.is_auto:
+        raise HTTPException(status_code=400, detail="Les étapes inscrites automatiquement restent dans la chronologie")
+    if not (is_moderateur(user) or (evenement.created_by == user.id and db_guerre.status == "en_cours")):
+        raise HTTPException(status_code=403, detail="Seuls son auteur (pendant la guerre) et les modérateurs RP peuvent retirer cet événement")
+    db.delete(evenement)
+    db.commit()
+    return guerre_details(db, db_guerre)
 
 #endregion

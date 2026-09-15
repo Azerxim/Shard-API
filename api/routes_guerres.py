@@ -91,3 +91,16 @@ def retirer_belligerant(current_user: CurrentUser, GuerreID: int, BelligerantID:
 
 #endregion
 # -----------------------------------------------
+#region Chronologie (zones de conflit : /cartographie, type "guerre")
+
+@router.post("/{GuerreID}/evenements")
+def ajouter_evenement(current_user: CurrentUser, GuerreID: int, body: schemas.GuerreEvenementCreate, db: Session = Depends(get_db)):
+    # Bataille, siège, traité ou autre fait, raconté par un chef de camp ou un modérateur RP
+    return _json({'code': 200, 'text': "L'événement a été ajouté à la chronologie", **crud_conflits.ajouter_evenement(db, current_user, GuerreID, body)})
+
+@router.delete("/{GuerreID}/evenements/{EvenementID}")
+def supprimer_evenement(current_user: CurrentUser, GuerreID: int, EvenementID: int, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "L'événement a été retiré de la chronologie", **crud_conflits.supprimer_evenement(db, current_user, GuerreID, EvenementID)})
+
+#endregion
+# -----------------------------------------------
