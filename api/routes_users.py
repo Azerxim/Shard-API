@@ -129,6 +129,11 @@ def read_my_platforms(current_user: Annotated[schemas.Users, Depends(crud.secu_g
 @router.delete("/platforms/{provider}")
 def unlink_my_platform(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], provider: str, db: Session = Depends(get_db)):
     return JSONResponse(content=jsonable_encoder(oauth.unlink_platform(db, current_user, provider)))
+
+@router.get("/id/{user_id}/platforms")
+def read_public_platforms(user_id: int, db: Session = Depends(get_db)):
+    # Profil public : [{ platform: "microsoft", uid, username, avatar_url }] ; vide pour un profil privé ou désactivé
+    return JSONResponse(content=jsonable_encoder(oauth.public_platforms(db, user_id)))
 #endregion
 
 @router.post("/login")

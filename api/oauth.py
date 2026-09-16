@@ -214,6 +214,16 @@ def list_platforms(db: Session, user: schemas.Users):
     statement = select(models.UserPlatforms).where(models.UserPlatforms.user_id == user.id)
     return [platform_infos(link) for link in db.exec(statement).all() if link.platform in PROVIDERS]
 
+# Comptes affichés sur le profil public : le pseudo Minecraft est public en jeu, le compte Discord reste privé
+PUBLIC_PLATFORMS = ("microsoft",)
+
+def public_platforms(db: Session, userID: int):
+    user = crud.get_user_by_id(db, userID)
+    if not user or user.is_disabled or not user.is_visible:
+        return []
+    statement = select(models.UserPlatforms).where(models.UserPlatforms.user_id == userID, models.UserPlatforms.platform.in_(PUBLIC_PLATFORMS))
+    return [{"platform": link.platform, "uid": link.uid, "username": link.username, "avatar_url": link.avatar_url} for link in db.exec(statement).all()]
+
 def unlink_platform(db: Session, user: schemas.Users, provider: str):
     link = _user_link(db, user.id, provider)
     if not link:
