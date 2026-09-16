@@ -121,6 +121,18 @@ Un template d'API moderne construit avec **FastAPI** et **SQLModel**.
 
    Les fichiers chargés sont affichés au démarrage (`Configuration: config.json + config.development.json`).
 
+4. **Plateformes (`platforms`)**
+
+   - `discord` : jeton du bot, serveur et salons des annonces (guerres), plus `site_url` pour les liens.
+   - `monde.key` : clé partagée avec le générateur de cartes de ShardUI-2-Maps, qui envoie les statistiques
+     du monde sur `POST /api/monde/releves` (en-tête `X-Monde-Key`). Sans cette clé, seul un administrateur
+     connecté peut déposer un relevé. Les statistiques se consultent sur `/admin/monde` du site.
+     Chaque relevé écrit la population mesurée dans les tables `villes` et `quartiers` ; les lieux d'une
+     dimension absente de la sauvegarde sont laissés tels quels, et la valeur précédente est conservée dans
+     `mondelieux.population_declaree`. Les joueurs que la sauvegarde ne nomme pas (elle ne contient que des
+     UUID) sont cherchés sur [playerdb.co](https://playerdb.co) après l'envoi, en tâche de fond ; les noms
+     trouvés sont conservés. `SHARD_PLAYERDB_URL` permet de viser un autre service (tests).
+
 ## 🚀 Démarrage
 
 ### Avec les scripts (recommandé)

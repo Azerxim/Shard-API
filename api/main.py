@@ -26,6 +26,7 @@ from .routes_commerces import router as commerces_router
 from .routes_alliances import router as alliances_router
 from .routes_guerres import router as guerres_router
 from .routes_personnages import router as personnages_router
+from .routes_monde import router as monde_router
 
 
 ################# App Initialization #################
@@ -169,6 +170,8 @@ app.include_router(guerres_router)
 app.include_router(personnages_router)
 
 app.include_router(cartographie_router)
+
+app.include_router(monde_router)
 
 ################# Main Routes #################
 

@@ -586,4 +586,103 @@ class CartographieUpdate(BaseModel):
     shape_type: str | None = None
     coordinates: str | None = None
 
+############### Statistiques du monde ####################
+
+# Envoyé par le générateur de cartes après lecture de la sauvegarde (scripts/map-generator/world_stats.py).
+# Les totaux du relevé sont recalculés par l'API à partir des listes ci-dessous.
+
+class MondeDimensionStat(BaseModel):
+    source: str | None = None          # dossier du monde : "", "DIM-1", "dimensions/ns/nom"
+    title: str | None = None
+    dimension_id: int | None = None
+    chunks: int | None = None
+    chunks_actifs: int | None = None
+    heures_presence: float | None = None
+    lits: int | None = None
+    lits_actifs: int | None = None
+    villageois: int | None = None
+    entites: int | None = None
+    taille_octets: int | None = None
+
+class MondeLieuStat(BaseModel):
+    entity_type: str                   # civilisation, ville ou quartier
+    entity_id: int
+    title: str | None = None
+    source: str | None = None
+    dimension_id: int | None = None
+    methode: str | None = None
+    rayon: int | None = None
+    x: int | None = None
+    z: int | None = None
+    population: int | None = None
+    chunks: int | None = None
+    chunks_actifs: int | None = None
+    heures_presence: float | None = None
+    lits: int | None = None
+    lits_actifs: int | None = None
+    villageois: int | None = None
+    joueurs_presents: int | None = None
+    joueurs_residents: int | None = None
+
+class MondeZoneStat(BaseModel):
+    rang: int | None = None
+    source: str | None = None
+    dimension_id: int | None = None
+    x: int | None = None
+    z: int | None = None
+    taille: int | None = None
+    heures_presence: float | None = None
+    chunks: int | None = None
+    lits: int | None = None
+    lits_actifs: int | None = None
+    villageois: int | None = None
+    joueurs: int | None = None
+    lieu_type: str | None = None
+    lieu_id: int | None = None
+    lieu_title: str | None = None
+    lieu_distance: int | None = None
+
+class MondeJoueurStat(BaseModel):
+    uuid: str
+    pseudo: str | None = None
+    heures_jeu: float | None = None
+    sessions: int | None = None
+    morts: int | None = None
+    joueurs_tues: int | None = None
+    monstres_tues: int | None = None
+    blocs_mines: int | None = None
+    distance_km: float | None = None
+    nuits_dormies: int | None = None
+    niveau: int | None = None
+    derniere_activite: datetime.datetime | None = None
+    is_actif: bool | None = None
+    dernier_x: int | None = None
+    dernier_z: int | None = None
+    derniere_dimension: str | None = None
+    lit_x: int | None = None
+    lit_z: int | None = None
+    lit_dimension: str | None = None
+    lieu_type: str | None = None
+    lieu_id: int | None = None
+    lieu_title: str | None = None
+
+class MondeReleveCreate(BaseModel):
+    source: str | None = "map-generator"
+    releve_at: datetime.datetime | None = None
+    world_name: str | None = None
+    world_version: str | None = None
+    data_version: int | None = None
+    duration_seconds: float | None = None
+    taille_octets: int | None = None
+    seuil_heures_lit: float | None = None
+    seuil_jours_actif: int | None = None
+    seuil_heures_actif: float | None = None
+    taille_tuile: int | None = None
+
+    dimensions: List[MondeDimensionStat] = []
+    lieux: List[MondeLieuStat] = []
+    zones: List[MondeZoneStat] = []
+    joueurs: List[MondeJoueurStat] = []
+
+
 ############### Templates ####################

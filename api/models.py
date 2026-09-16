@@ -389,6 +389,136 @@ class Cartographie(SQLModel, table=True):
     shape_type: str | None = Field(default=None)  # e.g., "point", "line", "polygon"
     coordinates: str | None = Field(default=None)  # Stored as JSON string
 
+############### Statistiques du monde ####################
+
+class MondeReleves(SQLModel, table=True):
+    """Lecture de la sauvegarde du monde par le générateur de cartes : un relevé par exécution."""
+    id: int | None = Field(default=None, primary_key=True)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now, index=True)
+    releve_at: dt.datetime | None = Field(default=None)   # date de la sauvegarde lue (côté générateur)
+    source: str | None = Field(default=None)              # "map-generator", "manuel"…
+    world_name: str | None = Field(default=None)
+    world_version: str | None = Field(default=None)       # version de Minecraft (level.dat)
+    data_version: int | None = Field(default=None)
+    duration_seconds: float | None = Field(default=None)  # durée de la lecture
+    taille_octets: int | None = Field(default=None)       # taille des régions lues
+
+    chunks: int | None = Field(default=None)              # chunks générés
+    chunks_actifs: int | None = Field(default=None)       # chunks où des joueurs ont passé du temps
+    heures_presence: float | None = Field(default=None)   # InhabitedTime cumulé, en heures
+    lits: int | None = Field(default=None)
+    lits_actifs: int | None = Field(default=None)         # lits dans un chunk fréquenté (seuil ci-dessous)
+    villageois: int | None = Field(default=None)
+    entites: int | None = Field(default=None)
+    joueurs: int | None = Field(default=None)
+    joueurs_actifs: int | None = Field(default=None)
+    heures_jeu: float | None = Field(default=None)        # temps de jeu cumulé des joueurs
+
+    # Réglages utilisés pour le calcul, conservés pour comparer deux relevés
+    seuil_heures_lit: float | None = Field(default=None)
+    seuil_jours_actif: int | None = Field(default=None)
+    seuil_heures_actif: float | None = Field(default=None)
+    taille_tuile: int | None = Field(default=None)        # côté des zones, en blocs
+
+class MondeDimensionsStats(SQLModel, table=True):
+    """Totaux d'un relevé pour une dimension (overworld, nether, end, dimensions de mods)."""
+    id: int | None = Field(default=None, primary_key=True)
+    releve_id: int = Field(foreign_key="mondereleves.id", index=True)
+    source: str | None = Field(default=None)              # dossier du monde : "", "DIM-1", "dimensions/ns/nom"
+    title: str | None = Field(default=None)
+    dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
+
+    chunks: int | None = Field(default=None)
+    chunks_actifs: int | None = Field(default=None)
+    heures_presence: float | None = Field(default=None)
+    lits: int | None = Field(default=None)
+    lits_actifs: int | None = Field(default=None)
+    villageois: int | None = Field(default=None)
+    entites: int | None = Field(default=None)
+    taille_octets: int | None = Field(default=None)
+
+class MondeLieux(SQLModel, table=True):
+    """Mesures rapportées à une ville, un quartier ou une civilisation du site."""
+    id: int | None = Field(default=None, primary_key=True)
+    releve_id: int = Field(foreign_key="mondereleves.id", index=True)
+    entity_type: str = Field(index=True)                  # civilisation, ville, quartier
+    entity_id: int = Field(index=True)
+    title: str | None = Field(default=None)               # nom au moment du relevé
+    source: str | None = Field(default=None)
+    dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
+    methode: str | None = Field(default=None)             # "frontieres" (polygone) ou "rayon"
+    rayon: int | None = Field(default=None)               # blocs, quand aucune frontière n'est tracée
+    x: int | None = Field(default=None)
+    z: int | None = Field(default=None)
+
+    population: int | None = Field(default=None)          # population mesurée (voir seuil_heures_lit)
+    # Population affichée sur le site avant ce relevé : les villes et quartiers reprennent ensuite la mesure
+    population_declaree: int | None = Field(default=None)
+    chunks: int | None = Field(default=None)
+    chunks_actifs: int | None = Field(default=None)
+    heures_presence: float | None = Field(default=None)
+    lits: int | None = Field(default=None)
+    lits_actifs: int | None = Field(default=None)
+    villageois: int | None = Field(default=None)
+    joueurs_presents: int | None = Field(default=None)    # dernière position dans le lieu
+    joueurs_residents: int | None = Field(default=None)   # point de réapparition (lit) dans le lieu
+    personnages: int | None = Field(default=None)         # personnages RP domiciliés
+
+class MondeZones(SQLModel, table=True):
+    """Zones les plus fréquentées du monde, découpées en tuiles régulières."""
+    id: int | None = Field(default=None, primary_key=True)
+    releve_id: int = Field(foreign_key="mondereleves.id", index=True)
+    rang: int | None = Field(default=None)
+    source: str | None = Field(default=None)
+    dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
+    x: int | None = Field(default=None)                   # coin de la tuile, en blocs
+    z: int | None = Field(default=None)
+    taille: int | None = Field(default=None)
+
+    heures_presence: float | None = Field(default=None)
+    chunks: int | None = Field(default=None)
+    lits: int | None = Field(default=None)
+    lits_actifs: int | None = Field(default=None)
+    villageois: int | None = Field(default=None)
+    joueurs: int | None = Field(default=None)
+    # Lieu du site le plus proche, pour repérer les zones fréquentées qui ne sont rattachées à rien
+    lieu_type: str | None = Field(default=None)
+    lieu_id: int | None = Field(default=None)
+    lieu_title: str | None = Field(default=None)
+    lieu_distance: int | None = Field(default=None)       # blocs (0 = dans les frontières)
+
+class MondeJoueurs(SQLModel, table=True):
+    """Un joueur du monde : temps de jeu, dernière position, point de réapparition."""
+    id: int | None = Field(default=None, primary_key=True)
+    releve_id: int = Field(foreign_key="mondereleves.id", index=True)
+    uuid: str = Field(index=True)
+    pseudo: str | None = Field(default=None)
+    avatar_url: str | None = Field(default=None)  # tête du joueur, renvoyée par playerdb.co
+    user_id: int | None = Field(default=None, foreign_key="users.id")  # compte du site au pseudo Minecraft lié
+
+    heures_jeu: float | None = Field(default=None)
+    sessions: int | None = Field(default=None)            # nombre de parties quittées
+    morts: int | None = Field(default=None)
+    joueurs_tues: int | None = Field(default=None)
+    monstres_tues: int | None = Field(default=None)
+    blocs_mines: int | None = Field(default=None)
+    distance_km: float | None = Field(default=None)
+    nuits_dormies: int | None = Field(default=None)
+    niveau: int | None = Field(default=None)
+    derniere_activite: dt.datetime | None = Field(default=None)  # date du fichier de sauvegarde du joueur
+    is_actif: bool | None = Field(default=None)
+
+    dernier_x: int | None = Field(default=None)
+    dernier_z: int | None = Field(default=None)
+    derniere_dimension: str | None = Field(default=None)
+    lit_x: int | None = Field(default=None)               # point de réapparition
+    lit_z: int | None = Field(default=None)
+    lit_dimension: str | None = Field(default=None)
+    lieu_type: str | None = Field(default=None)           # lieu de résidence déduit du point de réapparition
+    lieu_id: int | None = Field(default=None)
+    lieu_title: str | None = Field(default=None)
+
+
 ############### Templates ####################
 
 

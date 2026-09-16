@@ -48,6 +48,9 @@
 			"channels": {
 				"guerres": 1234567890987654321
 			}
+		},
+		"monde": {
+			"key": "CLE DU GENERATEUR DE CARTES"
 		}
 	}
 }
