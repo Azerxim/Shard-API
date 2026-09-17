@@ -106,6 +106,7 @@ async def redoc_html(request: Request):
 # -----------------------------------------------
 #region Version
 
+@router.get("/api/version")
 @router.get("/api/version/")
 def app_version():
     result = {'name': utils.CONFIG['api']['name'], 'version': utils.VERSION, 'version_dev': utils.VERSION_DEV, 'version_short': utils.VERSION_SHORT, 'hostname': utils.HOSTNAME}
