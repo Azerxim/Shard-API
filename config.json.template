@@ -47,6 +47,9 @@
 			"site_url": "https://tetrago.fr",
 			"channels": {
 				"guerres": 1234567890987654321
+			},
+			"categories": {
+				"journaux": 1234567890987654321
 			}
 		},
 		"monde": {

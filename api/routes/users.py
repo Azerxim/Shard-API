@@ -63,42 +63,29 @@ async def delete_current_user(current_user: Annotated[schemas.Users, Depends(cru
     return crud.delete_user(db=db, user_id=user_id)
 
 @router.get("/name/{username}", response_model=schemas.UserRead)
-def read_user_by_username(username: str, db: Session = Depends(get_db)):
-    """Récupérer un utilisateur par nom d'utilisateur"""
+def read_user_by_username(username: str, viewer: Annotated[schemas.Users | None, Depends(crud.secu_get_current_user_optional)], db: Session = Depends(get_db)):
+    """Récupérer un utilisateur par nom d'utilisateur (profil public ; e-mail seulement pour lui-même ou un admin)"""
     db_user = crud.get_user_by_username(db, username=username)
     if db_user is None:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    return crud.build_user_read(db_user)
+    return crud.build_user_read(db_user, include_email=crud.viewer_sees_private(viewer, db_user.id))
 
 @router.get("/id/{user_id}", response_model=schemas.UserRead)
-def read_user_by_id(user_id: int, db: Session = Depends(get_db)):
-    """Récupérer un utilisateur par ID"""
+def read_user_by_id(user_id: int, viewer: Annotated[schemas.Users | None, Depends(crud.secu_get_current_user_optional)], db: Session = Depends(get_db)):
+    """Récupérer un utilisateur par ID (profil public ; e-mail seulement pour lui-même ou un admin)"""
     db_user = crud.get_user_by_id(db, user_id=user_id)
     if db_user is None:
         raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
-    return crud.build_user_read(db_user)
+    return crud.build_user_read(db_user, include_email=crud.viewer_sees_private(viewer, db_user.id))
 
 @router.get("/list", response_model=List[schemas.UserRead])
-async def get_users_list(db: Session = Depends(get_db)):
+async def get_users_list(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_admin)], db: Session = Depends(get_db)):
     """Récupérer la liste de tous les utilisateurs (admin uniquement)"""
-    try:
-        from sqlmodel import select
-        
-        # Récupérer tous les utilisateurs
-        statement = select(models.Users)
-        results = db.exec(statement).all()
-        
-        # Vérifier qu'il y a au moins un admin
-        has_admin = any(user.is_admin and not user.is_disabled for user in results)
-        if not has_admin:
-            raise HTTPException(status_code=403, detail="Accès refusé")
-        
-        # Retourner tous les utilisateurs
-        return JSONResponse(content=jsonable_encoder([crud.build_user_read(user) for user in results]))
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=403, detail="Accès refusé")
+    from sqlmodel import select
+
+    results = db.exec(select(models.Users)).all()
+    # L'appelant est administrateur : l'e-mail fait partie des informations d'administration
+    return JSONResponse(content=jsonable_encoder([crud.build_user_read(user, include_email=True) for user in results]))
 
 #endregion
 # -----------------------------------------------
@@ -168,7 +155,7 @@ async def read_current_user(current_user: Annotated[schemas.Users, Depends(crud.
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    return JSONResponse(content=jsonable_encoder(crud.build_user_read(user)))
+    return JSONResponse(content=jsonable_encoder(crud.build_user_read(user, include_email=True)))
 
 @router.post("/token")
 async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], expiry_hours: int = 24, db: Session = Depends(get_db)):
@@ -193,8 +180,8 @@ async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends
     if not user_dict:
         raise HTTPException(status_code=400, detail="Incorrect username or password")
     
-    hashed_password = crud.hash_password(form_data.password)
-    if not hashed_password == user_dict.hashed_password:
+    # Vérifie l'empreinte scrypt (ou une ancienne empreinte SHA-256, alors migrée)
+    if not crud.check_password(db, user_dict, form_data.password):
         raise HTTPException(status_code=400, detail="Incorrect username or password")
 
     session = crud.create_active_session(db, user_dict.username, expiry_hours=expiry_hours)
@@ -203,7 +190,7 @@ async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends
 @router.get("/verify")
 async def verify_token(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)]):
     """Vérifier la validité du token actuel"""
-    return {"valid": True, "user": crud.build_user_read(current_user)}
+    return {"valid": True, "user": crud.build_user_read(current_user, include_email=True)}
 
 #endregion
 # -----------------------------------------------

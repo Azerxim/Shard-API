@@ -102,6 +102,7 @@ Aucun de ces deux fichiers n'est versionné : ils contiennent des secrets.
 | `platforms.discord.guild_id` | Serveur Discord |
 | `platforms.discord.site_url` | URL du site, pour les liens des annonces |
 | `platforms.discord.channels.guerres` | Salon des annonces de guerre |
+| `platforms.discord.categories.journaux` | Catégorie où `crud.create_journal` crée les salons de journaux (hors catégorie si absente) |
 | `platforms.monde.key` | Clé partagée avec le générateur de cartes (`MAP_STATS_API_KEY` côté Maps) |
 
 `oauth2.<fournisseur>.client_secret` doit être le *Client Secret* OAuth2 du fournisseur, pas le jeton du bot.
@@ -129,13 +130,25 @@ La fonction `lifespan` de `api/main.py` exécute, dans l'ordre :
 1. `create_db_and_tables()` : crée les tables manquantes.
 2. `migrate_commerces_owner_to_members()` : migration unique de l'ancienne colonne `commerces.owner_id` vers une
    ligne `Fondateur` dans `commercemembers` (sans effet une fois faite).
-3. `check_database_tables()` : compare chaque table aux modèles, ajoute les colonnes manquantes et **supprime puis
-   recrée** une colonne dont le type ou la nullabilité diffère (ses données sont perdues).
+3. `check_database_tables()` : compare chaque table aux modèles, ajoute les colonnes manquantes et corrige une
+   colonne dont le type ou la nullabilité diffère **en reconstruisant la table**, valeurs conservées (voir
+   ci-dessous).
 4. `crud.loadsecurity()` : crée ou met à jour le compte administrateur de `security` (admin, actif, masqué).
 5. `crud_nettoyage.nettoyer_references_orphelines()` : corrige les références laissées par d'anciennes suppressions.
 6. `crud_personnages.seed_referentiels()` : ajoute les espèces et classes de personnages par défaut.
 
-> Sauvegarder `ShardDB.db` avant de déployer un changement de type de colonne dans `api/db/models.py`.
+#### Correction des colonnes incohérentes
+
+Avant la **première** modification de structure d'un démarrage, `backup_database()` copie le fichier SQLite en
+`<database.name>.backup-<AAAA-MM-JJ_hhmmss>.db`. Le chemin est rappelé à la fin de la vérification.
+
+SQLite ne sait pas changer le type ni la nullabilité d'une colonne en place : `_rebuild_table()` recrée donc la
+table d'après son modèle, y recopie les colonnes communes, supprime l'ancienne et renomme la nouvelle — la même
+méthode que la migration des commerces. Si la copie échoue (une valeur `NULL` dans une colonne devenue `NOT NULL`,
+par exemple), la transaction est annulée : **la table et ses données restent intactes** et un message indique la
+correction à faire à la main.
+
+> Les sauvegardes `*.backup-*.db` ne sont pas supprimées automatiquement : les purger de temps en temps.
 
 ### Pages servies
 
@@ -162,13 +175,25 @@ CORS : toutes les origines, méthodes et en-têtes sont acceptés, sans cookies 
 L'authentification suit le schéma OAuth2 « password » de FastAPI, avec des jetons opaques stockés en base.
 
 1. `POST /api/users/token` (formulaire `username`, `password`, paramètre `expiry_hours`, 24 par défaut).
-2. L'API compare l'empreinte SHA-256 du mot de passe, supprime les sessions précédentes de l'utilisateur et crée
+2. L'API vérifie le mot de passe, supprime les sessions précédentes de l'utilisateur et crée
    une `ActiveSession` avec un jeton aléatoire de 64 caractères hexadécimaux.
 3. Réponse : `{ "access_token": "...", "token_type": "bearer" }`.
 4. Les appels protégés envoient `Authorization: Bearer <jeton>`.
 
 Une nouvelle connexion invalide donc les jetons précédents du même utilisateur (y compris celui de l'éditeur de carte,
 qui en redemande un au site).
+
+### Mots de passe
+
+Les mots de passe sont stockés en **scrypt salé**, via `hashlib` (aucune dépendance externe). Le format en base est
+`scrypt$<n>$<r>$<p>$<sel hex>$<clé hex>` ; les paramètres de coût sont les constantes `SCRYPT_*` de
+`api/services/crud.py` (n = 2¹⁴, r = 8, p = 1, clé de 32 octets, sel de 16 octets).
+
+`crud.verify_password` accepte aussi les empreintes de l'ancien schéma (SHA-256 sans sel, 64 caractères
+hexadécimaux) et signale qu'elles doivent être renouvelées ; `crud.check_password` s'en charge alors dans la foulée.
+Une empreinte héritée est donc remplacée par une empreinte scrypt **à la connexion suivante de son utilisateur**,
+sans intervention ni migration de la base. Relever les paramètres de coût provoque le même renouvellement
+progressif.
 
 `POST /api/users/login` vérifie seulement les identifiants (par nom, par e-mail ou les deux) et renvoie le profil
 dans `{ code, user }` ; il ne délivre pas de jeton. ShardUI-2 appelle `/login` puis `/token`.
@@ -180,6 +205,11 @@ dans `{ code, user }` ; il ne délivre pas de jeton. ShardUI-2 appelle `/login` 
 | `secu_get_current_user` | Jeton valide et non expiré (sinon 401) |
 | `secu_get_current_active_user` | Idem, et compte non désactivé (sinon 400) |
 | `secu_get_current_active_admin` | Idem, et `is_admin` (sinon 403) |
+| `secu_get_current_user_optional` | Rien : renvoie l'utilisateur si un jeton valide est fourni, sinon `None` |
+
+`secu_get_current_user_optional` sert aux routes publiques dont la réponse dépend du demandeur : `/api/users/id/{id}`
+et `/api/users/name/{username}` ne joignent l'e-mail du profil que pour son propriétaire ou un administrateur
+(`crud.viewer_sees_private`). Les autres appelants reçoivent `email: null`.
 
 ### Rôles
 
@@ -262,7 +292,7 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 
 | Table | Contenu |
 | --- | --- |
-| `users` | `username` et `email` uniques, `hashed_password` (SHA-256), `full_name`, `image_url`, `arrival`, `is_disabled`, `is_admin`, `is_moderateur`, `is_visible` (profil public) |
+| `users` | `username` et `email` uniques, `hashed_password` (scrypt salé, voir [Mots de passe](#mots-de-passe)), `full_name`, `image_url`, `arrival`, `is_disabled`, `is_admin`, `is_moderateur`, `is_visible` (profil public) |
 | `userplatforms` | Compte externe lié : `platform` (`discord`, `microsoft`), `uid`, `username`, `avatar_url`. Un par plateforme et par utilisateur ; un compte externe n'appartient qu'à un utilisateur |
 | `oauthstates` | Paramètre `state` d'une autorisation en cours (usage unique, 10 minutes), `mode` `login` ou `link` |
 | `activesession` | Jeton d'accès, utilisateur, date d'expiration |
@@ -344,9 +374,9 @@ Les réponses n'ont pas toutes le même format : selon les routes, le statut est
 | POST | `/create` | — | Inscription (`username`, `email`, `password`) ; nom et e-mail uniques |
 | PUT | `/update/{user_id}` | U (soi-même ou A) | Modifie un profil ; seul un administrateur change `is_admin` / `is_moderateur` |
 | DELETE | `/delete/{user_id}` | U (soi-même ou A) | Refusé tant que l'utilisateur est fondateur d'une entité |
-| GET | `/name/{username}` | — | Profil par nom |
-| GET | `/id/{user_id}` | — | Profil par identifiant |
-| GET | `/list` | voir [points d'attention](#points-dattention) | Liste des utilisateurs |
+| GET | `/name/{username}` | — | Profil par nom ; e-mail seulement pour lui-même ou un administrateur |
+| GET | `/id/{user_id}` | — | Profil par identifiant ; e-mail seulement pour lui-même ou un administrateur |
+| GET | `/list` | A | Liste des utilisateurs, e-mails compris |
 | POST | `/login` | — | Vérifie les identifiants, renvoie `{ code, user }` |
 | POST | `/token` | — | Délivre un jeton (formulaire OAuth2) |
 | GET | `/me` | U | Profil de l'utilisateur connecté |
@@ -684,16 +714,21 @@ ShardUI-2 (`npm run test:ux`), qui lancent cette API sur une copie jetable de `S
 
 ## Points d'attention
 
-Constats relevés lors de la rédaction, à traiter à part :
+Les cinq constats relevés lors de la rédaction de ce document ont été traités :
 
-- **`GET /api/users/list` n'exige pas de connexion** : la route vérifie seulement qu'un administrateur existe en
-  base, puis renvoie tous les utilisateurs avec leur e-mail. `GET /users/id/{id}` et `/users/name/{username}` renvoient
-  aussi l'e-mail. Utiliser `secu_get_current_active_admin` et retirer l'e-mail des profils publics.
-- **Mots de passe** : empreinte SHA-256 sans sel. Un algorithme dédié (bcrypt, argon2) est recommandé ; la migration
-  peut se faire à la connexion suivante de chaque utilisateur.
-- **Vérification des tables** : une différence de type ou de nullabilité entraîne la suppression et la recréation de
-  la colonne, donc la perte de ses valeurs.
-- **Catégorie Discord des journaux** codée en dur dans `crud.create_journal` (`1444691218234605700`) : à déplacer
-  dans `platforms.discord`.
-- **README.md** : encore celui du modèle « API Template » (structure `html/`, `routes_users.py` seul) ; ce document
-  le remplace pour le fonctionnement actuel.
+| Constat | Traitement |
+| --- | --- |
+| `GET /api/users/list` n'exigeait pas de connexion et renvoyait tous les e-mails | La route dépend de `secu_get_current_active_admin` (401 sans jeton, 403 sans le rôle). `/users/id/{id}` et `/users/name/{username}` ne joignent l'e-mail que pour le propriétaire du profil ou un administrateur — voir [Dépendances FastAPI](#dépendances-fastapi) |
+| Mots de passe en SHA-256 sans sel | scrypt salé, empreintes héritées migrées à la connexion suivante — voir [Mots de passe](#mots-de-passe) |
+| La vérification des tables supprimait et recréait une colonne incohérente | Reconstruction de la table avec conservation des valeurs, après sauvegarde du fichier SQLite — voir [Correction des colonnes incohérentes](#correction-des-colonnes-incohérentes) |
+| Catégorie Discord des journaux codée en dur | Lue dans `platforms.discord.categories.journaux` (`crud.discord_category`) |
+| `README.md` encore celui du modèle « API Template » | Réécrit pour Shard-API ; ce document reste la référence complète |
+
+Restent ouverts, sans urgence :
+
+- **Empreintes SHA-256 encore en base** : elles ne disparaissent qu'au fur et à mesure des connexions. Un compte
+  jamais reconnecté conserve son ancienne empreinte, vérifiable mais sans sel.
+- **`oauth2.client_id` / `client_secret`** ne sont pas vérifiés par `/api/users/token` (code commenté).
+- **Format des réponses inégal** : selon les routes, le statut est dans `code`, dans `error`, ou seulement dans
+  l'erreur HTTP `detail` (voir [Référence des routes](#référence-des-routes)).
+- **Sauvegardes `*.backup-*.db`** jamais purgées automatiquement.

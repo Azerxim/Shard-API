@@ -1,267 +1,124 @@
-# API Template
+# Shard-API
 
-> Documentation complète et à jour de Shard-API : [DOCUMENTATION.md](DOCUMENTATION.md).
+> Documentation complète et à jour : [DOCUMENTATION.md](DOCUMENTATION.md), aussi servie sur `/documentation`.
 
-Un template d'API moderne construit avec **FastAPI** et **SQLModel**.
+API du serveur **Tetrago** : comptes utilisateurs, bibliothèque de récits et de journaux, civilisations, villes et
+quartiers, religions, commerces, alliances, guerres, personnages, cartographie et statistiques du monde.
+Elle est consommée par [ShardUI-2](../ShardUI-2) (le site) et [ShardUI-2-Maps](../ShardUI-2-Maps) (la carte).
 
-## 📋 Table des matières
+## Stack technique
 
-- [Caractéristiques](#-caractéristiques)
-- [Prérequis](#-prérequis)
-- [Installation](#-installation)
-- [Configuration](#-configuration)
-- [Démarrage](#-démarrage)
-- [Utilisation des scripts](#-utilisation-des-scripts)
-- [Structure du projet](#-structure-du-projet)
-- [Vérification et synchronisation de la base de données](#-vérification-et-synchronisation-de-la-base-de-données)
-- [API Documentation](#-api-documentation)
-- [Dépendances principales](#-dépendances-principales)
-- [Sécurité](#-sécurité)
-- [Architecture](#-architecture)
-- [Licence](#-licence)
+- [Python](https://www.python.org/) 3.10+ (le `.venv` actuel utilise 3.11)
+- [FastAPI](https://fastapi.tiangolo.com/) — routes, validation, OpenAPI
+- [SQLModel](https://sqlmodel.tiangolo.com/) (SQLAlchemy + Pydantic) sur **SQLite**
+- [discord.py](https://discordpy.readthedocs.io/) — salons des journaux, annonces des guerres
+- [Jinja2](https://jinja.palletsprojects.com/) pour les pages HTML servies (`templates/`)
+- `httpx` (OAuth Discord et Microsoft), `urllib` (playerdb.co)
 
-## ✨ Caractéristiques
+## Prérequis
 
-- 🚀 **FastAPI** - Framework Web moderne et haute performance
-- 🗄️ **SQLModel** - ORM combinant SQLAlchemy et Pydantic
-- 🔐 **Authentification OAuth2** - Sécurité intégrée avec tokens JWT
-- 📚 **Documentation automatique** - Swagger UI et ReDoc
-- 🎨 **Interface Web** - Pages HTML personnalisées avec CSS responsive
-- 📦 **Architecture modulaire** - Séparation claire des responsabilités (CRUD, modèles, schémas, routes)
-- 🔄 **Vérification des tables** - Synchronisation automatique des schémas BD avec les modèles
-- ⚙️ **Configuration flexible** - IP et PORT lus depuis config.json
-- 🔁 **Mode développeur** - Hot-reload optionnel avec --reload
+- Python 3.10 ou plus
+- `npm` (les scripts de lancement passent par `package.json`)
+- `pm2` pour la production
 
-## 📦 Prérequis
-
-- Python 3.10+
-- pip (gestionnaire de paquets Python)
-
-## 🔧 Installation
-
-1. **Cloner le repository**
-
-   ```bash
-   git clone <url-du-repository>
-   cd API-template
-   ```
-
-2. **Utiliser les scripts de démarrage** (recommandé)
-
-   **Sur Linux/macOS :**
-
-   ```bash
-   chmod +x start.sh
-   ./start.sh
-   # Menu interactif: créer venv, installer dépendances, démarrer l'API
-   ```
-
-   **Sur Windows (PowerShell) :**
-
-   ```powershell
-   .\start.ps1
-   # Menu interactif: créer venv, installer dépendances, démarrer l'API
-   ```
-
-3. **Ou installer manuellement**
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # Sur Windows: .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-## ⚙️ Configuration
-
-1. **Copier le fichier de configuration**
-
-   ```bash
-   cp config.json.template config.json
-   ```
-
-2. **Éditer `config.json`** avec vos paramètres :
-   ```json
-   {
-     "version": "3",
-     "api": {
-       "name": "Mon API",
-       "mode": "production",
-       "production": { "ip": "0.0.0.0", "port": 8000 },
-       "development": { "ip": "127.0.0.1", "port": 8002 }
-     },
-     "database": {
-       "name": "database",
-       "debug": false
-     },
-     "security": {
-       "username": "admin",
-       "full_name": "Administrateur",
-       "email": "admin@example.com",
-       "password": "votre_mot_de_passe_securise"
-     },
-     "oauth2": {
-       "client_id": "votre_client_id",
-       "client_secret": "votre_client_secret"
-     }
-   }
-   ```
-
-3. **(Optionnel) Surcharge pour le développement**
-
-   `npm run dev` et `npm run verbose` définissent `API_ENV=development` : le fichier `config.development.json` (non versionné) est alors fusionné par-dessus `config.json`, et l'IP / le port viennent de `api.development`. `npm run start` n'utilise que `config.json`.
-
-   ```bash
-   cp config.development.json.template config.development.json
-   ```
-
-   N'y garder que les valeurs à remplacer : les objets sont fusionnés clé par clé, les autres valeurs remplacent celles de `config.json`. Par exemple, pour travailler sur une base séparée :
-
-   ```json
-   {
-     "database": { "name": "ShardDB-dev", "debug": true }
-   }
-   ```
-
-   Les fichiers chargés sont affichés au démarrage (`Configuration: config.json + config.development.json`).
-
-4. **Plateformes (`platforms`)**
-
-   - `discord` : jeton du bot, serveur et salons des annonces (guerres), plus `site_url` pour les liens.
-   - `monde.key` : clé partagée avec le générateur de cartes de ShardUI-2-Maps, qui envoie les statistiques
-     du monde sur `POST /api/monde/releves` (en-tête `X-Monde-Key`). Sans cette clé, seul un administrateur
-     connecté peut déposer un relevé. Les statistiques se consultent sur `/admin/monde` du site.
-     Chaque relevé écrit la population mesurée dans les tables `villes` et `quartiers` ; les lieux d'une
-     dimension absente de la sauvegarde sont laissés tels quels, et la valeur précédente est conservée dans
-     `mondelieux.population_declaree`. Les joueurs que la sauvegarde ne nomme pas (elle ne contient que des
-     UUID) sont cherchés sur [playerdb.co](https://playerdb.co) après l'envoi, en tâche de fond ; les noms
-     trouvés sont conservés. `SHARD_PLAYERDB_URL` permet de viser un autre service (tests).
-
-## 🚀 Démarrage
-
-### Avec les scripts (recommandé)
-
-Les scripts `start.sh` (Linux/macOS) et `start.ps1` (Windows) offrent un menu interactif :
-
-1. **Créer/Activer** l'environnement virtuel
-2. **Installer** les dépendances
-3. **Démarrer** l'API
-   - Mode développeur : rechargement automatique lors de modifications
-   - Mode production : sans rechargement
-
-### Manuellement
-
-**Mode développeur (avec rechargement automatique) :**
+## Installation
 
 ```bash
-python -m uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+npm run init                                                   # crée .venv et installe requirements.txt
+cp config.json.template config.json                            # puis renseigner les valeurs
+cp config.development.json.template config.development.json    # facultatif, pour le développement
 ```
 
-**Mode production (sans rechargement) :**
+Depuis la racine de Shard-2, `npm run api:init` fait la même chose. Les scripts interactifs `start.sh` (Linux/macOS)
+et `start.ps1` (Windows) proposent aussi de créer le venv, d'installer les dépendances et de lancer l'API.
+
+## Configuration
+
+`config.json` est toujours lu ; avec `API_ENV=development`, `config.development.json` est fusionné par-dessus
+(objets fusionnés clé par clé). Aucun des deux n'est versionné : ils contiennent des secrets.
+
+| Clé | Rôle |
+| --- | --- |
+| `api.mode`, `api.production`, `api.development` | Adresse et port d'écoute |
+| `database.name` | Nom du fichier SQLite, sans `.db` (`ShardDB`, `ShardDB-dev` en développement) |
+| `security.*` | Compte administrateur recréé ou mis à jour à chaque démarrage |
+| `oauth2.discord.*`, `oauth2.microsoft.*` | Connexion et liaison des comptes externes |
+| `platforms.discord.token`, `.guild_id`, `.site_url` | Bot Discord |
+| `platforms.discord.channels.guerres` | Salon des annonces de guerre |
+| `platforms.discord.categories.journaux` | Catégorie où sont créés les salons de journaux |
+| `platforms.monde.key` | Clé partagée avec le générateur de cartes |
+
+Le détail de chaque clé et les variables d'environnement (dont celles de simulation utilisées par les tests) sont
+dans [DOCUMENTATION.md](DOCUMENTATION.md#configuration).
+
+## Scripts disponibles
 
 ```bash
-python -m uvicorn api.main:app --host 0.0.0.0 --port 8000
+npm run init       # Crée .venv et installe les dépendances
+npm run dev        # Développement : API_ENV=development, rechargement automatique
+npm run verbose    # Comme dev, avec --log-level debug
+npm run start      # Production : IP/port de api.production, config.json seul
+npm run pm2:start  # Lance le processus pm2 « shard-api » (pm2:stop, pm2:restart, pm2:logs, pm2:delete)
 ```
 
-## 📝 Utilisation des scripts
-
-Les scripts `start.sh` et `start.ps1` lisent **automatiquement** l'IP et le PORT depuis `config.json` et offrent un choix de mode d'exécution.
-
-**Personnalisation :**
-
-- Modifiez le paramètre `VENV_DIR` au début du script pour changer le répertoire de l'environnement virtuel
-- Choisissez entre mode développeur (--reload) et production lors du démarrage
-
-L'API sera accessible à : `http://localhost:8000`
-
-## 📁 Structure du projet
+## Structure du projet
 
 ```
-.
-├── api/                    # Code principal de l'API
-│   ├── main.py            # Point d'entrée FastAPI
-│   ├── core/              # Configuration, version, rendu de la documentation
-│   ├── db/                # Base de données, modèles SQLModel, schémas Pydantic
-│   ├── services/          # Logique métier (crud_*.py)
-│   ├── integrations/      # Discord et OAuth
-│   └── routes/            # Routeurs FastAPI (un fichier par domaine + pages HTML)
-├── templates/              # Pages Jinja2
-│   ├── landing.html       # Page d'accueil
-│   ├── documentation.html # DOCUMENTATION.md rendu en HTML
-│   ├── docs.html          # Swagger UI
-│   ├── redoc.html         # ReDoc
-│   └── components/        # Composants réutilisables
-├── assets/                # Ressources statiques
-│   ├── css/               # Feuilles de style CSS
-│   ├── images/            # Images et icônes
-│   └── fontawesome/       # Icônes FontAwesome
-├── config.json.template   # Template de configuration
-├── config.json            # Configuration (à créer)
-├── requirements.txt       # Dépendances Python
-├── README.md              # Ce fichier
-├── DOCUMENTATION.md       # Documentation complète (servie sur /documentation)
-├── start.sh              # Script de démarrage Linux/macOS
-└── start.ps1             # Script de démarrage Windows
+Shard-API/
+├── api/
+│   ├── main.py            # Application, démarrage (lifespan), statiques, 404, inclusion des routeurs
+│   ├── core/              # Configuration (utils.py), version, rendu HTML de la documentation
+│   ├── db/                # database.py (moteur, vérification des tables), models.py, schemas.py
+│   ├── services/          # Logique métier : crud.py, crud_conflits, crud_personnages, crud_monde, crud_nettoyage
+│   ├── integrations/      # oauth.py (Discord, Microsoft), discord_handler.py (bot)
+│   └── routes/            # Un routeur par domaine (+ _template.py comme point de départ)
+├── templates/             # Pages Jinja2 (accueil, documentation, docs, redoc, 404)
+├── assets/                # CSS et images
+├── config.json(.template) # Configuration (non versionnée)
+├── requirements.txt
+├── start.sh / start.ps1   # Menus interactifs
+└── ShardDB.db             # Base de production (non versionnée)
 ```
 
-## 🔄 Vérification et synchronisation de la base de données
+Pour ajouter un domaine : modèles dans `db/models.py`, corps de requête dans `db/schemas.py`, logique dans
+`services/crud_<domaine>.py`, routeur copié depuis `routes/_template.py` puis inclus dans `main.py`.
+Détail dans [DOCUMENTATION.md](DOCUMENTATION.md#ajouter-un-domaine).
 
-Au démarrage, l'API :
+## Points d'entrée
 
-- **Crée** les tables manquantes automatiquement
-- **Ajoute** les colonnes manquantes
-- **Corrige** les types de données incompatibles
-- **Initialise** l'utilisateur admin avec les credentials de `config.json`
+| Chemin | Contenu |
+| --- | --- |
+| `/api/...` | L'API (référence complète des routes dans la documentation) |
+| `/documentation` | `DOCUMENTATION.md` rendu en HTML, relu dès que le fichier change |
+| `/docs`, `/redoc`, `/openapi.json` | Swagger UI, ReDoc, schéma OpenAPI |
+| `/api/version/` | `{ name, version, version_dev, version_short, hostname }` |
 
-## 📚 API Documentation
+## Authentification
 
-Une fois l'API démarrée, accédez à :
+OAuth2 « password » avec des jetons opaques stockés en base : `POST /api/users/token` renvoie un `access_token`
+à envoyer en `Authorization: Bearer <jeton>`. Les mots de passe sont stockés en **scrypt salé**. Une nouvelle
+connexion invalide les jetons précédents du même utilisateur. Voir
+[DOCUMENTATION.md](DOCUMENTATION.md#authentification-et-droits) pour les rôles et les dépendances FastAPI.
 
-- **Documentation** : http://localhost:8000/documentation (version HTML de [DOCUMENTATION.md](DOCUMENTATION.md))
-- **Swagger UI** : http://localhost:8000/docs
-- **ReDoc** : http://localhost:8000/redoc
-- **Page d'accueil** : http://localhost:8000
+## Tests
 
-## 📄 Dépendances principales
+Il n'y a pas de tests unitaires ici : les parcours de bout en bout sont couverts par les tests Playwright de
+ShardUI-2 (`npm run test:ux`), qui lancent cette API sur une copie jetable de `ShardDB.db`.
 
-| Package     | Version  | Utilisation               |
-| ----------- | -------- | ------------------------- |
-| fastapi     | 0.128.0+ | Framework Web             |
-| sqlmodel    | 0.0.31   | ORM SQLAlchemy + Pydantic |
-| requests    | Latest   | Requêtes HTTP             |
-| topazdevsdk | 1.1.0    | Utilitaires et logging    |
+## Déploiement
 
-## 🔒 Sécurité
+```bash
+npm run pm2:start     # ou npm run start
+```
 
-**Recommandations pour la production :**
+La base `ShardDB.db` est sauvegardée automatiquement (`ShardDB.backup-<date>.db`) avant toute modification de
+structure au démarrage.
 
-- ✅ Changez les identifiants admin par défaut
-- ✅ Utilisez des variables d'environnement pour les secrets
-- ✅ Générez des tokens JWT sécurisés
-- ✅ Activez HTTPS avec un certificat SSL/TLS
-- ✅ Limitez l'accès à la base de données
-- ✅ Configurez un mot de passe admin robuste
-- ✅ Activez le debug à false dans la configuration
+## Projets liés
 
-## 🤝 Architecture
+- [ShardUI-2](../ShardUI-2) — site web consommant cette API
+- [ShardUI-2-Maps](../ShardUI-2-Maps) — application de cartographie
 
-L'API suit une architecture modulaire :
+## Licence
 
-- **main.py** : Point d'entrée, démarrage et inclusion des routeurs
-- **core/** : Lecture de la configuration (`utils.py`), version, rendu HTML de la documentation
-- **db/** : Moteur et vérification de la base (`database.py`), tables (`models.py`), schémas (`schemas.py`)
-- **services/** : Logique métier, une famille de `crud_*.py` par domaine
-- **integrations/** : Bot Discord et comptes externes (OAuth)
-- **routes/** : Un routeur par domaine (`users.py`, `guerres.py`, …) et les pages HTML (`pages.py`)
-
-Pour ajouter un domaine : partir de `routes/_template.py` (voir « Ajouter un domaine » dans [DOCUMENTATION.md](DOCUMENTATION.md)).
-
-## 📝 Licence
-
-Ce projet est sous licence. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
-
----
-
-**Besoin d'aide ?**
-
-- [Documentation FastAPI](https://fastapi.tiangolo.com)
-- [Documentation SQLModel](https://sqlmodel.tiangolo.com)
-- [Documentation SQLAlchemy](https://docs.sqlalchemy.org)
+Voir [LICENSE](LICENSE).

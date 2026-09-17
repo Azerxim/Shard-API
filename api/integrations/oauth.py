@@ -307,6 +307,6 @@ def complete_authorization(db: Session, provider: str, code: str, state: str):
         return {"mode": "link", "text": f"Votre compte {label} est lié", "platform": platform_infos(link)}
 
     session = crud.create_active_session(db, user.username)
-    return {"mode": "login", "access_token": session.access_token, "token_type": "bearer", "user": crud.build_user_read(user)}
+    return {"mode": "login", "access_token": session.access_token, "token_type": "bearer", "user": crud.build_user_read(user, include_email=True)}
 
 #endregion

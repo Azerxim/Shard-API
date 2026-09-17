@@ -1,7 +1,15 @@
+import datetime as dt
+import os
+import shutil
+
 from sqlmodel import create_engine, Session
 from ..core import utils
 
-DATABASE_URL = f"sqlite:///./{utils.DATABASE['name']}.db"
+DATABASE_PATH = f"./{utils.DATABASE['name']}.db"
+DATABASE_URL = f"sqlite:///{DATABASE_PATH}"
+
+# Une seule sauvegarde par démarrage, faite juste avant la première modification de colonne
+_backup_path = None
 
 engine = create_engine(
     DATABASE_URL, echo=utils.DATABASE['debug']
@@ -58,6 +66,64 @@ def migrate_commerces_owner_to_members():
         connection.execute(text("ALTER TABLE commerces_new RENAME TO commerces"))
     print(f"Migration terminée : {len(commerces)} commerce(s) avec fondateur, colonne owner_id supprimée.")
 
+def backup_database(reason: str):
+    """Copie le fichier SQLite avant la première modification de structure du démarrage.
+    Renvoie le chemin de la sauvegarde, ou None si elle n'a pas pu être faite."""
+    global _backup_path
+    from topazdevsdk import colors
+
+    if _backup_path is not None:
+        return _backup_path
+    if not os.path.exists(DATABASE_PATH):
+        return None
+    stamp = dt.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    target = f"{os.path.splitext(DATABASE_PATH)[0]}.backup-{stamp}.db"
+    try:
+        shutil.copy2(DATABASE_PATH, target)
+    except Exception as error:
+        print(f"{colors.BColors.RED}  ✗ Sauvegarde impossible ({error}) : aucune modification de colonne ne sera tentée{colors.BColors.END}")
+        return None
+    _backup_path = target
+    print(f"{colors.BColors.CYAN}  → Sauvegarde avant {reason} : {target}{colors.BColors.END}")
+    return target
+
+
+def _rebuild_table(model_class, existing_columns, details: str):
+    """Reconstruit une table d'après son modèle en conservant les valeurs des colonnes communes.
+    C'est la seule façon, sous SQLite, de corriger un type ou une nullabilité sans perdre de données.
+    En cas d'échec (une valeur NULL dans une colonne devenue NOT NULL, par exemple), la transaction
+    est annulée et la table reste inchangée."""
+    from topazdevsdk import colors
+    from sqlalchemy import text, MetaData
+
+    table_name = model_class.__tablename__
+    if backup_database(f"correction de '{table_name}'") is None and os.path.exists(DATABASE_PATH):
+        return False
+
+    # Colonnes présentes à la fois dans le modèle et dans la table : seules celles-là sont recopiées
+    columns = [col.name for col in model_class.__table__.columns if col.name in existing_columns]
+    quoted = ", ".join(f'"{name}"' for name in columns)
+    temp_name = f"{table_name}__rebuild"
+    try:
+        with engine.begin() as connection:
+            connection.execute(text(f'DROP TABLE IF EXISTS "{temp_name}"'))
+            model_class.__table__.to_metadata(MetaData(), name=temp_name).create(connection)
+            connection.execute(text(f'INSERT INTO "{temp_name}" ({quoted}) SELECT {quoted} FROM "{table_name}"'))
+            connection.execute(text(f'DROP TABLE "{table_name}"'))
+            connection.execute(text(f'ALTER TABLE "{temp_name}" RENAME TO "{table_name}"'))
+    except Exception as error:
+        print(f"{colors.BColors.RED}  ✗ Table '{table_name}' non corrigée ({details}) : {error}{colors.BColors.END}")
+        print(f"{colors.BColors.YELLOW}    La table est inchangée et ses données intactes. Correction à faire à la main.{colors.BColors.END}")
+        try:
+            with engine.begin() as connection:
+                connection.execute(text(f'DROP TABLE IF EXISTS "{temp_name}"'))
+        except Exception:
+            pass
+        return False
+    print(f"{colors.BColors.GREEN}  ✓ Table '{table_name}' reconstruite ({details}), valeurs conservées{colors.BColors.END}")
+    return True
+
+
 def check_database_tables():
     """
     Vérifie et met à jour la structure des tables par rapport aux modèles SQLModel
@@ -101,6 +167,9 @@ def check_database_tables():
         # SQLModel utilise __table__ pour accéder à la table SQLAlchemy
         model_table = model_class.__table__
         
+        # Incohérences de type ou de nullabilité relevées sur cette table, corrigées après la boucle
+        mismatched_columns = []
+
         # Vérifier et ajouter les colonnes manquantes et vérifier les types
         with engine.begin() as connection:
             for column in model_table.columns:
@@ -126,6 +195,7 @@ def check_database_tables():
                     alter_stmt = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {col_type} {nullable} {default_clause}".strip()
                     
                     try:
+                        backup_database(f"ajout de '{column_name}' à '{table_name}'")
                         connection.execute(text(alter_stmt))
                         print(f"{colors.BColors.GREEN}  ✓ Colonne '{column_name}' ajoutée à '{table_name}'{colors.BColors.END}")
                     except Exception as e:
@@ -149,50 +219,26 @@ def check_database_tables():
                         print(f"{colors.BColors.GREEN}  ✓ Colonne '{column_name}' : {actual_type} (correct){colors.BColors.END}")
                     else:
                         mismatch_details = []
-                        has_type_mismatch = False
-                        has_nullable_mismatch = False
-                        
                         if expected_type_normalized != actual_type_normalized:
                             mismatch_details.append(f"type ({actual_type} vs {expected_type})")
-                            has_type_mismatch = True
                         if expected_nullable != actual_nullable:
                             nullable_str = "NULL" if actual_nullable else "NOT NULL"
                             expected_nullable_str = "NULL" if expected_nullable else "NOT NULL"
                             mismatch_details.append(f"nullable ({nullable_str} vs {expected_nullable_str})")
-                            has_nullable_mismatch = True
                         
                         details_str = ", ".join(mismatch_details)
                         print(f"{colors.BColors.RED}  ✗ Colonne '{column_name}' : incohérence détectée ({details_str}){colors.BColors.END}")
-                        
-                        # CORRECTION : Supprimer et recréer la colonne
-                        print(f"{colors.BColors.YELLOW}  → Correction en cours...{colors.BColors.END}")
-                        try:
-                            # Construire le type SQL correct
-                            col_type = str(column.type.compile(engine.dialect))
-                            
-                            # Déterminer si la colonne accepte NULL
-                            nullable = "NULL" if column.nullable else "NOT NULL"
-                            
-                            # Construire la clause DEFAULT si nécessaire
-                            default_clause = ""
-                            if column.default is not None:
-                                if callable(column.default.arg):
-                                    default_clause = ""
-                                else:
-                                    default_clause = f"DEFAULT {column.default.arg}"
-                            
-                            # Supprimer la colonne
-                            drop_stmt = f"ALTER TABLE {table_name} DROP COLUMN {column_name}"
-                            connection.execute(text(drop_stmt))
-                            
-                            # Recréer la colonne avec le bon type
-                            add_stmt = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {col_type} {nullable} {default_clause}".strip()
-                            connection.execute(text(add_stmt))
-                            
-                            print(f"{colors.BColors.GREEN}  ✓ Colonne '{column_name}' corrigée : {col_type} {nullable}{colors.BColors.END}")
-                        except Exception as e:
-                            print(f"{colors.BColors.YELLOW}  ⚠ Impossible de corriger '{column_name}': {str(e)}{colors.BColors.END}")
-    
+                        # La correction se fait après la boucle, par reconstruction de la table :
+                        # supprimer puis recréer la colonne effacerait toutes ses valeurs.
+                        mismatched_columns.append(f"{column_name} : {details_str}")
+
+        # Correction des incohérences relevées : reconstruction de la table, valeurs conservées
+        if mismatched_columns:
+            print(f"{colors.BColors.YELLOW}  → Correction de '{table_name}' par reconstruction ({len(mismatched_columns)} colonne(s))...{colors.BColors.END}")
+            _rebuild_table(model_class, existing_columns, "; ".join(mismatched_columns))
+
+    if _backup_path:
+        print(f"{colors.BColors.CYAN}Sauvegarde de la base avant correction : {_backup_path}{colors.BColors.END}")
     print(f"{colors.BColors.GREEN}Vérification des tables terminée{colors.BColors.END}")
 
 

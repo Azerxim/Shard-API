@@ -23,6 +23,8 @@ from topazdevsdk import colors
 ################# Security #####################
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/users/token")
+# auto_error=False : l'absence d'en-tête Authorization ne fait pas échouer la requête
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="/api/users/token", auto_error=False)
 
 # -----------------------------------------------
 async def secu_get_current_user(token: Annotated[str, Depends(oauth2_scheme)], db: Session = Depends(get_db)):
@@ -47,9 +49,86 @@ async def secu_get_current_active_admin(current_user: Annotated[schemas.Users, D
         raise HTTPException(status_code=403, detail="Access denied")
     return current_user
 
+async def secu_get_current_user_optional(token: Annotated[str | None, Depends(oauth2_scheme_optional)], db: Session = Depends(get_db)):
+    """Utilisateur connecté, ou None : pour une route publique dont la réponse dépend du demandeur."""
+    if not token:
+        return None
+    user = secu_decode_token(db, token)
+    if user is None or user.is_disabled:
+        return None
+    return user
+
+def viewer_sees_private(viewer, user_id: int) -> bool:
+    """Le demandeur a-t-il droit aux champs privés (e-mail) de ce profil : lui-même ou un administrateur."""
+    if viewer is None:
+        return False
+    return viewer.id == user_id or bool(viewer.is_admin)
+
 # -----------------------------------------------
-def hash_password(password: str):
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
+# Mots de passe : scrypt salé (hashlib, sans dépendance externe).
+# Format stocké : scrypt$<n>$<r>$<p>$<sel hex>$<clé hex>.
+# Les empreintes historiques (SHA-256 sans sel, 64 caractères hexadécimaux) restent vérifiables
+# et sont remplacées par une empreinte scrypt à la connexion suivante de l'utilisateur.
+SCRYPT_N = 2 ** 14
+SCRYPT_R = 8
+SCRYPT_P = 1
+SCRYPT_DKLEN = 32
+SCRYPT_SALT_BYTES = 16
+
+
+def hash_password(password: str) -> str:
+    """Empreinte scrypt d'un mot de passe, sel aléatoire compris."""
+    salt = secrets.token_bytes(SCRYPT_SALT_BYTES)
+    key = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=SCRYPT_N, r=SCRYPT_R, p=SCRYPT_P, dklen=SCRYPT_DKLEN)
+    return f"scrypt${SCRYPT_N}${SCRYPT_R}${SCRYPT_P}${salt.hex()}${key.hex()}"
+
+
+def _hash_password_legacy(password: str) -> str:
+    """Ancien schéma : SHA-256 sans sel. Ne sert plus qu'à vérifier les empreintes déjà en base."""
+    return hashlib.sha256(password.encode("utf-8")).hexdigest()
+
+
+def verify_password(password: str, stored: str) -> tuple[bool, bool]:
+    """Vérifie un mot de passe. Renvoie (mot de passe correct, empreinte à renouveler)."""
+    if not password or not stored:
+        return False, False
+    if stored.startswith("scrypt$"):
+        try:
+            _, n, r, p, salt_hex, key_hex = stored.split("$")
+            expected = bytes.fromhex(key_hex)
+            candidate = hashlib.scrypt(
+                password.encode("utf-8"), salt=bytes.fromhex(salt_hex),
+                n=int(n), r=int(r), p=int(p), dklen=len(expected),
+            )
+        except (ValueError, TypeError):
+            return False, False
+        if not secrets.compare_digest(candidate, expected):
+            return False, False
+        # Paramètres de coût dépassés : on renouvelle l'empreinte
+        return True, (int(n), int(r), int(p)) != (SCRYPT_N, SCRYPT_R, SCRYPT_P)
+    # Empreinte héritée : à remplacer dès qu'elle est vérifiée
+    if secrets.compare_digest(stored, _hash_password_legacy(password)):
+        return True, True
+    return False, False
+
+
+def upgrade_password_hash(db: Session, user: models.Users, password: str):
+    """Réécrit l'empreinte d'un utilisateur au format courant (appelé après une connexion réussie)."""
+    try:
+        user.hashed_password = hash_password(password)
+        db.add(user)
+        db.commit()
+    except Exception as error:
+        db.rollback()
+        print(f"Empreinte de mot de passe non migrée pour « {user.username} » : {error}")
+
+
+def check_password(db: Session, user: models.Users, password: str) -> bool:
+    """Mot de passe correct ? Migre l'empreinte au passage si elle est dans un ancien format."""
+    valid, needs_upgrade = verify_password(password, user.hashed_password)
+    if valid and needs_upgrade:
+        upgrade_password_hash(db, user, password)
+    return valid
 
 def secu_decode_token(db: Session, token: str):
     now = dt.datetime.now()
@@ -144,8 +223,8 @@ def check_user_from_name(db: Session, username, password):
     results = db.exec(statement)
     result = results.first()
     if result is not None:
-        user = build_user_read(result)
-        if result.hashed_password == hash_password(password):
+        user = build_user_read(result, include_email=True)
+        if check_password(db, result, password):
             return True, user
         return False, user
     return False, None
@@ -155,8 +234,8 @@ def check_user_from_email(db: Session, email, password):
     results = db.exec(statement)
     result = results.first()
     if result is not None:
-        user = build_user_read(result)
-        if result.hashed_password == hash_password(password):
+        user = build_user_read(result, include_email=True)
+        if check_password(db, result, password):
             return True, user
         return False, user
     return False, None
@@ -166,8 +245,8 @@ def check_user_all(db: Session, username, email, password):
     results = db.exec(statement)
     result = results.first()
     if result is not None:
-        user = build_user_read(result)
-        if result.hashed_password == hash_password(password):
+        user = build_user_read(result, include_email=True)
+        if check_password(db, result, password):
             return True, user
         return False, user
     return False, None
@@ -193,12 +272,14 @@ def get_users(db: Session, skip: int = 0, limit: int = 100):
     results = db.exec(statement)
     return results.all()
 
-def build_user_read(user: models.Users):
+def build_user_read(user: models.Users, include_email: bool = False):
+    """Profil renvoyé par l'API. L'e-mail n'est joint que pour le propriétaire du compte
+    ou un administrateur (include_email=True) : il ne sort jamais d'un profil public."""
     return schemas.UserRead(
         id=user.id,
         username=user.username,
         full_name=user.full_name,
-        email=user.email,
+        email=user.email if include_email else None,
         image_url=user.image_url,
         arrival=user.arrival,
         is_disabled=user.is_disabled,
@@ -221,7 +302,7 @@ def create_user(db: Session, user):
     db.add(db_user)
     db.commit()
     db.refresh(db_user)
-    return build_user_read(db_user)
+    return build_user_read(db_user, include_email=True)
 
 def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate):
     user = get_user_by_id(db, user_id)
@@ -249,7 +330,8 @@ def update_user(db: Session, user_id: int, user_update: schemas.UserUpdate):
     db.add(user)
     db.commit()
     db.refresh(user)
-    return build_user_read(user)
+    # La route n'autorise la mise à jour qu'au propriétaire du compte ou à un administrateur
+    return build_user_read(user, include_email=True)
 
 def delete_user(db: Session, user_id: int):
     user = get_user_by_id(db, user_id)
@@ -299,6 +381,12 @@ def _channel_messages(channel_id: str, limit: int):
         return loop.run_until_complete(discord_handler.get_channel_messages(channel_id, limit=limit))
     finally:
         loop.close()
+
+def discord_category(category_key: str):
+    """Identifiant de la catégorie platforms.discord.categories.<category_key>, ou None si absente.
+    Sans catégorie configurée, le salon est créé hors catégorie."""
+    category_id = ((utils.PLATFORMS.get("discord") or {}).get("categories") or {}).get(category_key)
+    return int(category_id) if category_id else None
 
 def announce_discord(channel_key: str, content: str):
     # Annonce dans le salon platforms.discord.channels.<channel_key>, en tâche de fond : ne bloque ni ne fait échouer la requête.
@@ -380,7 +468,7 @@ def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int 
 def create_journal(db: Session, user: schemas.Users, v_journal: schemas.Journal):
     # Créer le salon Discord si le titre est fourni
     channel_uid = None
-    category_uid = 1444691218234605700
+    category_uid = discord_category("journaux")
     if v_journal.title:
         try:
             # Utiliser asyncio pour exécuter la fonction asynchrone
