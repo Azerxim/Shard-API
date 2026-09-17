@@ -43,8 +43,9 @@ async def sitemap(request: Request):
     # Define routes with their priority and change frequency
     routes = [
         {'loc': '/', 'priority': '1.0', 'changefreq': 'weekly'},
-        {'loc': '/documentation', 'priority': '0.8', 'changefreq': 'weekly'},
-        {'loc': '/docs', 'priority': '0.6', 'changefreq': 'monthly'},
+        {'loc': '/docs', 'priority': '0.8', 'changefreq': 'weekly'},
+        {'loc': '/wrapper', 'priority': '0.6', 'changefreq': 'monthly'},
+        {'loc': '/redoc', 'priority': '0.6', 'changefreq': 'monthly'},
     ]
 
     # Build XML sitemap
@@ -70,7 +71,7 @@ async def sitemap(request: Request):
 def html_main(request: Request):
     return templates.TemplateResponse("landing.html", page_context(request))
 
-@router.get("/documentation", response_class=HTMLResponse, include_in_schema=False)
+@router.get("/docs", response_class=HTMLResponse, include_in_schema=False)
 async def documentation_html(request: Request):
     doc = documentation.get_documentation()
     if doc is None:
@@ -83,7 +84,7 @@ async def documentation_markdown():
         raise HTTPException(status_code=404, detail="DOCUMENTATION.md introuvable")
     return FileResponse(documentation.DOC_PATH, media_type="text/markdown; charset=utf-8")
 
-@router.get("/docs", response_class=HTMLResponse, include_in_schema=False)
+@router.get("/swagger", response_class=HTMLResponse, include_in_schema=False)
 async def custom_swagger_ui_html(request: Request):
     swagger_ui = get_swagger_ui_html(
         openapi_url=request.app.openapi_url,
