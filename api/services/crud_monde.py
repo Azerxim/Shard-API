@@ -15,8 +15,10 @@ import urllib.request
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from . import crud, crud_personnages, models, schemas, utils
-from .database import engine
+from ..core import utils
+from ..db import models, schemas
+from . import crud, crud_personnages
+from ..db.database import engine
 
 # Relevés conservés : un par semaine, soit deux ans d'historique
 MAX_RELEVES = 104

@@ -1,32 +1,27 @@
-from typing import Annotated
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.security import OAuth2PasswordRequestForm
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse, HTMLResponse, FileResponse, Response
-from fastapi.templating import Jinja2Templates
+import os
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.openapi.docs import get_swagger_ui_html, get_redoc_html
-from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 
-from sqlmodel import Session
-from .database import get_db, create_db_and_tables, check_database_tables, migrate_commerces_owner_to_members
+from .db.database import get_db, create_db_and_tables, check_database_tables, migrate_commerces_owner_to_members
 
-from . import utils
+from .core import utils
 from topazdevsdk import colors
-from . import schemas, crud, models, crud_nettoyage, crud_personnages
-from .routes_users import router as users_router
-from .routes_bibliotheque import router as bibliotheque_router
-from .routes_civilisations import router as civilisations_router
-from .routes_cartographie import router as cartographie_router
-from .routes_religions import router as religions_router
-from .routes_commerces import router as commerces_router
-from .routes_alliances import router as alliances_router
-from .routes_guerres import router as guerres_router
-from .routes_personnages import router as personnages_router
-from .routes_monde import router as monde_router
+from .services import crud, crud_nettoyage, crud_personnages
+from .routes.pages import router as pages_router, templates, page_context
+from .routes.users import router as users_router
+from .routes.bibliotheque import router as bibliotheque_router
+from .routes.civilisations import router as civilisations_router
+from .routes.cartographie import router as cartographie_router
+from .routes.religions import router as religions_router
+from .routes.commerces import router as commerces_router
+from .routes.alliances import router as alliances_router
+from .routes.guerres import router as guerres_router
+from .routes.personnages import router as personnages_router
+from .routes.monde import router as monde_router
 
 
 ################# App Initialization #################
@@ -69,14 +64,6 @@ async def lifespan(app_: FastAPI):
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Espèces et classes de personnages ajoutées : {seeded}")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
 
-    # Import des données historiques des dumps mbu-s1 / mbu-tetrago (tables s1/s2)
-    # from . import mbu_dump_import
-    # print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Import des données des dumps s1/s2...")
-    # dump_results = mbu_dump_import.import_all(db)
-    # for table_name, table_result in dump_results.items():
-    #     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:       {table_name}: {table_result}")
-    # print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
-
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Application démarrée avec succès.")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     API accessible via: {colors.BColors.LIGHTBLUE}http://{utils.API_IP}:{utils.API_PORT}{colors.BColors.END} (Press CTRL+C to quit)")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
@@ -106,52 +93,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-################# Templates #################
+################# Static files #################
 
-templates = Jinja2Templates(directory="templates")
-app.mount("/assets", StaticFiles(directory="assets"), name="assets")
-
-favicon_path = 'assets/images/favicon_shard.ico'
-@app.get('/favicon_shard.ico', include_in_schema=False)
-async def favicon():
-    return FileResponse(favicon_path)
-
-robots_path = 'robots.txt'
-@app.get('/robots.txt', include_in_schema=False)
-async def robots():
-    return FileResponse(robots_path, media_type='text/plain')
-
-@app.get('/sitemap.xml', include_in_schema=False)
-async def sitemap(request: Request):
-    """Generate sitemap.xml dynamically"""
-    base_url = str(request.base_url).rstrip('/')
-    
-    # Define routes with their priority and change frequency
-    routes = [
-        {'loc': '/', 'priority': '1.0', 'changefreq': 'weekly'},
-        # {'loc': '/login', 'priority': '0.8', 'changefreq': 'monthly'},
-        # {'loc': '/register', 'priority': '0.8', 'changefreq': 'monthly'},
-        # {'loc': '/profile', 'priority': '0.7', 'changefreq': 'weekly'},
-        # {'loc': '/users', 'priority': '0.7', 'changefreq': 'daily'},
-        {'loc': '/docs', 'priority': '0.6', 'changefreq': 'monthly'},
-    ]
-    
-    # Build XML sitemap
-    xml_content = '<?xml version="1.0" encoding="UTF-8"?>\n'
-    xml_content += '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-    
-    for route in routes:
-        xml_content += '  <url>\n'
-        xml_content += f'    <loc>{base_url}{route["loc"]}</loc>\n'
-        xml_content += f'    <changefreq>{route["changefreq"]}</changefreq>\n'
-        xml_content += f'    <priority>{route["priority"]}</priority>\n'
-        xml_content += '  </url>\n'
-    
-    xml_content += '</urlset>'
-    
-    return Response(content=xml_content, media_type='application/xml')
+app.mount("/assets", StaticFiles(directory=os.path.join(utils.ROOT_DIR, "assets")), name="assets")
 
 ################# Include Routers #################
+
+app.include_router(pages_router)
 
 app.include_router(users_router)
 
@@ -173,60 +121,6 @@ app.include_router(cartographie_router)
 
 app.include_router(monde_router)
 
-################# Main Routes #################
-
-# -----------------------------------------------
-@app.get("/", response_class=HTMLResponse)
-def html_main(request: Request):
-    return templates.TemplateResponse("landing.html", {
-        "request": request, 
-        "name": utils.CONFIG['api']['name'],
-        "version": utils.VERSION, 
-        "hostname": utils.HOSTNAME
-    })
-
-################# Docs Routes #################
-
-# -----------------------------------------------
-@app.get("/docs", response_class=HTMLResponse, include_in_schema=False)
-async def custom_swagger_ui_html(request: Request):
-    swagger_ui = get_swagger_ui_html(
-        openapi_url=app.openapi_url,
-        title=f"{utils.CONFIG['api']['name']} - Documentation",
-        swagger_favicon_url="/assets/images/favicon.ico"
-    )
-    return templates.TemplateResponse("docs.html", {
-        "request": request, 
-        "name": utils.CONFIG['api']['name'],
-        "version": utils.VERSION,
-        "hostname": utils.HOSTNAME,
-        "swagger_ui_html": swagger_ui.body.decode()
-    })
-
-# -----------------------------------------------
-@app.get("/redoc", response_class=HTMLResponse, include_in_schema=False)
-async def redoc_html(request: Request):
-    redoc_ui = get_redoc_html(
-        openapi_url=app.openapi_url,
-        title=f"{utils.CONFIG['api']['name']} - ReDoc Documentation",
-        redoc_favicon_url="/assets/images/favicon.ico"
-    )
-    return templates.TemplateResponse("redoc.html", {
-        "request": request, 
-        "name": utils.CONFIG['api']['name'],
-        "version": utils.VERSION,
-        "hostname": utils.HOSTNAME,
-        "redoc_ui_html": redoc_ui.body.decode()
-    })
-
-###################  API Endpoints #################
-
-# -----------------------------------------------
-@app.get("/api/version/")
-def app_version():
-    result = {'name': utils.CONFIG['api']['name'], 'version': utils.VERSION, 'version_dev': utils.VERSION_DEV, 'version_short': utils.VERSION_SHORT, 'hostname': utils.HOSTNAME}
-    return JSONResponse(content=jsonable_encoder(result))
-
 ################# 404 Handler #################
 
 # -----------------------------------------------
@@ -237,12 +131,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
     if exc.status_code == 404:
         accept_header = request.headers.get("accept", "")
         if "text/html" in accept_header or not request.url.path.startswith("/api"):
-            return templates.TemplateResponse("404.html", {
-                "request": request,
-                "name": utils.CONFIG['api']['name'],
-                "version": utils.VERSION_SHORT,
-                "hostname": utils.HOSTNAME
-            }, status_code=404)
+            return templates.TemplateResponse("404.html", page_context(request, version=utils.VERSION_SHORT), status_code=404)
     
     # For API requests or non-404 errors, return JSON
     return JSONResponse(

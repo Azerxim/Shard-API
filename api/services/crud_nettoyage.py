@@ -18,7 +18,7 @@ import datetime as dt
 
 from sqlmodel import Session, select
 
-from . import models
+from ..db import models
 
 
 def _all(db: Session, model, *conditions):

@@ -1,0 +1,269 @@
+/*=================================
+===== Documentation (Markdown) =====
+===================================*/
+:root {
+  --doc-text: #1e293b;
+  --doc-muted: #64748b;
+  --doc-border: #e2e8f0;
+  --doc-surface: #f8fafc;
+  --doc-code-bg: #f1f5f9;
+  --doc-accent: #7c3aed;
+  --doc-accent-soft: #ede9fe;
+  --doc-navbar-offset: 96px;
+}
+
+html {
+  scroll-padding-top: var(--doc-navbar-offset);
+}
+
+.doc-layout {
+  display: flex;
+  gap: 2.5rem;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: calc(var(--doc-navbar-offset) + 1rem) 16px 3rem;
+  color: var(--doc-text);
+}
+
+/*----- Sommaire -----*/
+.doc-sidebar {
+  display: none;
+  flex: 0 0 270px;
+}
+
+.doc-sidebar-inner {
+  position: sticky;
+  top: var(--doc-navbar-offset);
+  max-height: calc(100vh - var(--doc-navbar-offset) - 1rem);
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.doc-sidebar-title {
+  margin-bottom: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--doc-muted);
+}
+
+.doc-sidebar ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.doc-sidebar a {
+  display: block;
+  padding: 0.25rem 0.625rem;
+  border-left: 2px solid var(--doc-border);
+  color: var(--doc-muted);
+  text-decoration: none;
+  line-height: 1.35;
+}
+
+.doc-sidebar a:hover {
+  color: var(--doc-text);
+}
+
+.doc-sidebar a.active {
+  border-left-color: var(--doc-accent);
+  color: var(--doc-accent);
+  font-weight: 600;
+}
+
+.doc-toc-level-2 a {
+  margin-top: 0.25rem;
+  font-weight: 600;
+  color: var(--doc-text);
+}
+
+.doc-toc-level-3 a {
+  padding-left: 1.375rem;
+}
+
+.doc-sidebar-links {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--doc-border);
+}
+
+.doc-sidebar-links a {
+  border-left: none;
+  padding: 0.125rem 0;
+}
+
+@media (min-width: 1024px) {
+  .doc-sidebar {
+    display: block;
+  }
+}
+
+/*----- Contenu -----*/
+.doc-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 960px;
+}
+
+.doc-version {
+  margin-bottom: 1rem;
+  font-size: 0.875rem;
+  color: var(--doc-muted);
+}
+
+.doc-content {
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.doc-content h1,
+.doc-content h2,
+.doc-content h3,
+.doc-content h4 {
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--doc-text);
+}
+
+.doc-content h1 {
+  margin: 0 0 1rem;
+  font-size: 2.25rem;
+}
+
+.doc-content h2 {
+  margin: 3rem 0 1rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid var(--doc-border);
+  font-size: 1.625rem;
+}
+
+.doc-content h3 {
+  margin: 2rem 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.doc-content h4 {
+  margin: 1.5rem 0 0.5rem;
+  font-size: 1.05rem;
+}
+
+.doc-content p,
+.doc-content ul,
+.doc-content ol,
+.doc-content blockquote,
+.doc-content pre,
+.doc-content .doc-table {
+  margin: 0 0 1rem;
+}
+
+.doc-content ul {
+  padding-left: 1.5rem;
+  list-style: disc;
+}
+
+.doc-content ol {
+  padding-left: 1.5rem;
+  list-style: decimal;
+}
+
+.doc-content li + li {
+  margin-top: 0.25rem;
+}
+
+.doc-content li > ul,
+.doc-content li > ol,
+.doc-content li > pre {
+  margin: 0.5rem 0;
+}
+
+.doc-content a {
+  color: var(--doc-accent);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.doc-content .doc-ref {
+  font-weight: 600;
+}
+
+.doc-content blockquote {
+  padding: 0.75rem 1rem;
+  border-left: 4px solid var(--doc-accent);
+  border-radius: 0 0.5rem 0.5rem 0;
+  background: var(--doc-accent-soft);
+}
+
+.doc-content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.doc-content code {
+  padding: 0.1em 0.35em;
+  border-radius: 0.3rem;
+  background: var(--doc-code-bg);
+  font-size: 0.875em;
+  overflow-wrap: anywhere;
+}
+
+.doc-content pre {
+  padding: 1rem;
+  overflow-x: auto;
+  border: 1px solid var(--doc-border);
+  border-radius: 0.5rem;
+  background: var(--doc-surface);
+  line-height: 1.45;
+}
+
+.doc-content pre code {
+  padding: 0;
+  background: none;
+  font-size: 0.85rem;
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.doc-content .doc-table {
+  overflow-x: auto;
+  border: 1px solid var(--doc-border);
+  border-radius: 0.5rem;
+}
+
+.doc-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.doc-content th,
+.doc-content td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--doc-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.doc-content th {
+  background: var(--doc-surface);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.doc-content tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.doc-content tbody tr:hover {
+  background: var(--doc-surface);
+}
+
+.doc-content hr {
+  margin: 2rem 0;
+  border: none;
+  border-top: 1px solid var(--doc-border);
+}

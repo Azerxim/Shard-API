@@ -4,8 +4,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
-from . import crud, crud_conflits, schemas
-from .database import get_db
+from ..db import schemas
+from ..services import crud, crud_conflits
+from ..db.database import get_db
 
 # Alliances militaires ou diplomatiques entre civilisations (voir crud_conflits)
 router = APIRouter(prefix="/api/alliances", tags=["Alliances"])

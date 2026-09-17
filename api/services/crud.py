@@ -11,10 +11,12 @@ import asyncio
 import threading
 import datetime as dt
 import secrets
-from . import discord_handler
+from ..integrations import discord_handler
 
-from . import models, schemas, crud_nettoyage, utils
-from .database import get_db
+from ..core import utils
+from ..db import models, schemas
+from . import crud_nettoyage
+from ..db.database import get_db
 from topazdevsdk import colors
 
 #region Security

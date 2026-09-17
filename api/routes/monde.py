@@ -4,8 +4,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
-from . import crud, crud_monde, schemas
-from .database import get_db
+from ..db import schemas
+from ..services import crud, crud_monde
+from ..db.database import get_db
 
 # Statistiques du monde : relevés du générateur de cartes, réservés aux administrateurs (voir crud_monde)
 router = APIRouter(prefix="/api/monde", tags=["Monde"])

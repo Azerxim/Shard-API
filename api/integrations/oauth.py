@@ -22,7 +22,9 @@ import httpx
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from . import crud, models, schemas, utils
+from ..core import utils
+from ..db import models, schemas
+from ..services import crud
 
 STATE_LIFETIME = dt.timedelta(minutes=10)
 MODES = ("login", "link")

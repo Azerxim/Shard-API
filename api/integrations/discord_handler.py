@@ -6,7 +6,7 @@ Gère la création de salons et récupération des IDs.
 import discord
 from discord.ext import commands
 import asyncio
-from . import utils
+from ..core import utils
 
 
 class DiscordHandler:

@@ -3,10 +3,12 @@ from topazdevsdk import file
 from .version import __version__, __version_dev__, __version_short__
 
 # CONFIGURATION
-path = f"{os.path.realpath(os.path.dirname(__file__))}/../config.json"
-path_template = f"{os.path.realpath(os.path.dirname(__file__))}/../config.json.template"
+# Racine du projet Shard-API (api/core/utils.py -> ../..)
+ROOT_DIR = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", ".."))
+path = f"{ROOT_DIR}/config.json"
+path_template = f"{ROOT_DIR}/config.json.template"
 # Surcharge chargée par-dessus config.json quand API_ENV=development (npm run dev / verbose)
-path_development = f"{os.path.realpath(os.path.dirname(__file__))}/../config.development.json"
+path_development = f"{ROOT_DIR}/config.development.json"
 
 HOSTNAME = socket.gethostname()
 VERSION = __version__

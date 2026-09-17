@@ -13,7 +13,7 @@ import datetime as dt
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from . import models, schemas
+from ..db import models, schemas
 from .crud import (
     get_channel_message,
     get_civilisation_by_id,

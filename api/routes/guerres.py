@@ -4,8 +4,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
-from . import crud, crud_conflits, schemas
-from .database import get_db
+from ..db import schemas
+from ..services import crud, crud_conflits
+from ..db.database import get_db
 
 # Guerres militaires (civilisations) et de religion (religions), validées par un modérateur RP (voir crud_conflits)
 router = APIRouter(prefix="/api/guerres", tags=["Guerres"])

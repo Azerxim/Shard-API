@@ -6,8 +6,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.encoders import jsonable_encoder
 from sqlmodel import Session
 
-from . import crud, schemas, models, oauth
-from .database import get_db
+from ..db import schemas, models
+from ..integrations import oauth
+from ..services import crud
+from ..db.database import get_db
 
 # Créer un routeur pour les routes utilisateur
 router = APIRouter(prefix="/api/users", tags=["Users"])

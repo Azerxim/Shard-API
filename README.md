@@ -1,5 +1,7 @@
 # API Template
 
+> Documentation complète et à jour de Shard-API : [DOCUMENTATION.md](DOCUMENTATION.md).
+
 Un template d'API moderne construit avec **FastAPI** et **SQLModel**.
 
 ## 📋 Table des matières
@@ -176,16 +178,16 @@ L'API sera accessible à : `http://localhost:8000`
 .
 ├── api/                    # Code principal de l'API
 │   ├── main.py            # Point d'entrée FastAPI
-│   ├── models.py          # Modèles SQLModel
-│   ├── schemas.py         # Schémas Pydantic (validation)
-│   ├── crud.py            # Opérations base de données + vérification BD
-│   ├── database.py        # Configuration base de données
-│   ├── utils.py           # Utilitaires et configuration
-│   └── routes_users.py    # Routes utilisateur (séparées)
-├── html/                   # Pages HTML statiques
-│   ├── index.html         # Page d'accueil
-│   ├── docs.html          # Documentation personnalisée
-│   ├── redoc.html         # Documentation ReDoc
+│   ├── core/              # Configuration, version, rendu de la documentation
+│   ├── db/                # Base de données, modèles SQLModel, schémas Pydantic
+│   ├── services/          # Logique métier (crud_*.py)
+│   ├── integrations/      # Discord et OAuth
+│   └── routes/            # Routeurs FastAPI (un fichier par domaine + pages HTML)
+├── templates/              # Pages Jinja2
+│   ├── landing.html       # Page d'accueil
+│   ├── documentation.html # DOCUMENTATION.md rendu en HTML
+│   ├── docs.html          # Swagger UI
+│   ├── redoc.html         # ReDoc
 │   └── components/        # Composants réutilisables
 ├── assets/                # Ressources statiques
 │   ├── css/               # Feuilles de style CSS
@@ -195,6 +197,7 @@ L'API sera accessible à : `http://localhost:8000`
 ├── config.json            # Configuration (à créer)
 ├── requirements.txt       # Dépendances Python
 ├── README.md              # Ce fichier
+├── DOCUMENTATION.md       # Documentation complète (servie sur /documentation)
 ├── start.sh              # Script de démarrage Linux/macOS
 └── start.ps1             # Script de démarrage Windows
 ```
@@ -212,6 +215,7 @@ Au démarrage, l'API :
 
 Une fois l'API démarrée, accédez à :
 
+- **Documentation** : http://localhost:8000/documentation (version HTML de [DOCUMENTATION.md](DOCUMENTATION.md))
 - **Swagger UI** : http://localhost:8000/docs
 - **ReDoc** : http://localhost:8000/redoc
 - **Page d'accueil** : http://localhost:8000
@@ -241,15 +245,14 @@ Une fois l'API démarrée, accédez à :
 
 L'API suit une architecture modulaire :
 
-- **main.py** : Point d'entrée et configuration FastAPI
-- **routes_users.py** : Routes utilisateur (séparées pour meilleure organisation)
-- **crud.py** : Opérations base de données et vérification des schémas
-- **models.py** : Définition des modèles SQLModel
-- **schemas.py** : Schémas Pydantic pour validation
-- **database.py** : Configuration et gestion de la base de données
-- **utils.py** : Utilitaires et lecture de la configuration
+- **main.py** : Point d'entrée, démarrage et inclusion des routeurs
+- **core/** : Lecture de la configuration (`utils.py`), version, rendu HTML de la documentation
+- **db/** : Moteur et vérification de la base (`database.py`), tables (`models.py`), schémas (`schemas.py`)
+- **services/** : Logique métier, une famille de `crud_*.py` par domaine
+- **integrations/** : Bot Discord et comptes externes (OAuth)
+- **routes/** : Un routeur par domaine (`users.py`, `guerres.py`, …) et les pages HTML (`pages.py`)
 
-Facile d'ajouter d'autres routes : créez `routes_produits.py`, `routes_commandes.py`, etc.
+Pour ajouter un domaine : partir de `routes/_template.py` (voir « Ajouter un domaine » dans [DOCUMENTATION.md](DOCUMENTATION.md)).
 
 ## 📝 Licence
 

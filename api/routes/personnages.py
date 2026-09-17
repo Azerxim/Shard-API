@@ -4,8 +4,9 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
-from . import crud, crud_personnages, schemas
-from .database import get_db
+from ..db import schemas
+from ..services import crud, crud_personnages
+from ..db.database import get_db
 
 # Personnages des joueurs, référentiels (espèces, classes) et messages de journaux attribués (voir crud_personnages)
 router = APIRouter(prefix="/api/personnages", tags=["Personnages"])

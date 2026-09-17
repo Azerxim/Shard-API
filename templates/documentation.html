@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="fr">
+  <!--=======================-->
+  <!--====== HTML HEAD ======-->
+  <!--=======================-->
+  <head>
+    <meta name="author" content="Azerxim" />
+    <meta http-equiv="Content-type" content="text/html;charset=UTF-8" />
+    <meta name="description" content="{{ name }} - Documentation technique" />
+    <meta name="keywords" content="API, FastAPI, Tetrago, Shard, documentation" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="French" />
+    <link rel="shortcut icon" href="/assets/images/favicon_shard.ico" />
+
+    <title>{{ doc.title }}</title>
+
+    {% include 'components/css.html' %} {% include 'components/scripts.html' %}
+    <link rel="stylesheet" href="/assets/css/documentation.css" />
+  </head>
+  <body class="bg-white">
+    {% include 'components/navigation/navbar.html' %}
+
+    <div class="doc-layout">
+      <aside class="doc-sidebar" aria-label="Sommaire">
+        <div class="doc-sidebar-inner">
+          <p class="doc-sidebar-title">Sommaire</p>
+          <nav>
+            <ul>
+              {% for entry in doc.toc %}
+              <li class="doc-toc-level-{{ entry.level }}">
+                <a href="#{{ entry.slug }}">{{ entry.text }}</a>
+              </li>
+              {% endfor %}
+            </ul>
+          </nav>
+          <div class="doc-sidebar-links">
+            <a href="/docs"><i class="fas fa-book"></i> Swagger UI</a>
+            <a href="/redoc"><i class="fas fa-file-lines"></i> ReDoc</a>
+            <a href="/documentation.md"><i class="fab fa-markdown"></i> Source Markdown</a>
+          </div>
+        </div>
+      </aside>
+
+      <main class="doc-main">
+        <p class="doc-version">Version de l'API en cours d'exécution : <code>{{ version }}</code></p>
+
+        <article class="doc-content">
+          {{ doc.html | safe }}
+        </article>
+      </main>
+    </div>
+
+    {% include 'components/layouts/footer.html' %}
+
+    <script>
+      // Surligne dans le sommaire la section en cours de lecture
+      (function () {
+        const links = new Map();
+        document.querySelectorAll(".doc-sidebar a[href^='#']").forEach((link) => {
+          links.set(decodeURIComponent(link.getAttribute("href").slice(1)), link);
+        });
+        const headings = [...document.querySelectorAll(".doc-content h2[id], .doc-content h3[id]")];
+        if (!headings.length || !("IntersectionObserver" in window)) return;
+
+        const visible = new Set();
+        const observer = new IntersectionObserver((entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) visible.add(entry.target);
+            else visible.delete(entry.target);
+          });
+          const current = headings.find((heading) => visible.has(heading));
+          if (!current) return;
+          links.forEach((link) => link.classList.remove("active"));
+          const link = links.get(current.id);
+          if (link) {
+            link.classList.add("active");
+            link.scrollIntoView({ block: "nearest" });
+          }
+        }, { rootMargin: "-90px 0px -60% 0px" });
+        headings.forEach((heading) => observer.observe(heading));
+      })();
+    </script>
+  </body>
+</html>
