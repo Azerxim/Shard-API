@@ -1267,6 +1267,7 @@ def _delete_ville_tree(db: Session, db_ville: models.Villes):
         _delete_quartier_dependencies(db, quartier.id)
         db.delete(quartier)
     delete_cartographies_by_types(db, "ville", db_ville.id)
+    delete_cartographies_by_types(db, "destructible", db_ville.id)
     crud_nettoyage.detacher_ville(db, db_ville.id)
     db.delete(db_ville)
 
@@ -2316,7 +2317,8 @@ def get_cartographies_by_type_and_dimension(db: Session, type: str, dimensionID:
     return results.all()
 
 def get_cartographies_type(db: Session):
-    types = ["civilisation", "ville", "quartier", "guerre"]
+    # destructible : bâtiments et zones d'une ville qu'une guerre RP autorise à détruire (type_id = ville)
+    types = ["civilisation", "ville", "quartier", "guerre", "destructible"]
     return types
 
 def get_cartographies_by_types(db: Session, type: str, id: int, skip: int = 0, limit: int = 100):
@@ -2329,7 +2331,7 @@ def get_cartographie_civilisation_id(db: Session, type: str, type_id: int):
     if type == "civilisation":
         db_civilisation = get_civilisation_by_id(db, type_id)
         return db_civilisation.id if db_civilisation else None
-    if type == "ville":
+    if type in ("ville", "destructible"):
         db_ville = get_ville_by_id(db, type_id)
         return db_ville.civilisation_id if db_ville else None
     if type == "quartier":
@@ -2355,6 +2357,11 @@ def check_cartographie_authorisation(db: Session, user: schemas.Users, type: str
         raise HTTPException(status_code=404, detail=f"L'entité {type} {type_id} n'existe pas")
     if user.is_admin:
         return
+    if type == "destructible":
+        # Les modérateurs RP arbitrent les guerres : ils peuvent aussi désigner ce qui est destructible
+        from . import crud_conflits
+        if crud_conflits.is_moderateur(user):
+            return
     # Mêmes règles que checkMemberAuth côté ShardUI-2 : Fondateur ou Admin de la civilisation
     db_members = get_members_of_civilisation(db, civilisationID)
     if not any(member.user_id == user.id and member.role in ("Fondateur", "Admin") for member in db_members):
