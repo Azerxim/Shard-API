@@ -102,6 +102,7 @@ Aucun de ces deux fichiers n'est versionné : ils contiennent des secrets.
 | `platforms.discord.guild_id` | Serveur Discord |
 | `platforms.discord.site_url` | URL du site, pour les liens des annonces |
 | `platforms.discord.channels.guerres` | Salon des annonces de guerre |
+| `platforms.discord.channels.actions` | Salon des révélations d'actions secrètes (facultatif) |
 | `platforms.discord.categories.journaux` | Catégorie où `crud.create_journal` crée les salons de journaux (hors catégorie si absente) |
 | `platforms.monde.key` | Clé partagée avec le générateur de cartes (`MAP_STATS_API_KEY` côté Maps) |
 
@@ -586,6 +587,18 @@ ou administrateur ; pour `guerre`, chefs de camp et modérateurs RP d'une guerre
 (bâtiments en `Marker`, zones en `Polygon`, qu'une guerre RP autorise à détruire ; `type_id` = ville), les modérateurs
 RP en plus des dirigeants de la civilisation. Ces formes sont supprimées avec la ville.
 
+### Actions secrètes — `/api/actions`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/list` | — | Registre : `{ id, code, created_at, empreinte, revealed }` pour une action scellée, tout pour une révélée |
+| GET | `/read/{ActionID}` | — | Une action, sous la même forme |
+| GET | `/guerre/{GuerreID}` | — | Actions révélées rattachées à la guerre |
+| GET | `/mine` | Connecté | Actions dont on est l'auteur, en entier, avec les lectures tracées |
+| POST | `/lire/{ActionID}` | Auteur, ou A / modérateur RP (lecture enregistrée) | Contenu d'une action scellée |
+| POST | `/create` | Joueur du personnage, F/A de la civilisation ou religion | Scelle `{ title, content, entity_type, entity_id, guerre_id?, reveal_at? }` |
+| POST | `/{ActionID}/reveler` | Auteur, ou modérateur RP avec `motif` | Révèle l'action |
+
 ### Monde — `/api/monde`
 
 | Méthode | Chemin | Droits | Description |
@@ -635,6 +648,19 @@ RP en plus des dirigeants de la civilisation. Ces formes sont supprimées avec l
   camp (guerre en cours) et les modérateurs RP y ajoutent batailles, sièges, traités et autres faits ; les étapes
   automatiques ne peuvent pas être retirées.
 - Annonces Discord (salon `platforms.discord.channels.guerres`) : début, batailles, sièges, traités et fin.
+
+### Actions secrètes
+
+- Déposée au nom d'un personnage (son joueur), d'une civilisation ou d'une religion (Fondateur ou Admin), avec une
+  guerre **en cours** facultative. Scellée à l'heure du serveur ; aucune modification ni suppression.
+- Empreinte SHA-256 de « sel\ntitre\ncontenu », publiée au dépôt ; le sel n'est publié qu'à la révélation, ce qui
+  permet à chacun de recalculer l'empreinte (le site le fait et affiche « Intacte »).
+- Avant révélation, le public ne voit que le code (`AS-0001`), la date de dépôt et l'empreinte.
+- **Lecture tracée** (conflit d'intérêts de l'équipe, qui joue aussi) : un administrateur ou modérateur RP qui n'est
+  pas l'auteur peut lire une action scellée, mais chaque lecture est enregistrée (table `actionsecretelectures`),
+  visible de l'auteur aussitôt et de tous à la révélation. Être administrateur du site ne fait pas de vous l'auteur.
+- Révélation par l'auteur, par un modérateur RP (motif obligatoire, publié) ou à la date `reveal_at` fixée au dépôt
+  (appliquée à la première lecture qui suit, sans tâche planifiée). Annonce Discord dans `platforms.discord.channels.actions`.
 
 ### Personnages
 

@@ -22,6 +22,7 @@ from .routes.alliances import router as alliances_router
 from .routes.guerres import router as guerres_router
 from .routes.personnages import router as personnages_router
 from .routes.monde import router as monde_router
+from .routes.actions import router as actions_router
 
 
 ################# App Initialization #################
@@ -120,6 +121,8 @@ app.include_router(personnages_router)
 app.include_router(cartographie_router)
 
 app.include_router(monde_router)
+
+app.include_router(actions_router)
 
 ################# 404 Handler #################
 

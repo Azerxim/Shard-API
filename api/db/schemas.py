@@ -498,6 +498,19 @@ class PersonnageMessageLink(BaseModel):
     message_id: str
     personnage_id: int
 
+############### Actions secrètes ####################
+
+class ActionSecreteCreate(EmptyStringAsNone):
+    title: str
+    content: str
+    entity_type: str                      # personnage, civilisation ou religion
+    entity_id: int
+    guerre_id: int | None = None          # guerre en cours, facultatif
+    reveal_at: datetime.datetime | None = None  # révélation automatique, dans le futur
+
+class ActionSecreteRevelation(EmptyStringAsNone):
+    motif: str | None = None              # obligatoire pour un modérateur qui révèle l'action d'un autre
+
 ############### Guerres ####################
 
 class GuerreDeclaration(EmptyStringAsNone):
