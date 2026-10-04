@@ -46,7 +46,10 @@
 			"guild_id": 1234567890987654321,
 			"site_url": "https://tetrago.fr",
 			"channels": {
-				"guerres": 1234567890987654321
+				"guerres": 1234567890987654321,
+				"actions": 1234567890987654321,
+				"marches": 1234567890987654321,
+				"fermes": 1234567890987654321
 			},
 			"categories": {
 				"journaux": 1234567890987654321

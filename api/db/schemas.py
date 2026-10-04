@@ -100,6 +100,7 @@ class Livre(EmptyDatesAsNone):
     pages: int | None = None
     language: str | None = "Français"
     link: str | None = None
+    # Création seulement : crée aussitôt le lien vers cette civilisation (bouton « Nouveau » de sa fiche) ; ignoré ensuite
     civilisation_id: int | None = None
     published_date: datetime.datetime | None = None
     created_at: datetime.datetime | None = None
@@ -115,6 +116,11 @@ class LivreContenu(BaseModel):
     content: str | None = None
     page_number: int | None = None
     
+class LivreLienCreate(BaseModel):
+    livre_id: int
+    entity_type: str                      # civilisation, religion, commerce, alliance ou personnage
+    entity_id: int
+
 ############### Civilisations ####################
 
 class CivilisationMember(BaseModel):
@@ -508,6 +514,78 @@ class PopulationAjustementCreate(EmptyStringAsNone):
 class PopulationAjustementDecision(EmptyStringAsNone):
     accepte: bool
     note: str | None = None
+
+############### Catalogue des boutiques ####################
+
+class ArticleCreate(EmptyStringAsNone):
+    magasin_id: int
+    title: str
+    categorie: str | None = None          # clé de crud_catalogue.CATEGORIES ; « divers » par défaut
+    description: str | None = None
+    prix: int                             # en tetras, pour le lot entier
+    quantite: int | None = 1
+    en_stock: bool | None = True
+
+class ArticleUpdate(EmptyStringAsNone):
+    title: str | None = None
+    categorie: str | None = None
+    description: str | None = None
+    prix: int | None = None
+    quantite: int | None = None
+    en_stock: bool | None = None
+
+############### Marchés et foires ####################
+
+class MarcheJoursUpdate(EmptyStringAsNone):
+    jours: list[int] = []                 # 0 = lundi … 6 = dimanche ; vide : pas de jour fixe
+    horaires: str | None = None
+
+class FoireCreate(EmptyStringAsNone):
+    ville_id: int
+    title: str
+    description: str | None = None
+    date_debut: datetime.date
+    date_fin: datetime.date | None = None # un seul jour si absente
+    horaires: str | None = None
+    zone_id: int | None = None            # zone commerciale de la ville ; sinon au centre de la ville
+
+class FoireUpdate(EmptyStringAsNone):
+    title: str | None = None
+    description: str | None = None
+    date_debut: datetime.date | None = None
+    date_fin: datetime.date | None = None
+    horaires: str | None = None
+    zone_id: int | None = None
+
+############### Fermes ####################
+
+class FermeCreate(EmptyStringAsNone):
+    title: str
+    type: str | None = None
+    production: str | None = None
+    justification: str
+    habillage: str | None = None
+    dimension_id: int | None = None
+    x: int
+    y: int | None = None
+    z: int
+    ville_id: int | None = None
+
+class FermeUpdate(EmptyStringAsNone):
+    title: str | None = None
+    type: str | None = None
+    production: str | None = None
+    justification: str | None = None
+    habillage: str | None = None
+    dimension_id: int | None = None
+    x: int | None = None
+    y: int | None = None
+    z: int | None = None
+    ville_id: int | None = None
+
+class FermeDecision(EmptyStringAsNone):
+    status: str                           # validee ou a_corriger
+    note: str | None = None               # obligatoire pour a_corriger
 
 ############### Actions secrètes ####################
 

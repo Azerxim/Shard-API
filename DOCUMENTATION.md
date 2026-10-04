@@ -246,6 +246,10 @@ Shard-API/
 │   │   ├── crud_conflits.py     # Alliances et guerres
 │   │   ├── crud_personnages.py  # Personnages, espèces, classes, messages attribués
 │   │   ├── crud_monde.py        # Statistiques du monde
+│   │   ├── crud_catalogue.py    # Catalogue des boutiques (articles, recherche « où acheter »)
+│   │   ├── crud_marches.py      # Jours de marché des zones commerciales, foires des villes
+│   │   ├── crud_fermes.py       # Déclaration des fermes, photo, validation
+│   │   ├── crud_livres.py       # Liens des livres (religion, commerce, alliance, personnage)
 │   │   └── crud_nettoyage.py    # Cohérence des suppressions et références orphelines
 │   ├── integrations/            # Services externes
 │   │   ├── oauth.py             # Discord et Microsoft (liaison et connexion)
@@ -257,6 +261,9 @@ Shard-API/
 │       ├── civilisations.py     # /api/civilisations (+ gouvernements, villes, quartiers)
 │       ├── religions.py         # /api/religions
 │       ├── commerces.py         # /api/commerces (+ magasins)
+│       ├── catalogue.py         # /api/catalogue
+│       ├── marches.py           # /api/marches
+│       ├── fermes.py            # /api/fermes
 │       ├── alliances.py         # /api/alliances
 │       ├── guerres.py           # /api/guerres
 │       ├── personnages.py       # /api/personnages
@@ -303,7 +310,8 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 | Table | Contenu |
 | --- | --- |
 | `journaux` | Journal RP adossé à un salon Discord (`uid` = identifiant du salon), couverture (`cover_url`, `cover_icon`, `cover_color`), `link` (`/bibliotheque/journal/<id>`), `is_public` |
-| `livres` | Livre : auteur, couverture, `pages`, `language`, `civilisation_id` facultatif, `is_public` |
+| `livres` | Livre : auteur, couverture, `pages`, `language`, `is_public` (ses civilisations et autres liens : `livresliens`) |
+| `livresliens` | Lien d'un livre avec une civilisation, une religion, un commerce, une alliance ou un personnage : `livre_id`, `entity_type`, `entity_id` (plusieurs par livre). Remplace l'ancienne colonne `livres.civilisation_id`, reprise au démarrage par `migrate_livres_civilisation_to_liens` |
 | `livrescontenus` | Contenu d'un livre : `chapitre`, `sous_chapitre`, `ordre`, `indent`, `content`, `page_number` |
 
 ### Géopolitique
@@ -321,6 +329,10 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 | `commerces` | `title`, `is_public`, filiale (`is_commerce_dirigeant`, `dirigeant_commerce_id`) |
 | `commercemembers` | Membres d'un commerce (mêmes rôles) |
 | `commercemagasins` | Magasin : `dimension_id`, `x`, `z`, `ville_id`, `is_siege`, `is_public` |
+| `magasinarticles` | Article du catalogue d'un magasin : `title`, `categorie`, `description`, `prix` (tetras, pour le lot), `quantite` (taille du lot), `en_stock` |
+| `marchejours` | Jours d'ouverture d'une zone commerciale : `cartographie_id` (unique), `jours` (« 2,5 », 0 = lundi), `horaires` |
+| `foires` | Foire d'une ville : `ville_id`, `title`, `date_debut`, `date_fin` (dates réelles), `horaires`, `zone_id`, position (`dimension_id`, `x`, `z`) |
+| `fermes` | Ferme déclarée : `user_id`, `title`, `type`, `production`, `justification`, `habillage`, position, `ville_id`, `photo`, `status` (`en_attente`, `validee`, `a_corriger`), décision du modérateur |
 
 ### Alliances et guerres
 
@@ -402,18 +414,23 @@ Les réponses n'ont pas toutes le même format : selon les routes, le statut est
 | GET | `/journaux/read/{JournalID}` | — | Détail |
 | GET | `/journaux/user/{UserID}/list` | — | Journaux d'un utilisateur |
 | GET | `/journaux/contents/{JournalID}` | — | Messages du salon Discord |
-| POST | `/livres/create` | U | Crée un livre |
+| POST | `/livres/create` | U (F/A de la civilisation si `civilisation_id`) | Crée un livre ; `civilisation_id` crée aussitôt le lien (ignoré à la mise à jour) |
 | PUT | `/livres/update/{livreID}` | règle livre | Met à jour |
-| DELETE | `/livres/delete/{livreID}` | règle livre | Supprime |
+| DELETE | `/livres/delete/{livreID}` | règle livre | Supprime, avec ses chapitres et ses liens |
 | GET | `/livres/list` | — | Liste |
 | GET | `/livres/read/{livreID}` | — | Détail |
 | GET | `/livres/user/{userID}/list` | — | Livres d'un utilisateur |
-| GET | `/livres/civilisation/{civilisationID}/list` | — | Livres d'une civilisation |
+| GET | `/livres/civilisation/{civilisationID}/list` | — | Livres liés à une civilisation |
+| GET | `/livres/liens/{livreID}` | — | Religions, commerces, alliances et personnages liés : `[{ id, livre_id, entite }]` |
+| GET | `/livres/entite/{EntityType}/{EntityID}/list` | — | Livres liés à une entité : `[{ lien_id, livre }]` |
+| POST | `/livres/liens` | règle livre + droits sur l'entité | `{ livre_id, entity_type, entity_id }` (civilisation, religion, commerce, alliance, personnage) |
+| DELETE | `/livres/liens/{lienID}` | règle livre ou droits sur l'entité | Retire le lien |
 | POST | `/livres/content/create` | règle livre | Ajoute un contenu |
 | PUT | `/livres/content/update/{contenuID}` | règle livre | Modifie un contenu |
 | DELETE | `/livres/content/delete/{contenuID}` | règle livre | Supprime un contenu |
 
-Règle livre : pour un livre rattaché à une civilisation, Fondateur/Admin de cette civilisation ; sinon son auteur.
+Règle livre : son auteur, le Fondateur ou un Admin de l'une des civilisations liées, ou un administrateur. Les autres
+liens (religion, commerce, alliance, personnage) ne donnent aucun droit sur le livre.
 L'administrateur du site a toujours accès.
 
 | GET | `/livres/contents/read/{livreID}` | — | `{ livre, contents }` |
@@ -502,7 +519,23 @@ ou administrateur du site. La religion elle-même n'a pas à donner son accord.
 | GET | `/magasins/ville/{VilleID}` | — | Magasins d'une ville |
 | POST | `/magasins/create` | Fondateur/Admin | Crée |
 | PUT | `/magasins/update/{MagasinID}` | Fondateur/Admin | Met à jour |
-| DELETE | `/magasins/delete/{MagasinID}` | Fondateur/Admin | Supprime |
+| DELETE | `/magasins/delete/{MagasinID}` | Fondateur/Admin | Supprime, avec son catalogue |
+
+### Catalogue — `/api/catalogue`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/magasin/{MagasinID}` | — | Articles du magasin : `{ id, title, categorie, description, prix, quantite, prix_unitaire, en_stock, updated_at }` |
+| GET | `/recherche?q=&categorie=&ville_id=&en_stock=` | — | Où acheter : `{ total, resultats }` (200 au plus), chaque article avec `magasin`, `commerce`, `ville`, `dimension` |
+| POST | `/articles` | Fondateur/Admin du commerce | Ajoute `{ magasin_id, title, categorie?, description?, prix, quantite?, en_stock? }` |
+| PUT | `/articles/{ArticleID}` | Fondateur/Admin du commerce | Met à jour (champs envoyés seulement) |
+| DELETE | `/articles/{ArticleID}` | Fondateur/Admin du commerce | Retire l'article |
+
+Un article est vendu par lot (« 16 flèches pour 1 tetra ») : `prix` entier ≥ 0 (0 : offert), `quantite` ≥ 1. Catégories :
+`construction`, `ressources`, `outils`, `armes`, `nourriture`, `alchimie`, `services`, `divers` (défaut), reprises par
+le site dans `src/config/catalogue.js`. La recherche exige un texte ou une catégorie ; elle ne parcourt que les
+magasins publics des commerces publics, ignore la casse et les accents (filtre en Python, `LIKE` de SQLite ne le fait
+pas), et classe les articles en stock d'abord, puis du moins cher au plus cher à l'unité (`prix / quantite`).
 
 ### Alliances — `/api/alliances`
 
@@ -531,6 +564,7 @@ ou administrateur du site. La religion elle-même n'a pas à donner son accord.
 | GET | `/read/{GuerreID}` | — | Guerre publique ; 404 pour une déclaration non validée |
 | GET | `/prive/{GuerreID}` | U concerné ou modérateur | Même réponse, y compris non validée |
 | GET | `/entite/{EntityType}/{EntityID}` | — | Guerres d'une civilisation ou religion |
+| GET | `/cibles/{GuerreID}` | — | Guerre publique : destructibles des villes publiques des belligérants engagés, `{ attaquant, defenseur }` → `[{ entite, villes: [{ …, destructibles }] }]` (religion : villes où elle est implantée) |
 | GET | `/mine` | U | `{ a_valider, mes_guerres, appels }` |
 | POST | `/declarer` | Fondateur/Admin de l'attaquant | Déclaration (`title`, `type`, `attaquant_id`, `defenseur_id`, `casus_belli`, `description`) |
 | PUT | `/update/{GuerreID}` | Attaquant avant validation, ou modérateur | Modifie |
@@ -589,6 +623,41 @@ RP en plus des dirigeants de la civilisation. Ces formes sont supprimées avec l
 quartiers marchands d'une ville (`type_id` = ville, polygones nommés), mêmes droits que les frontières de la ville,
 supprimés avec elle ; leurs boutiques sont les magasins situés à l'intérieur (calculées par le site et la carte).
 
+### Marchés et foires — `/api/marches`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/list` | — | Villes publiques : `{ jours, foires }` (foires à venir ou en cours) |
+| GET | `/ville/{VilleID}` | — | `{ jours, a_venir, passees }` (les 5 dernières passées) |
+| PUT | `/zones/{CartographieID}/jours` | F/A de la civilisation de la ville | `{ jours: [0…6], horaires? }` |
+| POST | `/foires` | F/A de la civilisation de la ville | `{ ville_id, title, date_debut, date_fin?, horaires?, zone_id?, description? }` |
+| PUT | `/foires/{FoireID}` | Idem | Met à jour (un changement de dates est annoncé) |
+| DELETE | `/foires/{FoireID}` | Idem | Annule (annoncé si la foire n'est pas passée) |
+
+Jours de la semaine réelle (le serveur se joue en temps réel). Une foire dure au plus 31 jours, ne s'annonce pas une
+fois passée, et se place au centre de sa zone commerciale ou, à défaut, de la ville. Création, report et annulation
+sont annoncés dans le salon `platforms.discord.channels.marches` (villes publiques), avec le lien `…/ville/{id}#marches`.
+Supprimer une zone efface ses jours et replace ses foires au centre de la ville ; supprimer la ville efface ses foires.
+
+### Fermes — `/api/fermes`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/mine` | Connecté | Fermes déclarées par l'utilisateur |
+| GET | `/list?status=` | Modérateur RP | Toutes les fermes, en attente d'abord |
+| GET | `/read/{FermeID}` | Déclarant ou modérateur RP | Une ferme (404 pour les autres) |
+| GET | `/photo/{Nom}` | — | La photo ; son nom aléatoire tient lieu de droit d'accès |
+| POST | `/create` | Connecté | `{ title, type?, production?, justification, habillage?, dimension_id?, x, y?, z, ville_id? }` |
+| PUT | `/update/{FermeID}` | Déclarant ou modérateur RP | Modifiée par son déclarant, la ferme repasse en attente |
+| POST | `/photo/{FermeID}` | Déclarant ou modérateur RP | Multipart, champ `photo` : PNG, JPEG ou WebP (signature vérifiée), 5 Mo au plus |
+| PUT | `/decision/{FermeID}` | Modérateur RP, sauf le déclarant | `{ status: validee \| a_corriger, note? }` (note obligatoire pour `a_corriger`) |
+| DELETE | `/delete/{FermeID}` | Déclarant ou modérateur RP | Retire la déclaration et sa photo |
+
+Types : `cultures`, `elevage`, `mobs`, `ressources`, `automatique`, `autre`. Les photos sont rangées dans
+`./uploads/fermes` (dossier courant de l'API, comme la base ; ignoré par git). Chaque déclaration nouvelle ou rouverte
+est signalée dans `platforms.discord.channels.fermes`. Les fermes d'un utilisateur supprimé le sont avec lui ; une
+ville supprimée est simplement détachée.
+
 ### Population — `/api/population`
 
 | Méthode | Chemin | Droits | Description |
@@ -637,6 +706,10 @@ administrateur seulement) + somme des écarts acceptés, jamais négative. Les a
   (`/members/{id}/transfer`), qui donne à l'ancien fondateur le rôle `former_role` (`Admin` par défaut).
 - Les rôles ajoutables sont `Admin` et `Membre`. Un utilisateur n'est membre qu'une fois.
 - Gérer les membres demande d'être Fondateur ou Admin de l'entité, ou administrateur du site.
+- **Commerce dirigé** : le Fondateur et les Admins de son commerce dirigeant ont les mêmes droits que les siens
+  (fiche, suppression, membres, magasins, catalogue ; `_check_commerce_rights`). L'inverse est faux, et le transfert
+  du rôle de Fondateur reste réservé au Fondateur lui-même. `/commerces/read` joint donc les `members` du dirigeant
+  pour que le site affiche les mêmes boutons.
 
 ### Alliances
 
@@ -704,8 +777,14 @@ Implémentée dans `services/crud_nettoyage.py`, et rejouée au démarrage pour 
 
 | Suppression | Conséquences |
 | --- | --- |
-| Civilisation | Villes et quartiers supprimés ; quitte ses alliances (chef de file remplacé ou alliance dissoute) ; déclarations non validées retirées ; guerres commencées archivées sous son nom (relève du chef de camp, sinon fin) ; vassales rendues indépendantes ; livres détachés ; résidence des personnages vidée |
+| Civilisation | Villes et quartiers supprimés ; quitte ses alliances (chef de file remplacé ou alliance dissoute) ; déclarations non validées retirées ; guerres commencées archivées sous son nom (relève du chef de camp, sinon fin) ; vassales rendues indépendantes ; liens des livres supprimés ; résidence des personnages vidée |
 | Ville / quartier | Résidence des personnages vidée ; religions et magasins détachés ; formes de la carte supprimées |
+| Commerce / magasin | Articles du catalogue supprimés avec le magasin |
+| Livre | Chapitres et liens supprimés |
+| Religion, commerce, alliance, personnage | Liens des livres supprimés |
+| Zone commerciale | Jours de marché supprimés ; ses foires replacées au centre de la ville |
+| Ville (en plus) | Foires supprimées ; fermes détachées |
+| Utilisateur (en plus) | Fermes et photos supprimées |
 | Religion | Mêmes règles pour les guerres de religion |
 | Utilisateur | Refusée tant qu'il est Fondateur ; sinon personnages, adhésions, sessions et comptes liés supprimés, écrits conservés sans auteur |
 | Journal | Attributions des messages supprimées |

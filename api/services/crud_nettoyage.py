@@ -8,7 +8,11 @@ Ce module ne dépend que des modèles (crud, crud_conflits et crud_personnages p
   dirigées, livres, résidences des personnages.
 - Religion : guerres de religion.
 - Ville / quartier : religions, magasins, résidences des personnages.
+- Magasin : articles de son catalogue (supprimés avec lui par crud ; rattrapés ici au démarrage).
+- Zone commerciale, ville, utilisateur : jours de marché, foires et fermes (crud_marches, crud_fermes ; rattrapés ici).
 - Journal : messages signés par des personnages.
+- Livre : ses chapitres (supprimés avec lui par crud ; rattrapés ici au démarrage).
+- Livre, civilisation, religion, commerce, alliance, personnage : liens des livres (table livresliens, voir crud_livres).
 - Utilisateur : adhésions, comptes liés, sessions, personnages ; refusé tant qu'il est fondateur.
 
 Guerres : une déclaration non validée dont un chef de camp disparaît est retirée ; une guerre commencée reste archivée
@@ -46,7 +50,15 @@ def supprimer_personnages_utilisateur(db: Session, userID: int):
     for personnage in _all(db, models.Personnages, models.Personnages.user_id == userID):
         for link in _all(db, models.PersonnageMessages, models.PersonnageMessages.personnage_id == personnage.id):
             db.delete(link)
+        supprimer_liens_livres(db, "personnage", personnage.id)
         db.delete(personnage)
+
+def supprimer_liens_livres(db: Session, entity_type: str, entity_id: int):
+    # Liens des livres vers l'entité supprimée ; entity_type "livre" : tous les liens du livre
+    condition = models.LivresLiens.livre_id == entity_id if entity_type == "livre" else (
+        (models.LivresLiens.entity_type == entity_type) & (models.LivresLiens.entity_id == entity_id))
+    for lien in _all(db, models.LivresLiens, condition):
+        db.delete(lien)
 
 #endregion
 #region Alliances
@@ -152,6 +164,7 @@ def detacher_ville(db: Session, villeID: int):
 
 def detacher_religion(db: Session, religionID: int, title: str | None):
     retirer_des_guerres(db, "religion", religionID, title)
+    supprimer_liens_livres(db, "religion", religionID)
 
 def detacher_civilisation(db: Session, civilisationID: int, title: str | None):
     retirer_civilisation_des_alliances(db, civilisationID)
@@ -161,9 +174,7 @@ def detacher_civilisation(db: Session, civilisationID: int, title: str | None):
         dirigee.is_civilisation_dirigeante = True
         dirigee.dirigeante_civilisation_id = 0
         db.add(dirigee)
-    for livre in _all(db, models.Livres, models.Livres.civilisation_id == civilisationID):
-        livre.civilisation_id = None
-        db.add(livre)
+    supprimer_liens_livres(db, "civilisation", civilisationID)
 
 #endregion
 #region Utilisateurs
@@ -209,7 +220,7 @@ def detacher_utilisateur(db: Session, user: models.Users):
 
 def nettoyer_references_orphelines(db: Session):
     # Rattrape les suppressions faites avant ce module ; renvoie le nombre de corrections par catégorie
-    counts = {"personnages": 0, "messages": 0, "alliances": 0, "belligerants": 0}
+    counts = {"personnages": 0, "messages": 0, "alliances": 0, "belligerants": 0, "articles": 0, "marches": 0, "fermes": 0, "livres": 0}
     exists = lambda model, ID: ID is not None and db.get(model, ID) is not None
 
     for personnage in _all(db, models.Personnages):
@@ -228,6 +239,42 @@ def nettoyer_references_orphelines(db: Session):
         if not exists(models.Personnages, link.personnage_id) or not exists(models.Journaux, link.journal_id):
             db.delete(link)
             counts["messages"] += 1
+
+    for article in _all(db, models.MagasinArticles):
+        if not exists(models.CommerceMagasins, article.magasin_id):
+            db.delete(article)
+            counts["articles"] += 1
+
+    modeles_lies = {"civilisation": models.Civilisations, "religion": models.Religions, "commerce": models.Commerces, "alliance": models.Alliances, "personnage": models.Personnages}
+    for lien in _all(db, models.LivresLiens):
+        if not exists(models.Livres, lien.livre_id) or lien.entity_type not in modeles_lies or not exists(modeles_lies[lien.entity_type], lien.entity_id):
+            db.delete(lien)
+            counts["livres"] += 1
+    for contenu in _all(db, models.LivresContenus):
+        if not exists(models.Livres, contenu.livre_id):
+            db.delete(contenu)
+            counts["livres"] += 1
+
+    for marche in _all(db, models.MarcheJours):
+        if not exists(models.Cartographie, marche.cartographie_id):
+            db.delete(marche)
+            counts["marches"] += 1
+    for foire in _all(db, models.Foires):
+        if not exists(models.Villes, foire.ville_id):
+            db.delete(foire)
+            counts["marches"] += 1
+        elif foire.zone_id and not exists(models.Cartographie, foire.zone_id):
+            foire.zone_id = None
+            db.add(foire)
+            counts["marches"] += 1
+    for ferme in _all(db, models.Fermes):
+        if not exists(models.Users, ferme.user_id):
+            db.delete(ferme)  # la photo reste sur le disque : sans conséquence, son nom n'est plus cité nulle part
+            counts["fermes"] += 1
+        elif ferme.ville_id and not exists(models.Villes, ferme.ville_id):
+            ferme.ville_id = None
+            db.add(ferme)
+            counts["fermes"] += 1
 
     civilisations = {m.civilisation_id for m in _all(db, models.AllianceMembres)} | {i.civilisation_id for i in _all(db, models.AllianceInvitations)}
     for civilisationID in civilisations:

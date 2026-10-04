@@ -342,6 +342,8 @@ def delete_user(db: Session, user_id: int):
     if fondations:
         raise HTTPException(status_code=400, detail=f"Ce compte est encore fondateur de {', '.join(fondations)} : transférez d'abord ce rôle")
     crud_nettoyage.detacher_utilisateur(db, user)
+    from . import crud_fermes  # import local : crud_fermes importe crud
+    crud_fermes.supprimer_fermes_utilisateur(db, user.id)
     db.delete(user)
     db.commit()
     return {"fonction": "delete_user", "resultat": "Utilisateur supprimé"}
@@ -622,11 +624,24 @@ def get_livres_by_user(db: Session, userID: int, skip: int = 0, limit: int = 100
     return results.all()
 
 def get_livres_by_civilisation(db: Session, civilisationID: int, skip: int = 0, limit: int = 100):
-    statement = select(models.Livres).where(models.Livres.civilisation_id == civilisationID).offset(skip).limit(limit)
+    # Livres liés à la civilisation (table livresliens)
+    statement = (
+        select(models.Livres)
+        .join(models.LivresLiens, models.LivresLiens.livre_id == models.Livres.id)
+        .where(models.LivresLiens.entity_type == "civilisation", models.LivresLiens.entity_id == civilisationID)
+        .offset(skip).limit(limit)
+    )
     results = db.exec(statement)
     return results.all()
 
+def get_civilisations_of_livre(db: Session, livreID: int):
+    statement = select(models.LivresLiens.entity_id).where(models.LivresLiens.livre_id == livreID, models.LivresLiens.entity_type == "civilisation")
+    return db.exec(statement).all()
+
 def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
+    # Rattacher le livre à une civilisation demande des droits sur celle-ci (elle en reçoit la gestion)
+    if v_livre.civilisation_id:
+        _check_civilisation_rights(db, user, v_livre.civilisation_id)
     db_livre = models.Livres(
         user_id = user.id,
         author = v_livre.author,
@@ -638,7 +653,6 @@ def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
         pages = v_livre.pages,
         language = v_livre.language,
         link = v_livre.link,
-        civilisation_id = v_livre.civilisation_id,
         published_date = v_livre.published_date,
         created_at = dt.datetime.today()
     )
@@ -648,17 +662,23 @@ def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
     db.refresh(db_livre)
     db_livre.link = f"/bibliotheque/livre/{db_livre.id}"
     db.add(db_livre)
+    if v_livre.civilisation_id:
+        db.add(models.LivresLiens(livre_id=db_livre.id, entity_type="civilisation", entity_id=v_livre.civilisation_id, created_by=user.id))
     db.commit()
     db.refresh(db_livre)
     return db_livre
 
 def _check_livre_rights(db: Session, user: schemas.Users, livre: models.Livres):
-    # Mêmes règles que LivreDetail côté ShardUI-2 : livre d'une civilisation -> Fondateur ou Admin
-    # de la civilisation ; sinon -> son auteur. L'administrateur du site a toujours accès.
-    if livre.civilisation_id:
-        _check_civilisation_rights(db, user, livre.civilisation_id)
-    else:
-        _check_owner_rights(user, livre.user_id)
+    # Mêmes règles que LivreDetail côté ShardUI-2 : son auteur, le Fondateur ou un Admin d'une civilisation liée au
+    # livre, ou un administrateur du site
+    if user.is_disabled:
+        raise HTTPException(status_code=403, detail="Accès refusé")
+    if user.is_admin or livre.user_id == user.id:
+        return
+    for civilisationID in get_civilisations_of_livre(db, livre.id):
+        if any(m.user_id == user.id and m.role in ("Fondateur", "Admin") for m in get_members_of_civilisation(db, civilisationID, limit=10000)):
+            return
+    raise HTTPException(status_code=403, detail="Seuls l'auteur du livre et les dirigeants d'une civilisation liée peuvent le modifier")
 
 def delete_livre(db: Session, user: schemas.Users, livreID: int):
     livre = get_livre(db, livreID)
@@ -667,8 +687,10 @@ def delete_livre(db: Session, user: schemas.Users, livreID: int):
     _check_livre_rights(db, user, livre)
 
     try:
-        # Suppression du livre
-        
+        # Suppression du livre, de ses chapitres et de ses liens (religion, commerce, alliance, personnage)
+        for contenu in get_livre_contenus(db, livre.id):
+            db.delete(contenu)
+        crud_nettoyage.supprimer_liens_livres(db, "livre", livre.id)
         db.delete(livre)
         db.commit()
         return {"fonction": "delete_livre", "resultat": "Livre supprimé"}
@@ -682,9 +704,7 @@ def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schema
     if not db_livre:
         raise HTTPException(status_code=404, detail="Le livre n'existe pas")
     _check_livre_rights(db, user, db_livre)
-    # Rattacher le livre à une autre civilisation demande aussi des droits sur celle-ci
-    if v_livre.civilisation_id and v_livre.civilisation_id != db_livre.civilisation_id:
-        _check_civilisation_rights(db, user, v_livre.civilisation_id)
+    # Les civilisations liées se gèrent par les liens du livre (crud_livres), pas par cette route
 
     if db_livre:
         # Mise à jour des informations
@@ -706,8 +726,6 @@ def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schema
             db_livre.language = v_livre.language
         if v_livre.link is not None:
             db_livre.link = v_livre.link
-        if v_livre.civilisation_id is not None:
-            db_livre.civilisation_id = v_livre.civilisation_id
         if v_livre.published_date is not None:
             db_livre.published_date = v_livre.published_date
         if v_livre.is_public is not None:
@@ -1268,9 +1286,13 @@ def _delete_ville_tree(db: Session, db_ville: models.Villes):
         db.delete(quartier)
     delete_cartographies_by_types(db, "ville", db_ville.id)
     delete_cartographies_by_types(db, "destructible", db_ville.id)
+    from . import crud_population, crud_marches, crud_fermes  # import local : ces modules importent crud
+    crud_marches.supprimer_foires_ville(db, db_ville.id)
+    for zone in get_cartographies_by_types(db, "commerciale", db_ville.id, limit=10000):
+        crud_marches.supprimer_jours_zone(db, zone.id)
     delete_cartographies_by_types(db, "commerciale", db_ville.id)
-    from . import crud_population  # import local : crud_population importe crud
     crud_population.supprimer_ajustements_ville(db, db_ville.id)
+    crud_fermes.detacher_ville(db, db_ville.id)
     crud_nettoyage.detacher_ville(db, db_ville.id)
     db.delete(db_ville)
 
@@ -1934,9 +1956,18 @@ def _commerce_fondateur(db: Session, db_members):
         return None
     return {"id": user.id, "username": user.username, "full_name": user.full_name, "image_url": user.image_url}
 
+def _commerce_gestionnaires(db: Session, db_commerce: models.Commerces):
+    # Membres dont le rôle compte pour gérer le commerce : les siens, plus ceux de son commerce dirigeant s'il est
+    # dirigé (un seul niveau : un commerce dirigeant n'est jamais lui-même dirigé)
+    db_members = list(get_members_of_commerce(db, db_commerce.id))
+    if db_commerce.is_commerce_dirigeant is False and db_commerce.dirigeant_commerce_id and db_commerce.dirigeant_commerce_id != db_commerce.id:
+        db_members += get_members_of_commerce(db, db_commerce.dirigeant_commerce_id)
+    return db_members
+
 def _check_commerce_rights(db: Session, user: schemas.Users, db_commerce: models.Commerces):
-    # Comme les religions : Fondateur ou Admin du commerce, ou administrateur du site
-    _check_member_rights(user, get_members_of_commerce(db, db_commerce.id))
+    # Comme les religions : Fondateur ou Admin du commerce, ou administrateur du site ;
+    # pour un commerce dirigé, le Fondateur et les Admins du commerce dirigeant ont les mêmes droits
+    _check_member_rights(user, _commerce_gestionnaires(db, db_commerce))
 
 def get_members_of_commerce(db: Session, commerceID: int, skip: int = 0, limit: int = 1000):
     statement = select(models.CommerceMembers).where(models.CommerceMembers.commerce_id == commerceID).offset(skip).limit(limit)
@@ -2037,7 +2068,8 @@ def get_commerce_links(db: Session, db_commerce: models.Commerces):
     # Commerce dirigeant (résumé) et commerces dirigés (avec fondateur, membres et magasins)
     dirigeant = get_commerce_by_id(db, db_commerce.dirigeant_commerce_id) if db_commerce.dirigeant_commerce_id else None
     return {
-        'dirigeant': {"id": dirigeant.id, "title": dirigeant.title, "is_public": dirigeant.is_public} if dirigeant else None,
+        # members : le Fondateur et les Admins du dirigeant gèrent aussi ce commerce (voir _check_commerce_rights)
+        'dirigeant': {"id": dirigeant.id, "title": dirigeant.title, "is_public": dirigeant.is_public, "members": members_table(db, get_members_of_commerce(db, dirigeant.id))} if dirigeant else None,
         'diriges': [get_all_of_commerce_by_id(db, dirige.id) for dirige in get_diriges_of_commerce(db, db_commerce.id) if dirige.id != db_commerce.id],
     }
 
@@ -2125,7 +2157,7 @@ def delete_commerce(db: Session, user: schemas.Users, commerceID: int):
     db_commerce = get_commerce_by_id(db, commerceID)
     if not db_commerce:
         raise HTTPException(status_code=404, detail="Le commerce n'existe pas")
-    # Comme les religions : Fondateur ou Admin du commerce, ou administrateur du site
+    # Fondateur ou Admin du commerce (ou de son commerce dirigeant), ou administrateur du site
     _check_commerce_rights(db, user, db_commerce)
 
     # Les commerces dirigés redeviennent indépendants
@@ -2133,8 +2165,11 @@ def delete_commerce(db: Session, user: schemas.Users, commerceID: int):
         db_dirige.is_commerce_dirigeant = True
         db_dirige.dirigeant_commerce_id = 0
         db.add(db_dirige)
+    from . import crud_catalogue  # import local : crud_catalogue importe crud
     for db_magasin in get_magasins_by_commerce_id(db, commerceID):
+        crud_catalogue.supprimer_articles_magasin(db, db_magasin.id)
         db.delete(db_magasin)
+    crud_nettoyage.supprimer_liens_livres(db, "commerce", commerceID)
     for db_member in get_members_of_commerce(db, commerceID):
         db.delete(db_member)
     db.delete(db_commerce)
@@ -2209,6 +2244,8 @@ def delete_magasin(db: Session, user: schemas.Users, magasinID: int):
         raise HTTPException(status_code=404, detail="Le magasin n'existe pas")
     _check_commerce_rights(db, user, get_commerce_by_id(db, db_magasin.commerce_id))
 
+    from . import crud_catalogue  # import local : crud_catalogue importe crud
+    crud_catalogue.supprimer_articles_magasin(db, db_magasin.id)
     db.delete(db_magasin)
     db.commit()
     return True
@@ -2409,6 +2446,11 @@ def delete_cartographie(db: Session, user: schemas.Users, cartographieID: int):
         raise HTTPException(status_code=404, detail="La cartographie n'a pas été trouvée")
     check_cartographie_authorisation(db, user, db_cartographie.type, db_cartographie.type_id)
 
+    if db_cartographie.type == "commerciale":
+        # Ses jours de marché disparaissent ; ses foires restent, placées au centre de la ville
+        from . import crud_marches  # import local : crud_marches importe crud
+        crud_marches.supprimer_jours_zone(db, db_cartographie.id)
+        crud_marches.detacher_zone(db, db_cartographie.id)
     db.delete(db_cartographie)
     db.commit()
     return True

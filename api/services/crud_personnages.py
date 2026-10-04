@@ -23,6 +23,7 @@ from .crud import (
     get_ville_by_id,
 )
 from .crud_conflits import is_moderateur
+from . import crud_nettoyage
 
 STATUTS = ("vivant", "mort", "disparu")
 SKIN_SOURCES = ("aucun", "minecraft", "lien")
@@ -315,6 +316,7 @@ def delete_personnage(db: Session, user: schemas.Users, ID: int):
     _require_rights(user, personnage)
     for link in _links_of_personnage(db, personnage.id):
         db.delete(link)
+    crud_nettoyage.supprimer_liens_livres(db, "personnage", personnage.id)
     db.delete(personnage)
     db.commit()
     return {"text": f"{personnage.name} a été supprimé"}

@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 
 from ..core import utils
 from ..db import models, schemas
+from . import crud_nettoyage
 from .crud import (
     announce_discord,
     delete_cartographies_by_types,
@@ -217,6 +218,7 @@ def delete_alliance(db: Session, user: schemas.Users, ID: int):
     for db_belligerant in db.exec(select(models.GuerreBelligerants).where(models.GuerreBelligerants.alliance_id == ID)).all():
         db_belligerant.alliance_id = None
         db.add(db_belligerant)
+    crud_nettoyage.supprimer_liens_livres(db, "alliance", ID)
     db.delete(db_alliance)
     db.commit()
     return {"resultat": "Alliance dissoute"}
@@ -436,6 +438,38 @@ def _annoncer(db_guerre: models.Guerres, text: str):
     # Salon Discord « guerres » (platforms.discord.channels.guerres), avec le lien de la guerre si site_url est configuré
     site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
     announce_discord("guerres", f"{text}\n{str(site).rstrip('/')}/guerre/{db_guerre.id}" if site else text)
+
+def _villes_cibles(db: Session, entity_type: str, entity_id: int):
+    # Villes publiques exposées : celles de la civilisation, ou celles où la religion est implantée
+    if entity_type == "civilisation":
+        villes = db.exec(select(models.Villes).where(models.Villes.civilisation_id == entity_id)).all()
+    else:
+        villes = db.exec(
+            select(models.Villes).join(models.VillesReligions, models.VillesReligions.ville_id == models.Villes.id)
+            .where(models.VillesReligions.religion_id == entity_id)
+        ).all()
+    return sorted({ville.id: ville for ville in villes if ville.is_public is not False}.values(), key=lambda ville: ville.title)
+
+def cibles_guerre(db: Session, ID: int, user: schemas.Users | None = None):
+    # Bâtiments et zones destructibles des villes des belligérants engagés, camp par camp :
+    # { attaquant: [{ entite, villes: [{ id, title, civilisation_id, dimension_id, x, z, destructibles: [cartographie] }] }], defenseur: [...] }
+    db_guerre = _require_visible_guerre(db, user, ID)
+    cibles = {camp: [] for camp in CAMPS}
+    for b in sorted(_belligerants(db, db_guerre.id), key=lambda b: (not b.is_leader, b.joined_at)):
+        if b.status != "engage" or b.camp not in cibles or not _get_entity(db, b.entity_type, b.entity_id):
+            continue
+        villes = []
+        for ville in _villes_cibles(db, b.entity_type, b.entity_id):
+            destructibles = db.exec(
+                select(models.Cartographie).where(models.Cartographie.type == "destructible", models.Cartographie.type_id == ville.id)
+            ).all()
+            villes.append({
+                "id": ville.id, "title": ville.title, "civilisation_id": ville.civilisation_id,
+                "dimension_id": ville.dimension_id, "x": ville.x, "z": ville.z,
+                "destructibles": sorted(destructibles, key=lambda d: (d.shape_type != "Marker", d.title or "")),
+            })
+        cibles[b.camp].append({"entite": _entity_summary(db, b.entity_type, b.entity_id, b.entity_title), "villes": villes})
+    return cibles
 
 def _require_visible_guerre(db: Session, user: schemas.Users | None, ID: int):
     db_guerre = get_guerre(db, ID)

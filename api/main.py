@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 
-from .db.database import get_db, create_db_and_tables, check_database_tables, migrate_commerces_owner_to_members
+from .db.database import get_db, create_db_and_tables, check_database_tables, migrate_commerces_owner_to_members, migrate_livres_civilisation_to_liens
 
 from .core import utils
 from topazdevsdk import colors
@@ -24,6 +24,9 @@ from .routes.personnages import router as personnages_router
 from .routes.monde import router as monde_router
 from .routes.actions import router as actions_router
 from .routes.population import router as population_router
+from .routes.catalogue import router as catalogue_router
+from .routes.marches import router as marches_router
+from .routes.fermes import router as fermes_router
 
 
 ################# App Initialization #################
@@ -43,6 +46,7 @@ async def lifespan(app_: FastAPI):
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Initialisation de la base de données...")
     create_db_and_tables()
     migrate_commerces_owner_to_members()
+    migrate_livres_civilisation_to_liens()
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Base de données initialisée.")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     
@@ -126,6 +130,12 @@ app.include_router(monde_router)
 app.include_router(actions_router)
 
 app.include_router(population_router)
+
+app.include_router(catalogue_router)
+
+app.include_router(marches_router)
+
+app.include_router(fermes_router)
 
 ################# 404 Handler #################
 

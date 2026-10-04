@@ -34,6 +34,11 @@ def read_guerre_prive(current_user: CurrentUser, GuerreID: int, db: Session = De
     # Même réponse, y compris pour une déclaration non validée si l'utilisateur est concerné ou modérateur
     return _json({'code': 200, **crud_conflits.read_guerre(db, GuerreID, current_user)})
 
+@router.get("/cibles/{GuerreID}")
+def read_cibles_guerre(GuerreID: int, db: Session = Depends(get_db)):
+    # Guerre publique : destructibles des villes des belligérants engagés, camp par camp
+    return _json(crud_conflits.cibles_guerre(db, GuerreID))
+
 @router.get("/entite/{EntityType}/{EntityID}")
 def read_guerres_of_entity(EntityType: str, EntityID: int, db: Session = Depends(get_db)):
     # EntityType : civilisation ou religion

@@ -83,8 +83,9 @@ class Livres(SQLModel, table=True):
     language: str | None = Field(default=None)
 
     link: str | None = Field(default=None)
-    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
-    
+    # Civilisations, religions, commerces, alliances, personnages : table livresliens (ancienne colonne civilisation_id
+    # reprise par database.migrate_livres_civilisation_to_liens)
+
     published_date: dt.date | None = Field(default=None)
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
@@ -99,6 +100,16 @@ class LivresContenus(SQLModel, table=True):
     indent: int | None = Field(default=None)
     content: str | None = Field(default=None)
     page_number: int | None = Field(default=None)
+
+class LivresLiens(SQLModel, table=True):
+    # Livre lié à une civilisation, une religion, un commerce, une alliance ou un personnage (voir services/crud_livres.py).
+    # Un lien vers une civilisation donne aussi à ses dirigeants le droit de modifier le livre.
+    id: int | None = Field(default=None, primary_key=True)
+    livre_id: int = Field(foreign_key="livres.id", index=True)
+    entity_type: str                     # civilisation, religion, commerce, alliance ou personnage
+    entity_id: int = Field(index=True)
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 ############### Civilisations ####################
 
@@ -206,6 +217,19 @@ class CommerceMagasins(SQLModel, table=True):
     created_at: dt.datetime | None = Field(default=None)
     
     ville_id: int | None = Field(default=None, foreign_key="villes.id")
+
+class MagasinArticles(SQLModel, table=True):
+    # Article du catalogue d'un magasin, vendu par lot en tetras (voir services/crud_catalogue.py)
+    id: int | None = Field(default=None, primary_key=True)
+    magasin_id: int | None = Field(default=None, foreign_key="commercemagasins.id", index=True)
+    title: str
+    categorie: str = Field(default="divers")
+    description: str | None = Field(default=None)
+    prix: int = Field(default=0)          # en tetras, pour le lot entier (0 : offert)
+    quantite: int = Field(default=1)      # taille du lot : « 16 pains pour 1 tetra »
+    en_stock: bool = Field(default=True)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 
 ############### Religions ####################
@@ -428,6 +452,54 @@ class Cartographie(SQLModel, table=True):
     dimension_id: int = Field(foreign_key="dimensions.id")
     shape_type: str | None = Field(default=None)  # e.g., "point", "line", "polygon"
     coordinates: str | None = Field(default=None)  # Stored as JSON string
+
+class MarcheJours(SQLModel, table=True):
+    # Jours d'ouverture d'une zone commerciale (cartographie de type "commerciale"), voir services/crud_marches.py
+    id: int | None = Field(default=None, primary_key=True)
+    cartographie_id: int = Field(foreign_key="cartographie.id", index=True, unique=True)
+    jours: str = Field(default="")             # jours de la semaine réelle, 0 = lundi … 6 = dimanche : "2,5"
+    horaires: str | None = Field(default=None) # texte libre : « de 20 h à 23 h »
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class Foires(SQLModel, table=True):
+    # Foire annoncée par une ville, datée en jours réels (voir services/crud_marches.py)
+    id: int | None = Field(default=None, primary_key=True)
+    ville_id: int = Field(foreign_key="villes.id", index=True)
+    title: str
+    description: str | None = Field(default=None)
+    date_debut: dt.date
+    date_fin: dt.date
+    horaires: str | None = Field(default=None)
+    zone_id: int | None = Field(default=None, foreign_key="cartographie.id")  # zone commerciale qui l'accueille
+    dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
+    x: int | None = Field(default=None)
+    z: int | None = Field(default=None)
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+############### Fermes ####################
+
+class Fermes(SQLModel, table=True):
+    # Ferme déclarée par un joueur et validée par un modérateur RP (voir services/crud_fermes.py)
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int | None = Field(default=None, foreign_key="users.id", index=True)
+    title: str
+    type: str = Field(default="autre")         # clé de crud_fermes.TYPES
+    production: str | None = Field(default=None)       # ce qu'elle produit, à quel rythme
+    justification: str                                 # justification RP : qui l'exploite, pourquoi
+    habillage: str | None = Field(default=None)        # bâtiment qui l'habille (moulin, étable…)
+    dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
+    x: int | None = Field(default=None)
+    y: int | None = Field(default=None)
+    z: int | None = Field(default=None)
+    ville_id: int | None = Field(default=None, foreign_key="villes.id")
+    photo: str | None = Field(default=None)            # nom du fichier dans ./uploads/fermes
+    status: str = Field(default="en_attente")          # en_attente, validee, a_corriger
+    moderateur_id: int | None = Field(default=None, foreign_key="users.id")
+    decision_note: str | None = Field(default=None)
+    decision_at: dt.datetime | None = Field(default=None)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 ############### Statistiques du monde ####################
 

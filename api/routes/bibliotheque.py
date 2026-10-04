@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, File
 from sqlmodel import Session
 
 from ..db import schemas
-from ..services import crud
+from ..services import crud, crud_livres
 from ..db.database import get_db
 
 # Créer un routeur pour les routes utilisateur
@@ -120,6 +120,25 @@ def read_livres_by_user(userID: int, skip: int = 0, limit: int = 100, db: Sessio
 def read_livres_by_civilisation(civilisationID: int, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     livres = crud.get_livres_by_civilisation(db=db, civilisationID=civilisationID, skip=skip, limit=limit)
     return JSONResponse(content=jsonable_encoder(livres))
+
+@router.get("/livres/liens/{livreID}", tags=["Livres"])
+def read_liens_livre(livreID: int, db: Session = Depends(get_db)):
+    # Religions, commerces, alliances et personnages liés au livre : [{ id, livre_id, entite: { type, id, title, … } }]
+    return JSONResponse(content=jsonable_encoder(crud_livres.liens_du_livre(db, livreID)))
+
+@router.get("/livres/entite/{EntityType}/{EntityID}/list", tags=["Livres"])
+def read_livres_of_entite(EntityType: str, EntityID: int, db: Session = Depends(get_db)):
+    # EntityType : religion, commerce, alliance ou personnage ; [{ lien_id, livre }]
+    return JSONResponse(content=jsonable_encoder(crud_livres.livres_de_entite(db, EntityType, EntityID)))
+
+@router.post("/livres/liens", tags=["Livres"])
+def create_lien_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], lien: schemas.LivreLienCreate, db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le livre est lié", 'lien': crud_livres.lier(db, current_user, lien)}))
+
+@router.delete("/livres/liens/{lienID}", tags=["Livres"])
+def delete_lien_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], lienID: int, db: Session = Depends(get_db)):
+    crud_livres.delier(db, current_user, lienID)
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le lien est retiré"}))
 
 @router.post("/livres/content/create", tags=["Livres"])
 def create_livre_contenu(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], contenu: schemas.LivreContenu, db: Session = Depends(get_db)):

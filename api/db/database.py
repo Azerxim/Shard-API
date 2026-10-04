@@ -66,6 +66,42 @@ def migrate_commerces_owner_to_members():
         connection.execute(text("ALTER TABLE commerces_new RENAME TO commerces"))
     print(f"Migration terminée : {len(commerces)} commerce(s) avec fondateur, colonne owner_id supprimée.")
 
+def migrate_livres_civilisation_to_liens():
+    """
+    Ancienne colonne Livres.civilisation_id -> lien "civilisation" dans LivresLiens, puis suppression de la colonne
+    (après sauvegarde de la base). À appeler après create_db_and_tables (la table livresliens doit exister).
+    Sans effet si déjà migré. Les valeurs 0 (champ caché du formulaire) et les civilisations disparues sont ignorées.
+    """
+    from sqlalchemy import inspect, text
+    from . import models
+
+    inspector = inspect(engine)
+    if "livres" not in inspector.get_table_names():
+        return
+    existing_columns = [col['name'] for col in inspector.get_columns("livres")]
+    if "civilisation_id" not in existing_columns:
+        return
+
+    print("Migration : civilisations des livres -> liens des livres...")
+    with engine.begin() as connection:
+        rows = connection.execute(text(
+            "SELECT livres.id, livres.civilisation_id, livres.user_id, livres.created_at FROM livres "
+            "JOIN civilisations ON civilisations.id = livres.civilisation_id WHERE livres.civilisation_id > 0"
+        )).all()
+        for livre_id, civilisation_id, user_id, created_at in rows:
+            params = {"livre_id": livre_id, "entity_id": civilisation_id}
+            if connection.execute(text("SELECT 1 FROM livresliens WHERE livre_id = :livre_id AND entity_type = 'civilisation' AND entity_id = :entity_id"), params).first():
+                continue
+            connection.execute(
+                text("INSERT INTO livresliens (livre_id, entity_type, entity_id, created_by, created_at) VALUES (:livre_id, 'civilisation', :entity_id, :user_id, :created_at)"),
+                {**params, "user_id": user_id, "created_at": created_at or dt.datetime.now()}
+            )
+    # Reconstruction de la table sans la colonne (SQLite ne supprime pas une colonne à clé étrangère), valeurs conservées
+    if _rebuild_table(models.Livres, existing_columns, "colonne civilisation_id reprise par livresliens"):
+        print(f"Migration terminée : {len(rows)} lien(s) de civilisation créé(s), colonne civilisation_id supprimée.")
+    else:
+        print("Migration : liens créés, mais la colonne civilisation_id n'a pas pu être retirée (elle n'est plus lue).")
+
 def backup_database(reason: str):
     """Copie le fichier SQLite avant la première modification de structure du démarrage.
     Renvoie le chemin de la sauvegarde, ou None si elle n'a pas pu être faite."""
@@ -104,10 +140,15 @@ def _rebuild_table(model_class, existing_columns, details: str):
     columns = [col.name for col in model_class.__table__.columns if col.name in existing_columns]
     quoted = ", ".join(f'"{name}"' for name in columns)
     temp_name = f"{table_name}__rebuild"
+    # Copie dans un registre à part, mais avec toutes les tables : sans elles, une clé étrangère (user_id → users)
+    # ne trouve pas sa cible et la création échoue. La copie temporaire ne pollue pas le registre des modèles.
+    registre = MetaData()
+    for table in model_class.metadata.sorted_tables:
+        table.to_metadata(registre)
     try:
         with engine.begin() as connection:
             connection.execute(text(f'DROP TABLE IF EXISTS "{temp_name}"'))
-            model_class.__table__.to_metadata(MetaData(), name=temp_name).create(connection)
+            model_class.__table__.to_metadata(registre, name=temp_name).create(connection)
             connection.execute(text(f'INSERT INTO "{temp_name}" ({quoted}) SELECT {quoted} FROM "{table_name}"'))
             connection.execute(text(f'DROP TABLE "{table_name}"'))
             connection.execute(text(f'ALTER TABLE "{temp_name}" RENAME TO "{table_name}"'))
