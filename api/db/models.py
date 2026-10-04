@@ -332,6 +332,33 @@ class PersonnageClasses(SQLModel, table=True):
     title: str
     description: str | None = Field(default=None)
 
+class ActionsSecretes(SQLModel, table=True):
+    # Action RP scellée à l'heure réelle du serveur, révélée plus tard (voir services/crud_actions.py)
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    content: str
+    entity_type: str  # personnage, civilisation ou religion : au nom de qui l'action est déposée
+    entity_id: int
+    entity_title: str | None = Field(default=None)  # nom conservé si l'entité est supprimée
+    guerre_id: int | None = Field(default=None, foreign_key="guerres.id")
+    sel: str  # aléa publié à la révélation : sans lui, l'empreinte ne permet pas de deviner le contenu
+    empreinte: str  # SHA-256 de « sel, titre, contenu », publiée dès le dépôt
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    reveal_at: dt.datetime | None = Field(default=None)  # révélation automatique
+    revealed_at: dt.datetime | None = Field(default=None)
+    revealed_by: int | None = Field(default=None, foreign_key="users.id")
+    reveal_mode: str | None = Field(default=None)  # auteur, moderateur ou date
+    reveal_motif: str | None = Field(default=None)  # obligatoire quand un modérateur révèle
+
+class ActionSecreteLectures(SQLModel, table=True):
+    # Lecture d'une action scellée par un administrateur ou un modérateur RP (lecture tracée)
+    id: int | None = Field(default=None, primary_key=True)
+    action_id: int | None = Field(default=None, foreign_key="actionssecretes.id")
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    role: str  # administrateur ou modérateur RP
+    read_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
 class Personnages(SQLModel, table=True):
     # Personnage RP d'un joueur : autant qu'il le souhaite, sans validation
     id: int | None = Field(default=None, primary_key=True)
