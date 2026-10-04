@@ -159,5 +159,3 @@ _work/
 config.json
 # Surcharge locale de config.json pour npm run dev (voir config.development.json.template)
 config.development.json
-# Photos envoyées par les joueurs (fermes)
-uploads/
