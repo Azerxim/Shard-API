@@ -571,7 +571,7 @@ ou administrateur du site. La religion elle-même n'a pas à donner son accord.
 | GET | `/list` | — | Formes (`skip`, `limit`) |
 | GET | `/id/{CartographieID}` | — | Une forme |
 | GET | `/entity/{Type}/{TypeID}` | — | Formes d'une entité |
-| GET | `/types` | — | `["civilisation", "ville", "quartier", "guerre", "destructible"]` |
+| GET | `/types` | — | `["civilisation", "ville", "quartier", "guerre", "destructible", "commerciale"]` |
 | POST | `/create` | règle | Crée (`coordinates` doit être du JSON valide, `dimension_id` doit exister) |
 | PUT | `/update/{CartographieID}` | règle | Met à jour ; changer d'entité exige aussi les droits sur la nouvelle |
 | DELETE | `/delete/{CartographieID}` | règle | Supprime |
@@ -585,7 +585,23 @@ ou administrateur du site. La religion elle-même n'a pas à donner son accord.
 Droits de la cartographie : Fondateur/Admin de la civilisation propriétaire (celle de la ville ou du quartier),
 ou administrateur ; pour `guerre`, chefs de camp et modérateurs RP d'une guerre **en cours** ; pour `destructible`
 (bâtiments en `Marker`, zones en `Polygon`, qu'une guerre RP autorise à détruire ; `type_id` = ville), les modérateurs
-RP en plus des dirigeants de la civilisation. Ces formes sont supprimées avec la ville.
+RP en plus des dirigeants de la civilisation. Ces formes sont supprimées avec la ville. `commerciale` : marchés et
+quartiers marchands d'une ville (`type_id` = ville, polygones nommés), mêmes droits que les frontières de la ville,
+supprimés avec elle ; leurs boutiques sont les magasins situés à l'intérieur (calculées par le site et la carte).
+
+### Population — `/api/population`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/ville/{VilleID}` | — | `{ mesuree, mesure: { releve_at, methode, rayon }, ajustements, en_attente, officielle }` |
+| GET | `/civilisation/{CivilisationID}` | — | `{ officielle, armee, habitants_par_soldat, villes }` (somme des villes, un soldat pour dix habitants) |
+| GET | `/ajustements/en-attente` | Modérateur RP | Demandes à valider, avec leur ville |
+| POST | `/ajustements` | F/A de la civilisation | Demande `{ ville_id, ecart, motif }` (écart non nul, motif obligatoire) |
+| PUT | `/ajustements/{ID}/decision` | Modérateur RP, sauf le demandeur | `{ accepte, note? }` |
+| DELETE | `/ajustements/{ID}` | Demandeur (en attente) ou modérateur RP | Retire l'ajustement |
+
+Population officielle d'une ville : `villes.population` (écrite par chaque relevé, modifiable directement par un
+administrateur seulement) + somme des écarts acceptés, jamais négative. Les ajustements sont supprimés avec la ville.
 
 ### Actions secrètes — `/api/actions`
 

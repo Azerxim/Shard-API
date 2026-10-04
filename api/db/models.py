@@ -332,6 +332,19 @@ class PersonnageClasses(SQLModel, table=True):
     title: str
     description: str | None = Field(default=None)
 
+class PopulationAjustements(SQLModel, table=True):
+    # Écart motivé ajouté à la population mesurée d'une ville (voir services/crud_population.py)
+    id: int | None = Field(default=None, primary_key=True)
+    ville_id: int | None = Field(default=None, foreign_key="villes.id", index=True)
+    ecart: int  # positif (réfugiés, colons) ou négatif (épidémie, exode)
+    motif: str
+    status: str = Field(default="en_attente")  # en_attente, accepte, refuse, retire
+    demande_par: int | None = Field(default=None, foreign_key="users.id")
+    demande_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    moderateur_id: int | None = Field(default=None, foreign_key="users.id")
+    decision_at: dt.datetime | None = Field(default=None)
+    decision_note: str | None = Field(default=None)
+
 class ActionsSecretes(SQLModel, table=True):
     # Action RP scellée à l'heure réelle du serveur, révélée plus tard (voir services/crud_actions.py)
     id: int | None = Field(default=None, primary_key=True)

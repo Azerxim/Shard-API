@@ -498,6 +498,17 @@ class PersonnageMessageLink(BaseModel):
     message_id: str
     personnage_id: int
 
+############### Population ####################
+
+class PopulationAjustementCreate(EmptyStringAsNone):
+    ville_id: int
+    ecart: int                            # non nul : positif ou négatif
+    motif: str
+
+class PopulationAjustementDecision(EmptyStringAsNone):
+    accepte: bool
+    note: str | None = None
+
 ############### Actions secrètes ####################
 
 class ActionSecreteCreate(EmptyStringAsNone):

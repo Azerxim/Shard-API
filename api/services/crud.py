@@ -1268,6 +1268,9 @@ def _delete_ville_tree(db: Session, db_ville: models.Villes):
         db.delete(quartier)
     delete_cartographies_by_types(db, "ville", db_ville.id)
     delete_cartographies_by_types(db, "destructible", db_ville.id)
+    delete_cartographies_by_types(db, "commerciale", db_ville.id)
+    from . import crud_population  # import local : crud_population importe crud
+    crud_population.supprimer_ajustements_ville(db, db_ville.id)
     crud_nettoyage.detacher_ville(db, db_ville.id)
     db.delete(db_ville)
 
@@ -1308,7 +1311,9 @@ def update_ville(db: Session, user: schemas.Users, villeID: int, v_ville: schema
             db_ville.title = v_ville.title
         if v_ville.description is not None:
             db_ville.description = v_ville.description
-        if v_ville.population is not None:
+        # Population mesurée par le relevé de la sauvegarde : seul un administrateur la corrige directement
+        # (les autres passent par un ajustement validé, voir crud_population)
+        if v_ville.population is not None and user.is_admin:
             db_ville.population = v_ville.population
         if v_ville.dimension_id is not None:
             db_ville.dimension_id = v_ville.dimension_id
@@ -2318,7 +2323,9 @@ def get_cartographies_by_type_and_dimension(db: Session, type: str, dimensionID:
 
 def get_cartographies_type(db: Session):
     # destructible : bâtiments et zones d'une ville qu'une guerre RP autorise à détruire (type_id = ville)
-    types = ["civilisation", "ville", "quartier", "guerre", "destructible"]
+    # commerciale : marchés et quartiers marchands d'une ville (type_id = ville) ; leurs boutiques sont les magasins
+    # situés à l'intérieur, déterminés par leur position
+    types = ["civilisation", "ville", "quartier", "guerre", "destructible", "commerciale"]
     return types
 
 def get_cartographies_by_types(db: Session, type: str, id: int, skip: int = 0, limit: int = 100):
@@ -2331,7 +2338,7 @@ def get_cartographie_civilisation_id(db: Session, type: str, type_id: int):
     if type == "civilisation":
         db_civilisation = get_civilisation_by_id(db, type_id)
         return db_civilisation.id if db_civilisation else None
-    if type in ("ville", "destructible"):
+    if type in ("ville", "destructible", "commerciale"):
         db_ville = get_ville_by_id(db, type_id)
         return db_ville.civilisation_id if db_ville else None
     if type == "quartier":
