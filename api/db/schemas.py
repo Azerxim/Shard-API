@@ -485,7 +485,7 @@ class PersonnageCreate(EmptyStringAsNone):
     espece_id: int | None = None
     classe_id: int | None = None
     grade: str | None = None
-    skin_source: str | None = "aucun"       # aucun, minecraft (compte lié du joueur) ou lien
+    skin_source: str | None = "aucun"       # aucun, minecraft (compte lié du joueur), lien ou fichier (déjà envoyé)
     skin_url: str | None = None
 
 class PersonnageUpdate(PersonnageCreate):

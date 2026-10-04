@@ -37,7 +37,7 @@ def _entite(db: Session, entity_type: str, entity_id: int):
 
 def _resume(entity_type: str, entite):
     if entity_type == "personnage":
-        return {"type": entity_type, "id": entite.id, "title": entite.name, "image_url": entite.image_url, "user_id": entite.user_id}
+        return {"type": entity_type, "id": entite.id, "title": entite.name, "image_url": entite.image_url, "image_fichier": entite.image_fichier, "user_id": entite.user_id}
     resume = {"type": entity_type, "id": entite.id, "title": entite.title, "is_public": entite.is_public}
     if entity_type in ("religion", "alliance"):
         resume.update(color=entite.color, icon=entite.icon)

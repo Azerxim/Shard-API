@@ -23,6 +23,7 @@ import datetime as dt
 from sqlmodel import Session, select
 
 from ..db import models
+from . import fichiers
 
 
 def _all(db: Session, model, *conditions):
@@ -51,6 +52,8 @@ def supprimer_personnages_utilisateur(db: Session, userID: int):
         for link in _all(db, models.PersonnageMessages, models.PersonnageMessages.personnage_id == personnage.id):
             db.delete(link)
         supprimer_liens_livres(db, "personnage", personnage.id)
+        fichiers.supprimer("personnages", personnage.image_fichier)
+        fichiers.supprimer("personnages", personnage.skin_fichier)
         db.delete(personnage)
 
 def supprimer_liens_livres(db: Session, entity_type: str, entity_id: int):

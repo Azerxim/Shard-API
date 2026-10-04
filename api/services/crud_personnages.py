@@ -3,7 +3,11 @@ Personnages.
 
 - Un joueur crée autant de personnages qu'il le souhaite, sans validation ; seuls lui et les administrateurs les modifient.
 - Fiche RP : espèce et classe (référentiels gérés par les administrateurs et modérateurs RP), grade libre, statut, dates.
-- Skin : aucun, celui du compte Minecraft lié du joueur (UUID copié à l'enregistrement) ou un lien vers un fichier de skin.
+- Skin : aucun, celui du compte Minecraft lié du joueur (UUID copié à l'enregistrement), un lien vers un fichier de skin
+  ou un fichier envoyé (PNG aux dimensions d'un skin : 64 × 64, ou 64 × 32 pour l'ancien format).
+- Portrait : un lien (image_url) ou une image envoyée (image_fichier, prioritaire). Les fichiers sont rangés dans
+  ./uploads/personnages (services/fichiers.py) et servis par /api/personnages/fichier/{nom} ; ils sont supprimés quand
+  on les remplace, qu'on choisit un lien ou une autre source de skin, ou avec le personnage.
 - Résidence cohérente : le quartier appartient à la ville et la ville à la civilisation (niveaux supérieurs complétés).
 - Un message d'un journal (salon Discord) est attribué à un personnage par l'auteur Discord du message, reconnu grâce au
   compte Discord lié à son compte Tetrago. Seul ce message est relu ; un extrait est conservé pour la fiche.
@@ -23,10 +27,13 @@ from .crud import (
     get_ville_by_id,
 )
 from .crud_conflits import is_moderateur
-from . import crud_nettoyage
+from . import crud_nettoyage, fichiers
 
 STATUTS = ("vivant", "mort", "disparu")
-SKIN_SOURCES = ("aucun", "minecraft", "lien")
+SKIN_SOURCES = ("aucun", "minecraft", "lien", "fichier")
+DOSSIER = "personnages"
+SKIN_DIMENSIONS = ((64, 64), (64, 32))
+SKIN_MAX_OCTETS = 1024 * 1024
 RESIDENCES = ("civilisation", "ville", "quartier")
 NAME_MAX = 80
 GRADE_MAX = 80
@@ -239,10 +246,16 @@ def _check_values(db: Session, personnage: models.Personnages):
         if ID and not db.get(config["model"], ID):
             raise HTTPException(status_code=404, detail=f"Cette {config['label']} n'existe pas")
 
-def _apply_skin(db: Session, personnage: models.Personnages):
+def _apply_skin(db: Session, personnage: models.Personnages, a_supprimer: list):
     personnage.skin_source = personnage.skin_source or "aucun"
     if personnage.skin_source not in SKIN_SOURCES:
-        raise HTTPException(status_code=400, detail="Skin inconnu : aucun, minecraft ou lien")
+        raise HTTPException(status_code=400, detail="Skin inconnu : aucun, minecraft, lien ou fichier")
+    if personnage.skin_source == "fichier" and not personnage.skin_fichier:
+        raise HTTPException(status_code=400, detail="Envoyez d'abord le fichier de skin")
+    if personnage.skin_source != "fichier" and personnage.skin_fichier:
+        # Autre source choisie : le fichier envoyé ne sert plus
+        a_supprimer.append(personnage.skin_fichier)
+        personnage.skin_fichier = None
     if personnage.skin_source == "lien":
         if not personnage.skin_url or not personnage.skin_url.startswith(("http://", "https://")):
             raise HTTPException(status_code=400, detail="Indiquez l'adresse du fichier de skin (https://…)")
@@ -276,10 +289,12 @@ def _apply_residence(db: Session, personnage: models.Personnages):
     if personnage.civilisation_id and not get_civilisation_by_id(db, personnage.civilisation_id):
         raise HTTPException(status_code=404, detail="Cette civilisation n'existe pas")
 
-def _save(db: Session, personnage: models.Personnages):
+def _save(db: Session, personnage: models.Personnages, a_supprimer: list | None = None):
+    # a_supprimer : fichiers remplacés, effacés du disque seulement une fois l'enregistrement validé
+    a_supprimer = a_supprimer if a_supprimer is not None else []
     try:
         _check_values(db, personnage)
-        _apply_skin(db, personnage)
+        _apply_skin(db, personnage, a_supprimer)
         _apply_residence(db, personnage)
     except HTTPException:
         # Les valeurs refusées ne doivent pas rester sur l'objet si la session sert encore
@@ -288,6 +303,8 @@ def _save(db: Session, personnage: models.Personnages):
     db.add(personnage)
     db.commit()
     db.refresh(personnage)
+    for nom in a_supprimer:
+        fichiers.supprimer(DOSSIER, nom)
     return personnage_infos(db, personnage)
 
 def create_personnage(db: Session, user: schemas.Users, body: schemas.PersonnageCreate):
@@ -304,12 +321,17 @@ def update_personnage(db: Session, user: schemas.Users, ID: int, body: schemas.P
         values.update(ville_id=None, quartier_id=None)
     if "ville_id" in values and values["ville_id"] != personnage.ville_id and "quartier_id" not in values:
         values["quartier_id"] = None
+    a_supprimer = []
+    if values.get("image_url") and personnage.image_fichier:
+        # Un lien de portrait remplace l'image envoyée
+        a_supprimer.append(personnage.image_fichier)
+        personnage.image_fichier = None
     for key, value in values.items():
         if key in ("name", "status", "skin_source") and value is None:
             continue
         setattr(personnage, key, value)
     personnage.updated_at = dt.datetime.now()
-    return _save(db, personnage)
+    return _save(db, personnage, a_supprimer)
 
 def delete_personnage(db: Session, user: schemas.Users, ID: int):
     personnage = _require_personnage(db, ID)
@@ -319,7 +341,42 @@ def delete_personnage(db: Session, user: schemas.Users, ID: int):
     crud_nettoyage.supprimer_liens_livres(db, "personnage", personnage.id)
     db.delete(personnage)
     db.commit()
+    fichiers.supprimer(DOSSIER, personnage.image_fichier)
+    fichiers.supprimer(DOSSIER, personnage.skin_fichier)
     return {"text": f"{personnage.name} a été supprimé"}
+
+def envoyer_portrait(db: Session, user: schemas.Users, ID: int, contenu: bytes):
+    # PNG, JPEG ou WebP de 5 Mo au plus ; remplace le lien et l'image précédente
+    personnage = _require_personnage(db, ID)
+    _require_rights(user, personnage)
+    ancien = personnage.image_fichier
+    personnage.image_fichier = fichiers.enregistrer(DOSSIER, contenu, libelle="Le portrait")
+    personnage.image_url = None
+    personnage.updated_at = dt.datetime.now()
+    return _save(db, personnage, [ancien] if ancien else [])
+
+def retirer_portrait(db: Session, user: schemas.Users, ID: int):
+    personnage = _require_personnage(db, ID)
+    _require_rights(user, personnage)
+    ancien = personnage.image_fichier
+    personnage.image_fichier = None
+    return _save(db, personnage, [ancien] if ancien else [])
+
+def envoyer_skin(db: Session, user: schemas.Users, ID: int, contenu: bytes):
+    # PNG aux dimensions d'un skin Minecraft ; devient la source du skin
+    personnage = _require_personnage(db, ID)
+    _require_rights(user, personnage)
+    if fichiers.format_image(contenu) == "png" and fichiers.dimensions_png(contenu) not in SKIN_DIMENSIONS:
+        largeur, hauteur = fichiers.dimensions_png(contenu) or (0, 0)
+        raise HTTPException(status_code=400, detail=f"Un skin Minecraft mesure 64 × 64 pixels (ou 64 × 32) : celui-ci fait {largeur} × {hauteur}")
+    ancien = personnage.skin_fichier
+    personnage.skin_fichier = fichiers.enregistrer(DOSSIER, contenu, formats=("png",), max_octets=SKIN_MAX_OCTETS, libelle="Le skin")
+    personnage.skin_source = "fichier"
+    personnage.updated_at = dt.datetime.now()
+    return _save(db, personnage, [ancien] if ancien else [])
+
+def chemin_fichier(nom: str) -> str:
+    return fichiers.chemin(DOSSIER, nom)
 
 #endregion
 #region Messages de journaux

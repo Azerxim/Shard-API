@@ -249,6 +249,7 @@ Shard-API/
 │   │   ├── crud_catalogue.py    # Catalogue des boutiques (articles, recherche « où acheter »)
 │   │   ├── crud_marches.py      # Jours de marché des zones commerciales, foires des villes
 │   │   ├── crud_fermes.py       # Déclaration des fermes, photo, validation
+│   │   ├── fichiers.py          # Images envoyées (./uploads) : format, taille, nom aléatoire
 │   │   ├── crud_livres.py       # Liens des livres (religion, commerce, alliance, personnage)
 │   │   └── crud_nettoyage.py    # Cohérence des suppressions et références orphelines
 │   ├── integrations/            # Services externes
@@ -350,7 +351,7 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 | Table | Contenu |
 | --- | --- |
 | `personnageespeces` / `personnageclasses` | Référentiels (`title`, `description`) |
-| `personnages` | `user_id`, `name` (80 car.), `status` (`vivant`, `mort`, `disparu`), `espece_id`, `classe_id`, `grade`, skin (`skin_source` : `aucun`, `minecraft`, `lien` ; `skin_url`, `minecraft_uuid`), dates de naissance et de décès, résidence (`civilisation_id`, `ville_id`, `quartier_id`) |
+| `personnages` | `user_id`, `name` (80 car.), `status` (`vivant`, `mort`, `disparu`), `espece_id`, `classe_id`, `grade`, portrait (`image_url` ou `image_fichier`, prioritaire), skin (`skin_source` : `aucun`, `minecraft`, `lien`, `fichier` ; `skin_url`, `skin_fichier`, `minecraft_uuid`), dates de naissance et de décès, résidence (`civilisation_id`, `ville_id`, `quartier_id`) |
 | `personnagemessages` | Message Discord d'un journal attribué à un personnage : `message_id`, `author_uid`, `excerpt` (280 car.), `message_timestamp` |
 
 ### Carte
@@ -589,7 +590,11 @@ pas), et classe les articles en stock d'abord, puis du moins cher au plus cher �
 | GET | `/habitants/{Residence}` | — | `{ id du lieu: nombre }` (popups de la carte) |
 | POST | `/create` | U | Crée un personnage |
 | PUT | `/update/{PersonnageID}` | Propriétaire ou A | Met à jour |
-| DELETE | `/delete/{PersonnageID}` | Propriétaire ou A | Supprime |
+| DELETE | `/delete/{PersonnageID}` | Propriétaire ou A | Supprime, avec ses fichiers |
+| POST | `/portrait/{PersonnageID}` | Propriétaire ou A | Multipart, champ `image` : PNG, JPEG ou WebP, 5 Mo au plus ; remplace le lien |
+| DELETE | `/portrait/{PersonnageID}` | Propriétaire ou A | Retire le portrait envoyé |
+| POST | `/skin/{PersonnageID}` | Propriétaire ou A | Multipart, champ `skin` : PNG 64 × 64 ou 64 × 32, 1 Mo au plus ; source « fichier » |
+| GET | `/fichier/{Nom}` | — | Portrait ou skin envoyé (nom aléatoire) |
 | GET | `/referentiel` | — | `{ especes, classes }` |
 | POST | `/referentiel/{Kind}` | A ou modérateur RP | Ajoute (`Kind` : `especes` ou `classes`) |
 | PUT | `/referentiel/{Kind}/{ID}` | A ou modérateur RP | Modifie |
@@ -654,7 +659,8 @@ Supprimer une zone efface ses jours et replace ses foires au centre de la ville 
 | DELETE | `/delete/{FermeID}` | Déclarant ou modérateur RP | Retire la déclaration et sa photo |
 
 Types : `cultures`, `elevage`, `mobs`, `ressources`, `automatique`, `autre`. Les photos sont rangées dans
-`./uploads/fermes` (dossier courant de l'API, comme la base ; ignoré par git). Chaque déclaration nouvelle ou rouverte
+`./uploads/fermes` (dossier courant de l'API, comme la base ; ignoré par git ; voir `services/fichiers.py`, qui range
+aussi les portraits et skins des personnages dans `./uploads/personnages`). Chaque déclaration nouvelle ou rouverte
 est signalée dans `platforms.discord.channels.fermes`. Les fermes d'un utilisateur supprimé le sont avec lui ; une
 ville supprimée est simplement détachée.
 

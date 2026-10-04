@@ -1,11 +1,11 @@
 from typing import Annotated
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlmodel import Session
 
 from ..db import schemas
-from ..services import crud, crud_personnages
+from ..services import crud, crud_personnages, fichiers
 from ..db.database import get_db
 
 # Personnages des joueurs, référentiels (espèces, classes) et messages de journaux attribués (voir crud_personnages)
@@ -52,6 +52,25 @@ def create_personnage(current_user: CurrentUser, body: schemas.PersonnageCreate,
 def update_personnage(current_user: CurrentUser, PersonnageID: int, body: schemas.PersonnageUpdate, db: Session = Depends(get_db)):
     infos = crud_personnages.update_personnage(db, current_user, PersonnageID, body)
     return _json({'code': 200, 'text': "Le personnage a été mis à jour", **infos})
+
+@router.get("/fichier/{Nom}")
+def read_fichier(Nom: str):
+    # Portrait ou skin envoyé ; nom aléatoire de 32 caractères
+    return FileResponse(crud_personnages.chemin_fichier(Nom), headers={"Cache-Control": "public, max-age=86400"})
+
+@router.post("/portrait/{PersonnageID}")
+async def envoyer_portrait(current_user: CurrentUser, PersonnageID: int, image: UploadFile = File(...), db: Session = Depends(get_db)):
+    contenu = await image.read(fichiers.MAX_OCTETS + 1)
+    return _json({'code': 200, 'text': "Le portrait est enregistré", **crud_personnages.envoyer_portrait(db, current_user, PersonnageID, contenu)})
+
+@router.delete("/portrait/{PersonnageID}")
+def retirer_portrait(current_user: CurrentUser, PersonnageID: int, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "Le portrait est retiré", **crud_personnages.retirer_portrait(db, current_user, PersonnageID)})
+
+@router.post("/skin/{PersonnageID}")
+async def envoyer_skin(current_user: CurrentUser, PersonnageID: int, skin: UploadFile = File(...), db: Session = Depends(get_db)):
+    contenu = await skin.read(crud_personnages.SKIN_MAX_OCTETS + 1)
+    return _json({'code': 200, 'text': "Le skin est enregistré", **crud_personnages.envoyer_skin(db, current_user, PersonnageID, contenu)})
 
 @router.delete("/delete/{PersonnageID}")
 def delete_personnage(current_user: CurrentUser, PersonnageID: int, db: Session = Depends(get_db)):

@@ -403,13 +403,15 @@ class Personnages(SQLModel, table=True):
     name: str
     description: str | None = Field(default=None)
     image_url: str | None = Field(default=None)
+    image_fichier: str | None = Field(default=None)  # portrait envoyé (./uploads/personnages), prioritaire sur image_url
     status: str = Field(default="vivant")  # vivant, mort ou disparu
     espece_id: int | None = Field(default=None, foreign_key="personnageespeces.id")
     classe_id: int | None = Field(default=None, foreign_key="personnageclasses.id")
     grade: str | None = Field(default=None)  # rang ou titre libre (« Capitaine de la garde »)
-    # Skin : aucun, celui du compte Minecraft lié du joueur (UUID copié) ou un lien vers un fichier de skin
+    # Skin : aucun, celui du compte Minecraft lié du joueur (UUID copié), un lien vers un fichier de skin ou un fichier envoyé
     skin_source: str | None = Field(default="aucun")
     skin_url: str | None = Field(default=None)
+    skin_fichier: str | None = Field(default=None)   # skin envoyé (PNG 64 × 64 ou 64 × 32, ./uploads/personnages)
     minecraft_uuid: str | None = Field(default=None)
     date_naissance: dt.date | None = Field(default=None)  # Dates RP
     date_deces: dt.date | None = Field(default=None)

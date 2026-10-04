@@ -6,15 +6,12 @@ Déclaration des fermes (Codex, « Fermes & ressources ») : sur le site plutôt
   ferme. Une ferme modifiée par son déclarant repasse en attente ; un modérateur peut aussi rouvrir une ferme validée
   en demandant une mise en conformité.
 - Visibilité : le déclarant et les modérateurs RP (et administrateurs) seulement — une ferme est une position de jeu.
-- Photo : PNG, JPEG ou WebP de 5 Mo au plus, rangée sous un nom aléatoire dans ./uploads/fermes (dossier courant de
-  l'API, comme la base) et servie par /api/fermes/photo/{nom}. Le nom imprévisible tient lieu de droit d'accès, car une
-  balise <img> n'envoie pas de jeton.
+- Photo : PNG, JPEG ou WebP de 5 Mo au plus, rangée dans ./uploads/fermes (voir services/fichiers.py) et servie par
+  /api/fermes/photo/{nom}.
 - Chaque nouvelle déclaration (ou déclaration corrigée) est signalée dans le salon Discord
   `platforms.discord.channels.fermes`, s'il est configuré.
 """
 import datetime as dt
-import os
-import secrets
 
 from fastapi import HTTPException
 from sqlmodel import Session, select
@@ -23,13 +20,12 @@ from ..core import utils
 from ..db import models, schemas
 from .crud import announce_discord, get_dimension_by_id, get_ville_by_id
 from .crud_conflits import _require_moderateur, _user_summary, is_moderateur
+from . import fichiers
 
 TYPES = ("cultures", "elevage", "mobs", "ressources", "automatique", "autre")
 STATUTS = ("en_attente", "validee", "a_corriger")
-PHOTO_DIR = os.path.join(".", "uploads", "fermes")
-PHOTO_MAX_OCTETS = 5 * 1024 * 1024
-# Signature des formats acceptés → extension
-PHOTO_FORMATS = ((b"\x89PNG\r\n\x1a\n", "png"), (b"\xff\xd8\xff", "jpg"), (b"RIFF", "webp"))
+PHOTO_DOSSIER = "fermes"
+PHOTO_MAX_OCTETS = fichiers.MAX_OCTETS
 
 
 #region Outils
@@ -191,35 +187,14 @@ def decider(db: Session, user: schemas.Users, ID: int, body: schemas.FermeDecisi
 #region Photo
 
 def _supprimer_photo(nom: str | None):
-    if nom:
-        try:
-            os.remove(os.path.join(PHOTO_DIR, os.path.basename(nom)))
-        except OSError:
-            pass
+    fichiers.supprimer(PHOTO_DOSSIER, nom)
 
 def chemin_photo(nom: str) -> str:
-    # Nom produit par enregistrer_photo uniquement (pas de chemin, pas de « .. »)
-    base = os.path.basename(nom)
-    chemin = os.path.join(PHOTO_DIR, base)
-    if base != nom or not os.path.isfile(chemin):
-        raise HTTPException(status_code=404, detail="Cette photo n'existe pas")
-    return chemin
+    return fichiers.chemin(PHOTO_DOSSIER, nom)
 
 def enregistrer_photo(db: Session, user: schemas.Users, ID: int, contenu: bytes):
     ferme = _require_ferme(db, user, ID)
-    if not contenu:
-        raise HTTPException(status_code=400, detail="Le fichier est vide")
-    if len(contenu) > PHOTO_MAX_OCTETS:
-        raise HTTPException(status_code=413, detail="La photo dépasse 5 Mo")
-    extension = next((ext for signature, ext in PHOTO_FORMATS if contenu.startswith(signature)), None)
-    if extension == "webp" and contenu[8:12] != b"WEBP":
-        extension = None
-    if not extension:
-        raise HTTPException(status_code=400, detail="La photo doit être une image PNG, JPEG ou WebP")
-    os.makedirs(PHOTO_DIR, exist_ok=True)
-    nom = f"{secrets.token_hex(16)}.{extension}"
-    with open(os.path.join(PHOTO_DIR, nom), "wb") as fichier:
-        fichier.write(contenu)
+    nom = fichiers.enregistrer(PHOTO_DOSSIER, contenu, libelle="La photo")
     _supprimer_photo(ferme.photo)
     ferme.photo = nom
     _apres_modification(db, user, ferme)
