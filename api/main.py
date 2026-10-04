@@ -27,6 +27,9 @@ from .routes.population import router as population_router
 from .routes.catalogue import router as catalogue_router
 from .routes.marches import router as marches_router
 from .routes.fermes import router as fermes_router
+from .routes.calendrier import router as calendrier_router
+from .routes.chroniques import router as chroniques_router
+from .routes.lignees import router as lignees_router
 
 
 ################# App Initialization #################
@@ -136,6 +139,12 @@ app.include_router(catalogue_router)
 app.include_router(marches_router)
 
 app.include_router(fermes_router)
+
+app.include_router(calendrier_router)
+
+app.include_router(chroniques_router)
+
+app.include_router(lignees_router)
 
 ################# 404 Handler #################
 

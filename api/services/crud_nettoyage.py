@@ -10,6 +10,8 @@ Ce module ne dépend que des modèles (crud, crud_conflits et crud_personnages p
 - Ville / quartier : religions, magasins, résidences des personnages.
 - Magasin : articles de son catalogue (supprimés avec lui par crud ; rattrapés ici au démarrage).
 - Zone commerciale, ville, utilisateur : jours de marché, foires et fermes (crud_marches, crud_fermes ; rattrapés ici).
+- Ville, personnage, utilisateur : événements du calendrier et inscriptions (l'organisateur disparu garde son nom).
+- Personnage : liens de parenté, tête de sa maison ; civilisation : rattachement des maisons nobles.
 - Journal : messages signés par des personnages.
 - Livre : ses chapitres (supprimés avec lui par crud ; rattrapés ici au démarrage).
 - Livre, civilisation, religion, commerce, alliance, personnage : liens des livres (table livresliens, voir crud_livres).
@@ -52,9 +54,22 @@ def supprimer_personnages_utilisateur(db: Session, userID: int):
         for link in _all(db, models.PersonnageMessages, models.PersonnageMessages.personnage_id == personnage.id):
             db.delete(link)
         supprimer_liens_livres(db, "personnage", personnage.id)
+        detacher_personnage(db, personnage.id)
         fichiers.supprimer("personnages", personnage.image_fichier)
         fichiers.supprimer("personnages", personnage.skin_fichier)
         db.delete(personnage)
+
+def detacher_personnage(db: Session, personnageID: int):
+    # Inscriptions aux événements : le joueur reste inscrit, sans personnage
+    for inscription in _all(db, models.EvenementInscriptions, models.EvenementInscriptions.personnage_id == personnageID):
+        inscription.personnage_id = None
+        db.add(inscription)
+    # Lignées : ses liens de parenté disparaissent ; sa maison perd son chef (un gestionnaire en désignera un autre)
+    for lien in _all(db, models.PersonnageLiens, (models.PersonnageLiens.source_id == personnageID) | (models.PersonnageLiens.cible_id == personnageID)):
+        db.delete(lien)
+    for maison in _all(db, models.Maisons, models.Maisons.chef_id == personnageID):
+        maison.chef_id = None
+        db.add(maison)
 
 def supprimer_liens_livres(db: Session, entity_type: str, entity_id: int):
     # Liens des livres vers l'entité supprimée ; entity_type "livre" : tous les liens du livre
@@ -163,6 +178,10 @@ def detacher_ville(db: Session, villeID: int):
     for magasin in _all(db, models.CommerceMagasins, models.CommerceMagasins.ville_id == villeID):
         magasin.ville_id = None
         db.add(magasin)
+    # Les événements gardent leur lieu en texte
+    for evenement in _all(db, models.Evenements, models.Evenements.ville_id == villeID):
+        evenement.ville_id = None
+        db.add(evenement)
     vider_residence(db, "ville", villeID)
 
 def detacher_religion(db: Session, religionID: int, title: str | None):
@@ -178,6 +197,9 @@ def detacher_civilisation(db: Session, civilisationID: int, title: str | None):
         dirigee.dirigeante_civilisation_id = 0
         db.add(dirigee)
     supprimer_liens_livres(db, "civilisation", civilisationID)
+    for maison in _all(db, models.Maisons, models.Maisons.civilisation_id == civilisationID):
+        maison.civilisation_id = None
+        db.add(maison)
 
 #endregion
 #region Utilisateurs
@@ -207,12 +229,16 @@ def detacher_utilisateur(db: Session, user: models.Users):
             db.delete(row)
     for session in _all(db, models.ActiveSession, models.ActiveSession.username == user.username):
         db.delete(session)
+    for inscription in _all(db, models.EvenementInscriptions, models.EvenementInscriptions.user_id == user.id):
+        db.delete(inscription)
     supprimer_personnages_utilisateur(db, user.id)
 
     # Écrits et archives conservés, sans auteur
     for model, attribute in (
         (models.Journaux, "user_id"), (models.Livres, "user_id"), (models.AllianceInvitations, "created_by"),
         (models.Guerres, "declared_by"), (models.Guerres, "moderator_id"), (models.PersonnageMessages, "linked_by"),
+        (models.Evenements, "created_by"), (models.ChroniquesFaits, "created_by"),
+        (models.Maisons, "created_by"), (models.PersonnageLiens, "demande_par"),
     ):
         for row in _all(db, model, getattr(model, attribute) == user.id):
             setattr(row, attribute, None)
@@ -223,7 +249,7 @@ def detacher_utilisateur(db: Session, user: models.Users):
 
 def nettoyer_references_orphelines(db: Session):
     # Rattrape les suppressions faites avant ce module ; renvoie le nombre de corrections par catégorie
-    counts = {"personnages": 0, "messages": 0, "alliances": 0, "belligerants": 0, "articles": 0, "marches": 0, "fermes": 0, "livres": 0}
+    counts = {"personnages": 0, "messages": 0, "alliances": 0, "belligerants": 0, "articles": 0, "marches": 0, "fermes": 0, "livres": 0, "evenements": 0, "lignees": 0}
     exists = lambda model, ID: ID is not None and db.get(model, ID) is not None
 
     for personnage in _all(db, models.Personnages):
@@ -278,6 +304,36 @@ def nettoyer_references_orphelines(db: Session):
             ferme.ville_id = None
             db.add(ferme)
             counts["fermes"] += 1
+
+    for evenement in _all(db, models.Evenements):
+        if evenement.ville_id and not exists(models.Villes, evenement.ville_id):
+            evenement.ville_id = None
+            db.add(evenement)
+            counts["evenements"] += 1
+    for inscription in _all(db, models.EvenementInscriptions):
+        if not exists(models.Evenements, inscription.evenement_id) or not exists(models.Users, inscription.user_id):
+            db.delete(inscription)
+            counts["evenements"] += 1
+        elif inscription.personnage_id and not exists(models.Personnages, inscription.personnage_id):
+            inscription.personnage_id = None
+            db.add(inscription)
+            counts["evenements"] += 1
+
+    for lien in _all(db, models.PersonnageLiens):
+        if not exists(models.Personnages, lien.source_id) or not exists(models.Personnages, lien.cible_id):
+            db.delete(lien)
+            counts["lignees"] += 1
+    for maison in _all(db, models.Maisons):
+        if (maison.chef_id and not exists(models.Personnages, maison.chef_id)) or (maison.civilisation_id and not exists(models.Civilisations, maison.civilisation_id)):
+            maison.chef_id = maison.chef_id if exists(models.Personnages, maison.chef_id) else None
+            maison.civilisation_id = maison.civilisation_id if exists(models.Civilisations, maison.civilisation_id) else None
+            db.add(maison)
+            counts["lignees"] += 1
+    for personnage in _all(db, models.Personnages, models.Personnages.maison_id.is_not(None)):
+        if not exists(models.Maisons, personnage.maison_id):
+            personnage.maison_id = None
+            db.add(personnage)
+            counts["lignees"] += 1
 
     civilisations = {m.civilisation_id for m in _all(db, models.AllianceMembres)} | {i.civilisation_id for i in _all(db, models.AllianceInvitations)}
     for civilisationID in civilisations:

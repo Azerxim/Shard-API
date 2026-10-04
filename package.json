@@ -1,6 +1,6 @@
 {
   "name": "shard-api",
-  "version": "2.0.17",
+  "version": "2.0.18",
   "private": true,
   "description": "Scripts npm pour piloter l'API Python",
   "scripts": {

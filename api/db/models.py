@@ -419,8 +419,38 @@ class Personnages(SQLModel, table=True):
     civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
     ville_id: int | None = Field(default=None, foreign_key="villes.id")
     quartier_id: int | None = Field(default=None, foreign_key="quartiers.id")
+    maison_id: int | None = Field(default=None, foreign_key="maisons.id")  # maison noble (voir services/crud_lignees.py)
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
     updated_at: dt.datetime | None = Field(default=None)
+
+class Maisons(SQLModel, table=True):
+    # Maison noble : une famille de personnages, son chef, sa devise et son blason (voir services/crud_lignees.py)
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    devise: str | None = Field(default=None)
+    description: str | None = Field(default=None)
+    couleur: str | None = Field(default=None)   # couleur du blason (#rrggbb)
+    icon: str | None = Field(default=None)      # meuble du blason (icône FontAwesome)
+    civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
+    # Personnage à la tête de la maison (pas de clé étrangère : personnages.maison_id référence déjà cette table)
+    chef_id: int | None = Field(default=None)
+    date_fondation: dt.date | None = Field(default=None)  # date RP
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class PersonnageLiens(SQLModel, table=True):
+    # Lien de parenté : parent (source est parent de cible), conjoint (dans les deux sens), heritier (cible hérite de
+    # source, au rang indiqué). Un lien vers le personnage d'un autre joueur attend son accord.
+    id: int | None = Field(default=None, primary_key=True)
+    type: str
+    source_id: int = Field(foreign_key="personnages.id", index=True)
+    cible_id: int = Field(foreign_key="personnages.id", index=True)
+    rang: int | None = Field(default=None)      # héritier : 1 = premier dans l'ordre de succession
+    date_rp: dt.date | None = Field(default=None)  # mariage, désignation… (la naissance est celle de l'enfant)
+    status: str = Field(default="accepte")      # en_attente ou accepte
+    en_attente_de: int | None = Field(default=None, foreign_key="personnages.id")  # personnage dont le joueur doit accepter
+    demande_par: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
 class PersonnageMessages(SQLModel, table=True):
     # Message Discord d'un journal attribué à un personnage (un personnage par message), par l'auteur Discord du message
@@ -476,6 +506,49 @@ class Foires(SQLModel, table=True):
     dimension_id: int | None = Field(default=None, foreign_key="dimensions.id")
     x: int | None = Field(default=None)
     z: int | None = Field(default=None)
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+############### Calendrier et chroniques ####################
+
+class Evenements(SQLModel, table=True):
+    # Événement RP daté en heure réelle, avec inscriptions et événement Discord synchronisé (voir services/crud_calendrier.py)
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+    type: str = Field(default="autre")             # clé de crud_calendrier.TYPES
+    date_debut: dt.datetime = Field(index=True)
+    date_fin: dt.datetime | None = Field(default=None)
+    lieu: str | None = Field(default=None)         # texte libre : « place du marché », « plaine de Narva »
+    ville_id: int | None = Field(default=None, foreign_key="villes.id")
+    # Au nom de qui : le joueur lui-même (joueur), ou une civilisation, une religion, un commerce, une alliance qu'il dirige
+    organisateur_type: str = Field(default="joueur")
+    organisateur_id: int | None = Field(default=None)
+    organisateur_title: str | None = Field(default=None)  # nom conservé si l'entité est supprimée
+    guerre_id: int | None = Field(default=None, foreign_key="guerres.id")  # bataille d'une guerre en cours
+    places: int | None = Field(default=None)       # nombre maximal d'inscrits ; sans limite si vide
+    status: str = Field(default="prevu")           # prevu ou annule
+    motif_annulation: str | None = Field(default=None)
+    discord_event_id: str | None = Field(default=None)
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class EvenementInscriptions(SQLModel, table=True):
+    # Un joueur inscrit à un événement, éventuellement sous les traits d'un de ses personnages
+    id: int | None = Field(default=None, primary_key=True)
+    evenement_id: int = Field(foreign_key="evenements.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    personnage_id: int | None = Field(default=None, foreign_key="personnages.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class ChroniquesFaits(SQLModel, table=True):
+    # Fait marquant inscrit à la main par un modérateur RP dans les chroniques (le reste est déduit des données)
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+    date: dt.date                                  # jour réel de l'inscription (départage deux faits de même date RP)
+    date_rp: dt.date | None = Field(default=None)  # date dans le monde, qui place le fait dans la frise
     created_by: int | None = Field(default=None, foreign_key="users.id")
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 

@@ -631,3 +631,100 @@ async def update_channel_description(channel_id: str, new_description: str) -> b
                     pass
     
     return success
+
+async def _guild_action(action):
+    """
+    Connecte un bot le temps d'exécuter action(guild) sur le serveur configuré, puis le déconnecte.
+
+    Returns:
+        Le résultat de action(guild)
+    Raises:
+        ValueError: Configuration incomplète, bot injoignable ou échec de l'action
+    """
+    token = utils.PLATFORMS.get('discord', {}).get('token')
+    guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
+    if not token or not guild_id:
+        raise ValueError("Configuration Discord incomplète")
+
+    bot = commands.Bot(command_prefix="!", intents=discord.Intents.default())
+    result = {"value": None, "error": None}
+    bot_ready = asyncio.Event()
+
+    @bot.event
+    async def on_ready():
+        try:
+            guild = bot.get_guild(guild_id)
+            if not guild:
+                raise ValueError(f"Serveur Discord avec l'ID {guild_id} non trouvé")
+            result["value"] = await action(guild)
+        except Exception as e:
+            result["error"] = e
+        finally:
+            bot_ready.set()
+
+    bot_task = asyncio.create_task(bot.start(token))
+    try:
+        try:
+            await asyncio.wait_for(bot_ready.wait(), timeout=10.0)
+        except asyncio.TimeoutError:
+            raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
+    finally:
+        await bot.close()
+        if not bot_task.done():
+            try:
+                await asyncio.wait_for(bot_task, timeout=5.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                bot_task.cancel()
+                try:
+                    await bot_task
+                except asyncio.CancelledError:
+                    pass
+
+    if result["error"]:
+        raise ValueError(f"Action Discord impossible : {result['error']}")
+    return result["value"]
+
+async def _scheduled_event(guild, event_id: str):
+    return guild.get_scheduled_event(int(event_id)) or await guild.fetch_scheduled_event(int(event_id))
+
+async def create_scheduled_event(name: str, start_time, end_time, location: str, description: str = "") -> str:
+    """
+    Crée un événement programmé du serveur (calendrier RP), de type « lieu externe ».
+    Discord exige pour ce type une fin et un lieu ; les dates doivent porter un fuseau horaire.
+
+    Returns:
+        str: L'ID de l'événement Discord
+    """
+    async def action(guild):
+        event = await guild.create_scheduled_event(
+            name=name[:100], start_time=start_time, end_time=end_time,
+            entity_type=discord.EntityType.external, privacy_level=discord.PrivacyLevel.guild_only,
+            location=location[:100], description=(description or "")[:1000],
+        )
+        return str(event.id)
+    return await _guild_action(action)
+
+async def edit_scheduled_event(event_id: str, name: str, start_time, end_time, location: str, description: str = "") -> bool:
+    """Met à jour un événement programmé ; False s'il n'existe plus sur Discord."""
+    async def action(guild):
+        try:
+            event = await _scheduled_event(guild, event_id)
+        except discord.NotFound:
+            return False
+        await event.edit(
+            name=name[:100], start_time=start_time, end_time=end_time,
+            entity_type=discord.EntityType.external, location=location[:100], description=(description or "")[:1000],
+        )
+        return True
+    return await _guild_action(action)
+
+async def delete_scheduled_event(event_id: str) -> bool:
+    """Supprime un événement programmé (annulation) ; False s'il n'existait plus."""
+    async def action(guild):
+        try:
+            event = await _scheduled_event(guild, event_id)
+        except discord.NotFound:
+            return False
+        await event.delete()
+        return True
+    return await _guild_action(action)

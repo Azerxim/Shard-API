@@ -166,6 +166,7 @@ def personnage_infos(db: Session, personnage: models.Personnages):
     quartier = get_quartier_by_id(db, personnage.quartier_id) if personnage.quartier_id else None
     espece = db.get(models.PersonnageEspeces, personnage.espece_id) if personnage.espece_id else None
     classe = db.get(models.PersonnageClasses, personnage.classe_id) if personnage.classe_id else None
+    maison = db.get(models.Maisons, personnage.maison_id) if personnage.maison_id else None
     return {
         "personnage": personnage.model_dump(),
         "joueur": {"id": user.id, "username": user.username, "full_name": user.full_name} if user else None,
@@ -174,6 +175,7 @@ def personnage_infos(db: Session, personnage: models.Personnages):
         "quartier": {"id": quartier.id, "title": quartier.title, "ville_id": quartier.ville_id} if quartier else None,
         "espece": {"id": espece.id, "title": espece.title} if espece else None,
         "classe": {"id": classe.id, "title": classe.title} if classe else None,
+        "maison": {"id": maison.id, "title": maison.title, "couleur": maison.couleur, "icon": maison.icon} if maison else None,
         "messages_count": len(_links_of_personnage(db, personnage.id)),
     }
 
@@ -339,6 +341,7 @@ def delete_personnage(db: Session, user: schemas.Users, ID: int):
     for link in _links_of_personnage(db, personnage.id):
         db.delete(link)
     crud_nettoyage.supprimer_liens_livres(db, "personnage", personnage.id)
+    crud_nettoyage.detacher_personnage(db, personnage.id)
     db.delete(personnage)
     db.commit()
     fichiers.supprimer(DOSSIER, personnage.image_fichier)

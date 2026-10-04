@@ -557,6 +557,76 @@ class FoireUpdate(EmptyStringAsNone):
     horaires: str | None = None
     zone_id: int | None = None
 
+############### Lignées et maisons ####################
+
+class PersonnageLienCreate(EmptyStringAsNone):
+    type: str                                     # parent, conjoint ou heritier
+    source_id: int                                # parent : le parent ; héritier : celui dont on hérite
+    cible_id: int                                 # parent : l'enfant ; héritier : l'héritier
+    rang: int | None = None
+    date_rp: datetime.date | None = None
+
+class MaisonCreate(EmptyStringAsNone):
+    title: str
+    chef_id: int                                  # un de ses personnages, qui entre dans la maison
+    devise: str | None = None
+    description: str | None = None
+    couleur: str | None = None
+    icon: str | None = None
+    civilisation_id: int | None = None
+    date_fondation: datetime.date | None = None
+
+class MaisonUpdate(EmptyStringAsNone):
+    title: str | None = None
+    chef_id: int | None = None                    # un membre de la maison
+    devise: str | None = None
+    description: str | None = None
+    couleur: str | None = None
+    icon: str | None = None
+    civilisation_id: int | None = None
+    date_fondation: datetime.date | None = None
+
+class MaisonMembre(EmptyStringAsNone):
+    personnage_id: int
+
+############### Calendrier et chroniques ####################
+
+class EvenementCreate(EmptyStringAsNone):
+    title: str
+    description: str | None = None
+    type: str | None = None                       # voir crud_calendrier.TYPES ; « autre » par défaut
+    date_debut: datetime.datetime                 # heure réelle du serveur
+    date_fin: datetime.datetime | None = None
+    lieu: str | None = None
+    ville_id: int | None = None
+    organisateur_type: str | None = None          # joueur (défaut), civilisation, religion, commerce ou alliance
+    organisateur_id: int | None = None
+    guerre_id: int | None = None
+    places: int | None = None
+
+class EvenementUpdate(EmptyStringAsNone):
+    # L'organisateur ne change pas ; les autres champs envoyés remplacent les anciens
+    title: str | None = None
+    description: str | None = None
+    type: str | None = None
+    date_debut: datetime.datetime | None = None
+    date_fin: datetime.datetime | None = None
+    lieu: str | None = None
+    ville_id: int | None = None
+    guerre_id: int | None = None
+    places: int | None = None
+
+class EvenementAnnulation(EmptyStringAsNone):
+    motif: str | None = None
+
+class EvenementInscription(EmptyStringAsNone):
+    personnage_id: int | None = None              # sous les traits d'un de ses personnages
+
+class ChroniqueFait(EmptyStringAsNone):
+    title: str
+    description: str | None = None
+    date_rp: datetime.date                        # date dans le monde : place le fait dans la frise
+
 ############### Fermes ####################
 
 class FermeCreate(EmptyStringAsNone):

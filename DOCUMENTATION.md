@@ -103,6 +103,9 @@ Aucun de ces deux fichiers n'est versionné : ils contiennent des secrets.
 | `platforms.discord.site_url` | URL du site, pour les liens des annonces |
 | `platforms.discord.channels.guerres` | Salon des annonces de guerre |
 | `platforms.discord.channels.actions` | Salon des révélations d'actions secrètes (facultatif) |
+| `platforms.discord.channels.marches` / `.fermes` | Salons des foires et des déclarations de fermes (facultatifs) |
+| `platforms.discord.channels.lignees` | Salon des fondations de maisons nobles et des mariages (facultatif) |
+| `platforms.discord.channels.evenements` | Salon des annonces du calendrier (facultatif) ; les événements programmés du serveur demandent au bot la permission « Gérer les événements » |
 | `platforms.discord.categories.journaux` | Catégorie où `crud.create_journal` crée les salons de journaux (hors catégorie si absente) |
 | `platforms.monde.key` | Clé partagée avec le générateur de cartes (`MAP_STATS_API_KEY` côté Maps) |
 
@@ -123,6 +126,7 @@ chez le fournisseur (Discord Developer Portal, Azure).
 | `SHARD_PLAYERDB_URL` | Autre service que playerdb.co pour les pseudos |
 | `SHARD_FAKE_JOURNAL_MESSAGES` | Lit les messages des journaux dans ce fichier JSON au lieu de Discord |
 | `SHARD_FAKE_DISCORD_ANNOUNCEMENTS` | Écrit les annonces dans ce fichier (une ligne JSON par annonce) au lieu de Discord |
+| `SHARD_FAKE_DISCORD_EVENTS` | Écrit les opérations sur les événements programmés Discord (`create`, `edit`, `delete`) dans ce fichier |
 
 ## Démarrage de l'API
 
@@ -249,12 +253,15 @@ Shard-API/
 │   │   ├── crud_catalogue.py    # Catalogue des boutiques (articles, recherche « où acheter »)
 │   │   ├── crud_marches.py      # Jours de marché des zones commerciales, foires des villes
 │   │   ├── crud_fermes.py       # Déclaration des fermes, photo, validation
+│   │   ├── crud_calendrier.py   # Calendrier des événements RP, inscriptions, événements Discord programmés
+│   │   ├── crud_chroniques.py   # Chroniques : frise déduite des données, faits marquants
+│   │   ├── crud_lignees.py      # Liens de parenté, maisons nobles et leur arbre
 │   │   ├── fichiers.py          # Images envoyées (./uploads) : format, taille, nom aléatoire
 │   │   ├── crud_livres.py       # Liens des livres (religion, commerce, alliance, personnage)
 │   │   └── crud_nettoyage.py    # Cohérence des suppressions et références orphelines
 │   ├── integrations/            # Services externes
 │   │   ├── oauth.py             # Discord et Microsoft (liaison et connexion)
-│   │   └── discord_handler.py   # Bot Discord (salons, messages)
+│   │   └── discord_handler.py   # Bot Discord (salons, messages, événements programmés)
 │   └── routes/                  # Routeurs FastAPI
 │       ├── pages.py             # /, /documentation, /docs, /redoc, /api/version/, robots, sitemap, favicon
 │       ├── users.py             # /api/users
@@ -265,6 +272,9 @@ Shard-API/
 │       ├── catalogue.py         # /api/catalogue
 │       ├── marches.py           # /api/marches
 │       ├── fermes.py            # /api/fermes
+│       ├── calendrier.py        # /api/calendrier
+│       ├── chroniques.py        # /api/chroniques
+│       ├── lignees.py           # /api/lignees
 │       ├── alliances.py         # /api/alliances
 │       ├── guerres.py           # /api/guerres
 │       ├── personnages.py       # /api/personnages
@@ -346,12 +356,22 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 | `guerrebelligerants` | `camp` (`attaquant`, `defenseur`), `entity_type` (`civilisation`, `religion`), `entity_id`, `entity_title` (nom archivé), `is_leader`, `status` (`appele`, `engage`), `alliance_id` |
 | `guerreevenements` | Chronologie : `type` (`declaration`, `validation`, `refus`, `ralliement`, `retrait`, `fin`, `bataille`, `siege`, `traite`, `autre`), `camp`, `date_rp`, `is_auto` |
 
+### Calendrier et chroniques
+
+| Table | Contenu |
+| --- | --- |
+| `evenements` | Événement RP : `title`, `type` (`bataille`, `fete`, `couronnement`, `ceremonie`, `tournoi`, `conseil`, `autre`), `date_debut`, `date_fin` (heures réelles), `lieu`, `ville_id`, organisateur (`organisateur_type` : `joueur`, `civilisation`, `religion`, `commerce`, `alliance` ; `organisateur_id`, `organisateur_title` archivé), `guerre_id`, `places`, `status` (`prevu`, `annule`), `motif_annulation`, `discord_event_id`, `created_by` |
+| `evenementinscriptions` | Inscription d'un joueur (`user_id`) à un événement, avec `personnage_id` facultatif |
+| `chroniquesfaits` | Fait marquant inscrit par un modérateur RP : `title`, `description`, `date_rp` (place le fait dans la frise), `date` (jour réel de l'inscription) |
+
 ### Personnages
 
 | Table | Contenu |
 | --- | --- |
 | `personnageespeces` / `personnageclasses` | Référentiels (`title`, `description`) |
-| `personnages` | `user_id`, `name` (80 car.), `status` (`vivant`, `mort`, `disparu`), `espece_id`, `classe_id`, `grade`, portrait (`image_url` ou `image_fichier`, prioritaire), skin (`skin_source` : `aucun`, `minecraft`, `lien`, `fichier` ; `skin_url`, `skin_fichier`, `minecraft_uuid`), dates de naissance et de décès, résidence (`civilisation_id`, `ville_id`, `quartier_id`) |
+| `personnages` | `user_id`, `name` (80 car.), `status` (`vivant`, `mort`, `disparu`), `espece_id`, `classe_id`, `grade`, portrait (`image_url` ou `image_fichier`, prioritaire), skin (`skin_source` : `aucun`, `minecraft`, `lien`, `fichier` ; `skin_url`, `skin_fichier`, `minecraft_uuid`), dates de naissance et de décès, résidence (`civilisation_id`, `ville_id`, `quartier_id`), `maison_id` |
+| `maisons` | Maison noble : `title`, `devise`, `description`, blason (`couleur`, `icon`), `civilisation_id`, `chef_id` (personnage, sans clé étrangère : `personnages.maison_id` référence déjà la table), `date_fondation` (RP), `created_by` |
+| `personnageliens` | Lien de parenté : `type` (`parent` : source parent de cible ; `conjoint` ; `heritier` : cible hérite de source), `source_id`, `cible_id`, `rang` (héritier), `date_rp`, `status` (`en_attente`, `accepte`), `en_attente_de` (personnage dont le joueur doit accepter), `demande_par` |
 | `personnagemessages` | Message Discord d'un journal attribué à un personnage : `message_id`, `author_uid`, `excerpt` (280 car.), `message_timestamp` |
 
 ### Carte
@@ -664,6 +684,44 @@ aussi les portraits et skins des personnages dans `./uploads/personnages`). Chaq
 est signalée dans `platforms.discord.channels.fermes`. Les fermes d'un utilisateur supprimé le sont avec lui ; une
 ville supprimée est simplement détachée.
 
+### Calendrier — `/api/calendrier`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/list?debut=&fin=` | — | `{ evenements, foires }` qui touchent la période (400 jours au plus ; par défaut du mois passé à l'an prochain), annulés compris |
+| GET | `/read/{EvenementID}` | — | Un événement, avec ses inscrits |
+| POST | `/create` | Connecté ; F/A de l'organisateur | `{ title, type?, date_debut, date_fin?, lieu?, ville_id?, organisateur_type?, organisateur_id?, guerre_id?, places?, description? }` |
+| PUT | `/update/{EvenementID}` | Créateur, F/A de l'organisateur, modérateur RP | Mêmes champs, sauf l'organisateur ; un changement de date est annoncé |
+| POST | `/{EvenementID}/annuler` | Idem | `{ motif? }` : annonce l'annulation et supprime l'événement Discord |
+| POST | `/{EvenementID}/inscription` | Connecté | `{ personnage_id? }` : s'inscrire, ou changer de personnage |
+| DELETE | `/{EvenementID}/inscription` | Connecté | Se désinscrire |
+
+### Lignées — `/api/lignees`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/personnage/{PersonnageID}` | — | `{ maison, parents, enfants, conjoints, fratrie, heritiers, heritier_de }` (liens acceptés) |
+| GET | `/demandes` | Connecté | `{ recues, envoyees }` : demandes en attente qui concernent ses personnages |
+| POST | `/liens` | Joueur de l'un des deux personnages (de la source pour un héritier) ; modérateur RP | `{ type, source_id, cible_id, rang?, date_rp? }` ; en attente si l'autre personnage est à un autre joueur |
+| POST | `/liens/{LienID}/accepter` / `refuser` | Joueur du personnage attendu, modérateur RP | Refuser supprime la demande |
+| DELETE | `/liens/{LienID}` | Joueur de l'un des deux personnages, demandeur, modérateur RP | Retire le lien |
+| GET | `/maisons` | — | Maisons, avec chef, civilisation et nombre de membres |
+| GET | `/maisons/{MaisonID}` | — | `{ maison, membres, allies, liens }` : de quoi dessiner l'arbre |
+| POST | `/maisons` | Connecté | `{ title, chef_id (un de ses personnages), devise?, description?, couleur?, icon?, civilisation_id?, date_fondation? }` |
+| PUT | `/maisons/{MaisonID}` | Créateur, joueur du chef, modérateur RP | Mêmes champs ; le chef est un membre |
+| DELETE | `/maisons/{MaisonID}` | Idem | Dissout la maison (ses membres restent, sans maison) |
+| POST | `/maisons/{MaisonID}/membres` | Joueur du personnage | `{ personnage_id }` : il y entre (et quitte son ancienne maison, sauf s'il en est le chef) |
+| DELETE | `/maisons/{MaisonID}/membres/{PersonnageID}` | Joueur du personnage, gestionnaires | Sortie ou exclusion ; pas le chef |
+
+### Chroniques — `/api/chroniques`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/list` | — | Frise par date RP, la plus récente d'abord (sans date RP, une entrée n'y figure pas) : `[{ id, categorie, date, date_rp, title, description, lien, fait_id? }]` |
+| POST | `/faits` | Modérateur RP | `{ title, date_rp, description? }` |
+| PUT | `/faits/{FaitID}` | Modérateur RP | Mêmes champs |
+| DELETE | `/faits/{FaitID}` | Modérateur RP | Retire le fait |
+
 ### Population — `/api/population`
 
 | Méthode | Chemin | Droits | Description |
@@ -757,6 +815,45 @@ administrateur seulement) + somme des écarts acceptés, jamais négative. Les a
 - Révélation par l'auteur, par un modérateur RP (motif obligatoire, publié) ou à la date `reveal_at` fixée au dépôt
   (appliquée à la première lecture qui suit, sans tâche planifiée). Annonce Discord dans `platforms.discord.channels.actions`.
 
+### Calendrier
+
+- Heures réelles du serveur (le serveur se joue en temps réel). Un événement s'annonce avant de commencer, dure au plus
+  31 jours, et ne se modifie ni ne s'annule une fois terminé.
+- Organisateur : le joueur lui-même, ou une civilisation, une religion, un commerce (Fondateur ou Admin, y compris du
+  commerce dirigeant) ou une alliance (Fondateur ou Admin de la civilisation chef de file). Il ne change plus ensuite.
+- Une bataille se rattache à une guerre **en cours** par un chef de camp ou un modérateur RP (`crud_conflits.can_raconter`).
+- Gèrent l'événement : son créateur, les dirigeants de l'organisateur, les modérateurs RP.
+- Inscriptions jusqu'au début, dans la limite des places, sous les traits d'un de ses personnages (pas d'un mort) ou
+  sans personnage ; on ne réduit pas les places sous le nombre d'inscrits.
+- Discord : annonce dans `platforms.discord.channels.evenements` (création, changement de date, annulation), avec le
+  lien `…/calendrier?mois=AAAA-MM#evenement-{id}` ; reproduction en événement programmé du serveur (type « lieu
+  externe », lieu = lieu + ville, deux heures sans heure de fin), créé, mis à jour tant qu'il n'a pas commencé, supprimé à
+  l'annulation. En tâche de fond, une synchronisation à la fois ; un échec n'empêche rien sur le site.
+- Les foires des villes publiques figurent au calendrier (lecture seule, voir Marchés et foires).
+
+### Lignées
+
+- Liens `parent`, `conjoint`, `heritier`. Au plus deux parents ; pas de boucle (nul n'est son propre ancêtre, demandes
+  en attente comprises) ; deux personnages ne sont liés qu'une fois (pas de mariage entre parent et enfant).
+- Entre deux personnages du même joueur, ou par un administrateur ou modérateur RP : lien établi aussitôt. Vers le
+  personnage d'un autre joueur : demande, que ce joueur accepte ou refuse. Seul le joueur de la source désigne ses héritiers.
+- Maisons : chaque joueur y fait entrer ses propres personnages (comme la résidence) ; les gestionnaires (créateur, joueur
+  du chef, modérateurs RP) modifient la maison, en excluent des membres, la dissolvent. Le chef ne quitte pas sa maison
+  tant qu'un autre n'est pas désigné.
+- Arbre : membres, liens parent et conjoint acceptés entre eux, conjoints venus d'autres maisons (`allies`).
+- Annonces Discord dans `platforms.discord.channels.lignees` : fondation d'une maison (chef, date RP, devise) et
+  mariage, dès que le lien est établi (aussitôt, ou à l'accord de l'autre joueur), avec le lien de la page.
+
+### Chroniques
+
+- Calculées à chaque lecture, sans table : fondations (civilisations, villes de civilisations publiques, religions,
+  commerces), alliances conclues, début et fin des guerres validées et faits racontés de leur chronologie, et lignées
+  (fondation des maisons, naissances et morts de leurs membres, mariages datés). Les modérateurs RP ajoutent des faits
+  marquants (`chroniquesfaits`).
+- Seulement ce qui est public et daté dans le monde. Classées par date RP (fondation, début et fin de guerre, fait
+  raconté, fait marquant), la plus récente d'abord. Sans date RP, une entrée n'y figure pas : les révélations d'actions
+  secrètes, les adhésions et les événements du calendrier, datés en heure réelle seulement, n'y entrent donc pas.
+
 ### Personnages
 
 - Nombre illimité, sans validation. Seuls le joueur et les administrateurs les modifient.
@@ -790,7 +887,13 @@ Implémentée dans `services/crud_nettoyage.py`, et rejouée au démarrage pour 
 | Religion, commerce, alliance, personnage | Liens des livres supprimés |
 | Zone commerciale | Jours de marché supprimés ; ses foires replacées au centre de la ville |
 | Ville (en plus) | Foires supprimées ; fermes détachées |
-| Utilisateur (en plus) | Fermes et photos supprimées |
+| Utilisateur (en plus) | Fermes et photos supprimées ; inscriptions aux événements supprimées ; événements et faits marquants conservés sans auteur |
+| Ville (calendrier) | Événements détachés (leur lieu en texte reste) |
+| Personnage (calendrier) | Inscriptions conservées, sans personnage |
+| Personnage (lignées) | Liens de parenté supprimés ; la maison qu'il dirigeait n'a plus de chef |
+| Maison | Ses membres restent, sans maison |
+| Civilisation (lignées) | Maisons détachées de la civilisation |
+| Organisateur d'un événement | L'événement garde son nom archivé (`organisateur_title`) |
 | Religion | Mêmes règles pour les guerres de religion |
 | Utilisateur | Refusée tant qu'il est Fondateur ; sinon personnages, adhésions, sessions et comptes liés supprimés, écrits conservés sans auteur |
 | Journal | Attributions des messages supprimées |
@@ -810,6 +913,7 @@ avec `platforms.discord.token` et `guild_id`.
 | `get_channel_messages` | Contenu d'un journal |
 | `get_channel_message` | Un message (attribution à un personnage) |
 | `send_channel_message` | Annonces (`crud.announce_discord`, en tâche de fond : un échec ne fait pas échouer la requête) |
+| `create_scheduled_event` / `edit_scheduled_event` / `delete_scheduled_event` | Événements programmés du serveur, reflets du calendrier (`crud_calendrier`) |
 
 ### Comptes externes (OAuth)
 
