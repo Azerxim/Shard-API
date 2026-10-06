@@ -5,13 +5,14 @@ from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
 from ..db import schemas
-from ..services import crud, crud_conflits
+from ..services import crud, crud_conflits, crud_troupes
 from ..db.database import get_db
 
 # Guerres militaires (civilisations) et de religion (religions), validées par un modérateur RP (voir crud_conflits)
 router = APIRouter(prefix="/api/guerres", tags=["Guerres"])
 
 CurrentUser = Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)]
+Viewer = Annotated[schemas.Users | None, Depends(crud.secu_get_current_user_optional)]
 
 def _json(content):
     return JSONResponse(content=jsonable_encoder(content))
@@ -107,6 +108,37 @@ def ajouter_evenement(current_user: CurrentUser, GuerreID: int, body: schemas.Gu
 @router.delete("/{GuerreID}/evenements/{EvenementID}")
 def supprimer_evenement(current_user: CurrentUser, GuerreID: int, EvenementID: int, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "L'événement a été retiré de la chronologie", **crud_conflits.supprimer_evenement(db, current_user, GuerreID, EvenementID)})
+
+#endregion
+# -----------------------------------------------
+#region Troupes (levées ville par ville ; toujours sur un champ de bataille ou en mouvement)
+
+@router.get("/{GuerreID}/troupes")
+def read_troupes(viewer: Viewer, GuerreID: int, db: Session = Depends(get_db)):
+    # { champs, camps_visibles, troupes: { attaquant, defenseur } (None si le camp est caché), levees }
+    return _json(crud_troupes.troupes_guerre(db, viewer, GuerreID))
+
+@router.post("/{GuerreID}/troupes")
+def lever_troupe(current_user: CurrentUser, GuerreID: int, body: schemas.GuerreTroupeLevee, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "La troupe est levée", **crud_troupes.lever_troupe(db, current_user, GuerreID, body)})
+
+@router.post("/{GuerreID}/mercenaires")
+def engager_mercenaires(current_user: CurrentUser, GuerreID: int, body: schemas.GuerreMercenaireEngagement, db: Session = Depends(get_db)):
+    # Compagnie de mercenaires engagée par un belligérant : sa civilisation n'entre pas dans un camp (voir /api/mercenaires)
+    return _json({'code': 200, 'text': "Les mercenaires rejoignent votre camp", **crud_troupes.engager_mercenaires(db, current_user, GuerreID, body)})
+
+@router.put("/{GuerreID}/troupes/{TroupeID}")
+def modifier_troupe(current_user: CurrentUser, GuerreID: int, TroupeID: int, body: schemas.GuerreTroupeUpdate, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "La troupe a été modifiée", **crud_troupes.modifier_troupe(db, current_user, GuerreID, TroupeID, body)})
+
+@router.put("/{GuerreID}/troupes/{TroupeID}/deplacer")
+def deplacer_troupe(current_user: CurrentUser, GuerreID: int, TroupeID: int, body: schemas.GuerreTroupeMouvement, db: Session = Depends(get_db)):
+    text = "La troupe a changé de position (déplacement secret : scellez-le en action secrète)" if body.secret else "La troupe a changé de position"
+    return _json({'code': 200, 'text': text, **crud_troupes.deplacer_troupe(db, current_user, GuerreID, TroupeID, body)})
+
+@router.put("/{GuerreID}/troupes/{TroupeID}/demobiliser")
+def demobiliser_troupe(current_user: CurrentUser, GuerreID: int, TroupeID: int, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "La troupe est démobilisée", **crud_troupes.demobiliser_troupe(db, current_user, GuerreID, TroupeID)})
 
 #endregion
 # -----------------------------------------------

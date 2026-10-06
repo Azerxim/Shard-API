@@ -711,6 +711,42 @@ class GuerreEvenementCreate(EmptyStringAsNone):
     camp: str | None = None                 # attaquant, defenseur, ou vide pour les deux camps
     date_rp: datetime.date | None = None
 
+class GuerreTroupeLevee(EmptyStringAsNone):
+    ville_id: int
+    title: str
+    effectif: int
+    position: str = "en_mouvement"          # champ_de_bataille (zone_id obligatoire) ou en_mouvement
+    zone_id: int | None = None              # zone de conflit de la guerre : champ de bataille ou destination
+
+class GuerreTroupeUpdate(EmptyStringAsNone):
+    title: str | None = None
+    effectif: int | None = None             # pertes ou renforts, dans la limite de la ville
+
+class GuerreMercenaireEngagement(EmptyStringAsNone):
+    mercenaire_id: int
+    employeur_type: str = "civilisation"    # belligérant engagé qui commande la compagnie : civilisation ou religion
+    employeur_id: int
+    position: str = "en_mouvement"
+    zone_id: int | None = None
+
+class MercenaireCreate(EmptyStringAsNone):
+    ville_id: int                           # ville de la civilisation qui fournit les soldats
+    title: str
+    effectif: int
+    description: str | None = None
+    tarif: str | None = None
+
+class MercenaireUpdate(EmptyStringAsNone):
+    title: str | None = None
+    effectif: int | None = None
+    description: str | None = None
+    tarif: str | None = None
+
+class GuerreTroupeMouvement(EmptyStringAsNone):
+    position: str                           # champ_de_bataille ou en_mouvement
+    zone_id: int | None = None
+    secret: bool | None = False             # pas inscrit dans la chronologie : à sceller en action secrète
+
 ############### Cartographie ####################
 
 class Dimension(BaseModel):

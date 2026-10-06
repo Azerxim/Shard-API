@@ -34,7 +34,7 @@ CAMPS = ("attaquant", "defenseur")
 GUERRE_STATUTS_PUBLICS = ("en_cours", "terminee")
 ENTITY_LABELS = {"civilisation": "la civilisation", "religion": "la religion"}
 CAMP_NAMES = {"attaquant": "attaquant", "defenseur": "défenseur"}
-# Faits racontés dans la chronologie (les autres types sont inscrits automatiquement) ; les premiers sont annoncés sur Discord
+# Faits racontés dans la chronologie (les autres types, dont les déplacements publics de troupes, sont inscrits automatiquement) ; les premiers sont annoncés sur Discord
 EVENEMENTS_RACONTES = {"bataille": "Bataille", "siege": "Siège", "traite": "Traité", "autre": "Événement"}
 EVENEMENTS_ANNONCES = ("bataille", "siege", "traite")
 
@@ -614,6 +614,7 @@ def terminer_guerre(db: Session, user: schemas.Users, ID: int, v_fin: schemas.Gu
     if not db_guerre.moderator_id:
         db_guerre.moderator_id = user.id
     _add_evenement(db, ID, "fin", f"Fin de la guerre : {db_guerre.issue}", date_rp=db_guerre.date_fin, user=user)
+    crud_nettoyage.demobiliser_troupes(db, ID)
     db.add(db_guerre)
     db.commit()
     db.refresh(db_guerre)
@@ -689,6 +690,9 @@ def repondre_appel(db: Session, user: schemas.Users, ID: int, belligerantID: int
         db.add(b)
         titre = _entity_summary(db, b.entity_type, b.entity_id)["title"]
         _add_evenement(db, ID, "ralliement", f"{titre} rejoint le camp {CAMP_NAMES.get(b.camp, b.camp)}", camp=b.camp, user=user)
+        if b.entity_type == "civilisation":
+            # Elle entre dans un camp : ses compagnies engagées dans cette guerre lui reviennent
+            crud_nettoyage.rompre_contrats(db, b.entity_id, ID)
     else:
         db.delete(b)
     db.commit()
@@ -707,6 +711,7 @@ def retirer_belligerant(db: Session, user: schemas.Users, ID: int, belligerantID
     if b.status == "engage":
         titre = _entity_summary(db, b.entity_type, b.entity_id, b.entity_title)["title"]
         _add_evenement(db, ID, "retrait", f"{titre} quitte le camp {CAMP_NAMES.get(b.camp, b.camp)}", camp=b.camp, user=user)
+        crud_nettoyage.demobiliser_troupes(db, ID, b.entity_type, b.entity_id)
     db.delete(b)
     db.commit()
     return guerre_infos(db, db_guerre)

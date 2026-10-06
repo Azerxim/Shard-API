@@ -19,6 +19,9 @@ Ce module ne dépend que des modèles (crud, crud_conflits et crud_personnages p
 
 Guerres : une déclaration non validée dont un chef de camp disparaît est retirée ; une guerre commencée reste archivée
 (nom de l'entité conservé dans entity_title). En cours, un autre engagé du camp prend la tête, sinon la guerre se termine.
+Troupes (crud_troupes) : démobilisées quand le belligérant qui les commande quitte la guerre ou que la guerre se termine ;
+une ville disparue leur laisse son nom ; une zone de conflit effacée met en mouvement, sans destination, celles qui s'y
+trouvaient. Compagnies de mercenaires : rendues à leur civilisation quand elle entre dans la guerre, dissoutes avec elle.
 """
 import datetime as dt
 
@@ -111,12 +114,56 @@ def retirer_civilisation_des_alliances(db: Session, civilisationID: int):
 #endregion
 #region Guerres
 
+def employeur(troupe: models.GuerreTroupes):
+    # Belligérant qui commande la troupe : celui qui a engagé la compagnie de mercenaires, sinon la civilisation qui l'a levée
+    if troupe.employeur_id is not None:
+        return troupe.employeur_type or "civilisation", troupe.employeur_id
+    return "civilisation", troupe.civilisation_id
+
+def demobiliser(db: Session, troupe: models.GuerreTroupes):
+    troupe.status = "demobilisee"
+    troupe.demobilisee_at = troupe.updated_at = dt.datetime.now()
+    db.add(troupe)
+    # Fin du contrat : la compagnie revient sur le marché avec les soldats qui lui restent
+    compagnie = db.get(models.Mercenaires, troupe.mercenaire_id) if troupe.mercenaire_id else None
+    if compagnie and compagnie.status == "sous_contrat":
+        compagnie.status = "disponible"
+        compagnie.effectif = troupe.effectif
+        compagnie.updated_at = dt.datetime.now()
+        db.add(compagnie)
+
+def demobiliser_troupes(db: Session, guerreID: int, entity_type: str | None = None, entity_id: int | None = None):
+    # Toutes les troupes mobilisées de la guerre, ou celles que commande un belligérant qui la quitte
+    conditions = [models.GuerreTroupes.guerre_id == guerreID, models.GuerreTroupes.status == "mobilisee"]
+    for troupe in _all(db, models.GuerreTroupes, *conditions):
+        if entity_id is None or employeur(troupe) == (entity_type, entity_id):
+            demobiliser(db, troupe)
+
+def rompre_contrats(db: Session, civilisationID: int, guerreID: int | None = None):
+    # Compagnies d'une civilisation rendues à leur civilisation : quand elle entre dans la guerre, ou disparaît
+    conditions = [models.GuerreTroupes.civilisation_id == civilisationID, models.GuerreTroupes.mercenaire_id.is_not(None), models.GuerreTroupes.status == "mobilisee"]
+    if guerreID is not None:
+        conditions.append(models.GuerreTroupes.guerre_id == guerreID)
+    for troupe in _all(db, models.GuerreTroupes, *conditions):
+        demobiliser(db, troupe)
+
+def liberer_zone(db: Session, zoneID: int):
+    # Zone de conflit effacée : les troupes qui s'y trouvaient ou s'y rendaient sont en mouvement, sans destination
+    for troupe in _all(db, models.GuerreTroupes, models.GuerreTroupes.zone_id == zoneID):
+        troupe.position = "en_mouvement"
+        troupe.zone_id = None
+        troupe.updated_at = dt.datetime.now()
+        db.add(troupe)
+
 def _retirer_declaration(db: Session, guerre: models.Guerres):
+    for troupe in _all(db, models.GuerreTroupes, models.GuerreTroupes.guerre_id == guerre.id):
+        db.delete(troupe)
     for belligerant in _all(db, models.GuerreBelligerants, models.GuerreBelligerants.guerre_id == guerre.id):
         db.delete(belligerant)
     for evenement in _all(db, models.GuerreEvenements, models.GuerreEvenements.guerre_id == guerre.id):
         db.delete(evenement)
     for zone in _all(db, models.Cartographie, models.Cartographie.type == "guerre", models.Cartographie.type_id == guerre.id):
+        liberer_zone(db, zone.id)
         db.delete(zone)
     db.delete(guerre)
 
@@ -143,6 +190,8 @@ def retirer_des_guerres(db: Session, entity_type: str, entity_id: int, title: st
 
         belligerant.entity_title = belligerant.entity_title or title
         db.add(belligerant)
+        if guerre.status == "en_cours":
+            demobiliser_troupes(db, guerre.id, entity_type, entity_id)
         if guerre.status != "en_cours" or not belligerant.is_leader:
             continue
 
@@ -165,6 +214,7 @@ def retirer_des_guerres(db: Session, entity_type: str, entity_id: int, title: st
             guerre.ended_at = dt.datetime.now()
             db.add(guerre)
             db.add(models.GuerreEvenements(guerre_id=guerre.id, type="fin", title=guerre.issue, is_auto=True))
+            demobiliser_troupes(db, guerre.id)
 
 #endregion
 #region Lieux et entités
@@ -178,10 +228,16 @@ def detacher_ville(db: Session, villeID: int):
     for magasin in _all(db, models.CommerceMagasins, models.CommerceMagasins.ville_id == villeID):
         magasin.ville_id = None
         db.add(magasin)
-    # Les événements gardent leur lieu en texte
+    # Les événements gardent leur lieu en texte, les troupes le nom de leur ville
     for evenement in _all(db, models.Evenements, models.Evenements.ville_id == villeID):
         evenement.ville_id = None
         db.add(evenement)
+    for troupe in _all(db, models.GuerreTroupes, models.GuerreTroupes.ville_id == villeID):
+        troupe.ville_id = None
+        db.add(troupe)
+    for compagnie in _all(db, models.Mercenaires, models.Mercenaires.ville_id == villeID):
+        compagnie.ville_id = None
+        db.add(compagnie)
     vider_residence(db, "ville", villeID)
 
 def detacher_religion(db: Session, religionID: int, title: str | None):
@@ -190,6 +246,11 @@ def detacher_religion(db: Session, religionID: int, title: str | None):
 
 def detacher_civilisation(db: Session, civilisationID: int, title: str | None):
     retirer_civilisation_des_alliances(db, civilisationID)
+    # Ses compagnies de mercenaires sont dissoutes (les contrats en cours s'achèvent, les troupes restent archivées)
+    rompre_contrats(db, civilisationID)
+    for compagnie in _all(db, models.Mercenaires, models.Mercenaires.civilisation_id == civilisationID):
+        compagnie.status = "dissoute"
+        db.add(compagnie)
     retirer_des_guerres(db, "civilisation", civilisationID, title)
     vider_residence(db, "civilisation", civilisationID)
     for dirigee in _all(db, models.Civilisations, models.Civilisations.dirigeante_civilisation_id == civilisationID):
@@ -249,7 +310,7 @@ def detacher_utilisateur(db: Session, user: models.Users):
 
 def nettoyer_references_orphelines(db: Session):
     # Rattrape les suppressions faites avant ce module ; renvoie le nombre de corrections par catégorie
-    counts = {"personnages": 0, "messages": 0, "alliances": 0, "belligerants": 0, "articles": 0, "marches": 0, "fermes": 0, "livres": 0, "evenements": 0, "lignees": 0}
+    counts = {"personnages": 0, "messages": 0, "alliances": 0, "belligerants": 0, "articles": 0, "marches": 0, "fermes": 0, "livres": 0, "evenements": 0, "lignees": 0, "troupes": 0}
     exists = lambda model, ID: ID is not None and db.get(model, ID) is not None
 
     for personnage in _all(db, models.Personnages):
@@ -334,6 +395,29 @@ def nettoyer_references_orphelines(db: Session):
             personnage.maison_id = None
             db.add(personnage)
             counts["lignees"] += 1
+
+    for troupe in _all(db, models.GuerreTroupes):
+        if not exists(models.Guerres, troupe.guerre_id):
+            db.delete(troupe)
+            counts["troupes"] += 1
+            continue
+        if troupe.ville_id and not exists(models.Villes, troupe.ville_id):
+            troupe.ville_id = None
+            db.add(troupe)
+            counts["troupes"] += 1
+        if troupe.zone_id and not exists(models.Cartographie, troupe.zone_id):
+            liberer_zone(db, troupe.zone_id)
+            counts["troupes"] += 1
+    for compagnie in _all(db, models.Mercenaires, models.Mercenaires.status != "dissoute"):
+        if not exists(models.Civilisations, compagnie.civilisation_id):
+            rompre_contrats(db, compagnie.civilisation_id)
+            compagnie.status = "dissoute"
+            db.add(compagnie)
+            counts["troupes"] += 1
+        elif compagnie.ville_id and not exists(models.Villes, compagnie.ville_id):
+            compagnie.ville_id = None
+            db.add(compagnie)
+            counts["troupes"] += 1
 
     civilisations = {m.civilisation_id for m in _all(db, models.AllianceMembres)} | {i.civilisation_id for i in _all(db, models.AllianceInvitations)}
     for civilisationID in civilisations:

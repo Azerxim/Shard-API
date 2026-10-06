@@ -598,6 +598,23 @@ pas), et classe les articles en stock d'abord, puis du moins cher au plus cher �
 | DELETE | `/{GuerreID}/belligerants/{BelligerantID}` | L'allié ou son chef de camp | Retrait d'un allié |
 | POST | `/{GuerreID}/evenements` | Chef de camp (guerre en cours) ou modérateur | Ajoute une bataille, un siège, un traité ou un autre fait |
 | DELETE | `/{GuerreID}/evenements/{EvenementID}` | Auteur (guerre en cours) ou modérateur | Retire un fait raconté |
+| GET | `/{GuerreID}/troupes` | — (jeton facultatif) | `{ champs, camps_visibles, troupes: { attaquant, defenseur }, levees }` : un camp caché vaut `null` (visible de ses belligérants engagés et des modérateurs, de tous une fois la guerre terminée) ; `levees` : villes que l'utilisateur peut mobiliser (`armee`, `mobilises`, `disponibles`) |
+| POST | `/{GuerreID}/troupes` | Fondateur/Admin d'une civilisation engagée (guerre en cours) | Lève une troupe dans une de ses villes (`ville_id`, `title`, `effectif`, `position` : `champ_de_bataille` avec `zone_id`, ou `en_mouvement` avec destination facultative) ; un soldat pour dix habitants, guerres en cours confondues |
+| PUT | `/{GuerreID}/troupes/{TroupeID}` | Sa civilisation ou modérateur | Nom, pertes ou renforts (`title`, `effectif`) |
+| PUT | `/{GuerreID}/troupes/{TroupeID}/deplacer` | Sa civilisation ou modérateur | Nouvelle position (`position`, `zone_id`, `secret`) ; public : inscrit dans la chronologie (type `deplacement`) |
+| POST | `/{GuerreID}/mercenaires` | Fondateur/Admin d'un belligérant engagé (guerre en cours) | Engage une compagnie disponible (`mercenaire_id`, `employeur_type`, `employeur_id`, `position`, `zone_id`) : troupe de son camp, sa civilisation n'entre pas dans la guerre |
+| PUT | `/{GuerreID}/troupes/{TroupeID}/demobiliser` | Sa civilisation ou modérateur | Démobilise (archivée, soldats rendus à la ville) ; aussi au retrait de la civilisation et à la fin de la guerre |
+
+### Mercenaires — `/api/mercenaires`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/list` | — | Marché : compagnies disponibles ou sous contrat des civilisations publiques (sans dire où elles servent) |
+| GET | `/civilisation/{CivilisationID}` | — (jeton facultatif) | `{ compagnies, gere, villes }` ; `contrat` (guerre, troupe) et soldats disponibles des villes pour ses dirigeants et les modérateurs |
+| POST | `/create` | Fondateur/Admin de la civilisation de la ville | Déclare une compagnie (`ville_id`, `title`, `effectif`, `tarif`, `description`) ; effectif pris sur l'armée autorisée de la ville |
+| PUT | `/{MercenaireID}` | Idem, compagnie disponible | Modifie |
+| PUT | `/{MercenaireID}/rompre` | Idem, ou modérateur | Rompt le contrat : la troupe est démobilisée, la compagnie revient disponible |
+| DELETE | `/{MercenaireID}` | Idem, compagnie disponible | Dissout (soldats rendus à la ville) |
 
 ### Personnages — `/api/personnages`
 

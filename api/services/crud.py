@@ -2451,6 +2451,9 @@ def delete_cartographie(db: Session, user: schemas.Users, cartographieID: int):
         from . import crud_marches  # import local : crud_marches importe crud
         crud_marches.supprimer_jours_zone(db, db_cartographie.id)
         crud_marches.detacher_zone(db, db_cartographie.id)
+    if db_cartographie.type == "guerre":
+        # Champ de bataille effacé : ses troupes sont en mouvement (voir crud_troupes)
+        crud_nettoyage.liberer_zone(db, db_cartographie.id)
     db.delete(db_cartographie)
     db.commit()
     return True
@@ -2458,6 +2461,8 @@ def delete_cartographie(db: Session, user: schemas.Users, cartographieID: int):
 def delete_cartographies_by_types(db: Session, type: str, id: int):
     # Nettoyage des marqueurs / frontières lors de la suppression de l'entité associée
     for db_cartographie in get_cartographies_by_types(db, type, id, limit=10000):
+        if type == "guerre":
+            crud_nettoyage.liberer_zone(db, db_cartographie.id)
         db.delete(db_cartographie)
 
 def update_cartographie(db: Session, user: schemas.Users, cartographieID: int, v_cartographie: schemas.CartographieUpdate):

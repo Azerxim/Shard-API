@@ -20,6 +20,7 @@ from .routes.religions import router as religions_router
 from .routes.commerces import router as commerces_router
 from .routes.alliances import router as alliances_router
 from .routes.guerres import router as guerres_router
+from .routes.mercenaires import router as mercenaires_router
 from .routes.personnages import router as personnages_router
 from .routes.monde import router as monde_router
 from .routes.actions import router as actions_router
@@ -123,6 +124,8 @@ app.include_router(commerces_router)
 app.include_router(alliances_router)
 
 app.include_router(guerres_router)
+
+app.include_router(mercenaires_router)
 
 app.include_router(personnages_router)
 

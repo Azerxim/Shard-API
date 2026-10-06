@@ -343,6 +343,48 @@ class GuerreEvenements(SQLModel, table=True):
     created_by: int | None = Field(default=None, foreign_key="users.id")
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
+class GuerreTroupes(SQLModel, table=True):
+    # Troupe levée dans une ville par une civilisation engagée (voir services/crud_troupes.py). Mobilisée, elle est
+    # toujours sur un champ de bataille (zone de conflit de la guerre) ou en mouvement (vers une zone, ou sans destination)
+    id: int | None = Field(default=None, primary_key=True)
+    guerre_id: int = Field(foreign_key="guerres.id", index=True)
+    camp: str  # attaquant ou defenseur
+    civilisation_id: int  # civilisation qui l'a levée (pas de clé étrangère : la troupe reste archivée si elle disparaît)
+    civilisation_title: str | None = Field(default=None)
+    ville_id: int | None = Field(default=None, foreign_key="villes.id", index=True)  # vidée si la ville disparaît
+    ville_title: str | None = Field(default=None)
+    title: str
+    effectif: int  # soldats ; un pour dix habitants de la ville au plus, toutes guerres en cours confondues
+    position: str = Field(default="en_mouvement")  # champ_de_bataille ou en_mouvement
+    zone_id: int | None = Field(default=None, foreign_key="cartographie.id")  # champ de bataille, ou destination du mouvement
+    status: str = Field(default="mobilisee")  # mobilisee ou demobilisee
+    # Compagnie de mercenaires engagée : civilisation_id reste sa civilisation, qui n'entre pas dans un camp ; l'employeur
+    # est le belligérant qui la commande. Sans employeur (troupe levée par la civilisation elle-même), c'est civilisation_id
+    mercenaire_id: int | None = Field(default=None, foreign_key="mercenaires.id", index=True)
+    employeur_type: str | None = Field(default=None)  # civilisation ou religion
+    employeur_id: int | None = Field(default=None)
+    employeur_title: str | None = Field(default=None)
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    demobilisee_at: dt.datetime | None = Field(default=None)
+
+class Mercenaires(SQLModel, table=True):
+    # Compagnie de mercenaires déclarée par une civilisation, en dehors de toute guerre (voir services/crud_troupes.py) :
+    # ses soldats sont réservés dans sa ville, et un belligérant peut l'engager sans que la civilisation entre dans un camp
+    id: int | None = Field(default=None, primary_key=True)
+    civilisation_id: int = Field(foreign_key="civilisations.id", index=True)
+    ville_id: int | None = Field(default=None, foreign_key="villes.id", index=True)
+    ville_title: str | None = Field(default=None)
+    title: str
+    description: str | None = Field(default=None)
+    tarif: str | None = Field(default=None)  # texte libre : « 40 tetras par bataille »
+    effectif: int
+    status: str = Field(default="disponible")  # disponible, sous_contrat ou dissoute
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    updated_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
 ############### Personnages ####################
 
 class PersonnageEspeces(SQLModel, table=True):
