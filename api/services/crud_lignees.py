@@ -23,7 +23,7 @@ from sqlmodel import Session, select
 
 from ..core import utils
 from ..db import models, schemas
-from . import crud_conflits, crud_marches, crud_personnages
+from . import crud_conflits, crud_marches, crud_notifications, crud_personnages
 from .crud import announce_discord, get_civilisation_by_id
 
 TYPES = ("parent", "conjoint", "heritier")
@@ -194,7 +194,18 @@ def create_lien(db: Session, user: schemas.Users, body: schemas.PersonnageLienCr
     db.refresh(lien)
     if lien.status == "accepte":
         _annoncer_mariage(db, lien)
+    else:
+        attendu = crud_personnages.get_personnage(db, lien.en_attente_de)
+        crud_notifications.notifier(db, crud_notifications.gestionnaires(db, "personnage", attendu.id), "lien", f"Lien de parenté à accepter pour {attendu.name}",
+                                    _phrase_lien(source, cible, lien.type), f"/personnage/{attendu.id}", sauf=user.id)
     return lien_infos(db, lien)
+
+def _phrase_lien(source: models.Personnages, cible: models.Personnages, type_: str) -> str:
+    if type_ == "parent":
+        return f"{source.name}, parent de {cible.name}"
+    if type_ == "heritier":
+        return f"{cible.name}, héritier de {source.name}"
+    return f"{source.name} et {cible.name}, conjoints"
 
 def _require_lien(db: Session, ID: int) -> models.PersonnageLiens:
     lien = db.get(models.PersonnageLiens, ID)
@@ -208,9 +219,13 @@ def repondre_lien(db: Session, user: schemas.Users, ID: int, accepter: bool):
         raise HTTPException(status_code=400, detail="Ce lien n'attend aucune réponse")
     if not (_peut_gerer_personnage(user, crud_personnages.get_personnage(db, lien.en_attente_de)) or crud_conflits.is_moderateur(user)):
         raise HTTPException(status_code=403, detail="Seul le joueur du personnage concerné répond à cette demande")
+    # Le demandeur apprend la réponse
+    source, cible = crud_personnages.get_personnage(db, lien.source_id), crud_personnages.get_personnage(db, lien.cible_id)
+    demandeur, phrase, autre = lien.demande_par, _phrase_lien(source, cible, lien.type), lien.en_attente_de
     if not accepter:
         db.delete(lien)
         db.commit()
+        crud_notifications.notifier(db, {demandeur}, "lien", "Lien de parenté refusé", phrase, f"/personnage/{autre}", sauf=user.id)
         return None
     lien.status = "accepte"
     lien.en_attente_de = None
@@ -218,6 +233,7 @@ def repondre_lien(db: Session, user: schemas.Users, ID: int, accepter: bool):
     db.commit()
     db.refresh(lien)
     _annoncer_mariage(db, lien)
+    crud_notifications.notifier(db, {demandeur}, "lien", "Lien de parenté accepté", phrase, f"/personnage/{autre}", sauf=user.id)
     return lien_infos(db, lien)
 
 def delete_lien(db: Session, user: schemas.Users, ID: int):

@@ -25,7 +25,7 @@ from sqlmodel import Session, select
 from ..core import utils
 from ..db import models, schemas
 from ..integrations import discord_handler
-from . import crud_conflits, crud_marches, crud_personnages
+from . import crud_conflits, crud_marches, crud_notifications, crud_personnages
 from .crud import announce_discord, _check_commerce_rights, get_commerce_by_id, get_ville_by_id
 
 TYPES = {
@@ -375,6 +375,8 @@ def annuler_evenement(db: Session, user: schemas.Users, ID: int, body: schemas.E
     db.refresh(evenement)
     motif = f" Motif : {evenement.motif_annulation}" if evenement.motif_annulation else ""
     _annoncer(evenement, f"📅 **{evenement.title}** ({_date_heure_texte(evenement.date_debut)}) est annulé.{motif}")
+    inscrits = {inscription.user_id for inscription in _inscriptions(db, evenement.id)}
+    crud_notifications.notifier(db, inscrits, "evenement", f"Événement annulé : {evenement.title}", f"Prévu le {_date_heure_texte(evenement.date_debut)}.{motif}", f"/calendrier?mois={evenement.date_debut:%Y-%m}#evenement-{evenement.id}", sauf=user.id)
     _synchroniser_discord(evenement.id)
     return evenement_infos(db, evenement)
 

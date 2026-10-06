@@ -27,7 +27,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from ..db import models, schemas
-from . import crud_conflits, crud_nettoyage, crud_population
+from . import crud_conflits, crud_nettoyage, crud_notifications, crud_population
 from .crud import get_civilisation_by_id, get_ville_by_id, get_villes_by_civilisation_id
 
 POSITIONS = {"champ_de_bataille": "sur un champ de bataille", "en_mouvement": "en mouvement"}
@@ -310,6 +310,8 @@ def engager_mercenaires(db: Session, user: schemas.Users, guerreID: int, body: s
     db.add(troupe)
     db.commit()
     db.refresh(troupe)
+    crud_notifications.notifier(db, crud_notifications.gestionnaires(db, "civilisation", compagnie.civilisation_id), "mercenaires", f"Compagnie engagée : {compagnie.title}",
+                                f"{troupe.employeur_title} l'engage dans la guerre « {db_guerre.title} ».", f"/guerre/{guerreID}", sauf=user.id)
     return {"troupe": troupe_infos(db, troupe, {zone.id: zone} if zone else {})}
 
 def modifier_troupe(db: Session, user: schemas.Users, guerreID: int, troupeID: int, body: schemas.GuerreTroupeUpdate):
@@ -488,9 +490,11 @@ def rompre_contrat(db: Session, user: schemas.Users, ID: int):
     troupe = _contrat(db, compagnie)
     if compagnie.status != "sous_contrat" or not troupe:
         raise HTTPException(status_code=400, detail="Cette compagnie n'est pas sous contrat")
+    employeur, guerreID = crud_notifications.gestionnaires(db, troupe.employeur_type, troupe.employeur_id), troupe.guerre_id
     crud_nettoyage.demobiliser(db, troupe)
     db.commit()
     db.refresh(compagnie)
+    crud_notifications.notifier(db, employeur, "mercenaires", f"Contrat rompu : {compagnie.title}", "La compagnie quitte la guerre et rentre chez elle.", f"/guerre/{guerreID}", sauf=user.id)
     return {"compagnie": compagnie_infos(db, compagnie, prive=True)}
 
 def dissoudre_compagnie(db: Session, user: schemas.Users, ID: int):

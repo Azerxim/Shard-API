@@ -666,6 +666,11 @@ class ActionSecreteCreate(EmptyStringAsNone):
     entity_id: int
     guerre_id: int | None = None          # guerre en cours, facultatif
     reveal_at: datetime.datetime | None = None  # révélation automatique, dans le futur
+    piege: bool | None = False            # piège mortel : validé ou non par un modérateur RP après la révélation
+
+class PiegeDecision(EmptyStringAsNone):
+    mortel: bool                          # True : le piège tue ; False : il ne fait que blesser
+    note: str | None = None               # obligatoire quand le piège ne tue pas
 
 class ActionSecreteRevelation(EmptyStringAsNone):
     motif: str | None = None              # obligatoire pour un modérateur qui révèle l'action d'un autre

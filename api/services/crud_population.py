@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 
 from ..db import models, schemas
 from .crud import _check_civilisation_rights, get_civilisation_by_id, get_ville_by_id, get_villes_by_civilisation_id
-from . import crud_conflits
+from . import crud_conflits, crud_notifications
 
 HABITANTS_PAR_SOLDAT = 10
 STATUTS = ("en_attente", "accepte", "refuse", "retire")
@@ -128,6 +128,8 @@ def demander_ajustement(db: Session, user: schemas.Users, body: schemas.Populati
     db.add(ajustement)
     db.commit()
     db.refresh(ajustement)
+    crud_notifications.notifier(db, crud_notifications.moderateurs(db), "moderation", f"Ajustement de population à valider : {db_ville.title}",
+                                f"Écart de {body.ecart:+d} habitants. {motif}", "/moderation", sauf=user.id)
     return {"ajustement": ajustement_infos(db, ajustement)}
 
 def _require_ajustement(db: Session, ID: int) -> models.PopulationAjustements:
@@ -150,6 +152,11 @@ def decider_ajustement(db: Session, user: schemas.Users, ID: int, body: schemas.
     db.add(ajustement)
     db.commit()
     db.refresh(ajustement)
+    db_ville = get_ville_by_id(db, ajustement.ville_id)
+    if db_ville:
+        title = f"Ajustement de population {'accepté' if body.accepte else 'refusé'} : {db_ville.title}"
+        text = f"Écart de {ajustement.ecart:+d} habitants." + (f" {ajustement.decision_note}" if ajustement.decision_note else "")
+        crud_notifications.notifier(db, {ajustement.demande_par}, "decision", title, text, f"/civilisation/{db_ville.civilisation_id}/ville/{db_ville.id}", sauf=user.id)
     return {"ajustement": ajustement_infos(db, ajustement), "population": population_ville(db, ajustement.ville_id)}
 
 def retirer_ajustement(db: Session, user: schemas.Users, ID: int):

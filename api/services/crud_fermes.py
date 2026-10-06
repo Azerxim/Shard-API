@@ -20,7 +20,7 @@ from ..core import utils
 from ..db import models, schemas
 from .crud import announce_discord, get_dimension_by_id, get_ville_by_id
 from .crud_conflits import _require_moderateur, _user_summary, is_moderateur
-from . import fichiers
+from . import crud_notifications, fichiers
 
 TYPES = ("cultures", "elevage", "mobs", "ressources", "automatique", "autre")
 STATUTS = ("en_attente", "validee", "a_corriger")
@@ -73,6 +73,7 @@ def _signaler(db: Session, ferme: models.Fermes, texte: str):
     nom = (declarant or {}).get("full_name") or (declarant or {}).get("username") or "un joueur"
     lien = f"\n{str(site).rstrip('/')}/fermes#ferme-{ferme.id}" if site else ""
     announce_discord("fermes", f"🌾 {texte} : **{ferme.title}** ({nom}), X {ferme.x} · Z {ferme.z}.{lien}")
+    crud_notifications.notifier(db, crud_notifications.moderateurs(db), "moderation", f"{texte} : {ferme.title}", f"Déclarée par {nom}.", f"/fermes#ferme-{ferme.id}", sauf=ferme.user_id)
 
 #endregion
 #region Lecture
@@ -181,6 +182,8 @@ def decider(db: Session, user: schemas.Users, ID: int, body: schemas.FermeDecisi
     db.add(ferme)
     db.commit()
     db.refresh(ferme)
+    title = f"Ferme validée : {ferme.title}" if ferme.status == "validee" else f"Ferme à corriger : {ferme.title}"
+    crud_notifications.notifier(db, {ferme.user_id}, "decision", title, note, f"/fermes#ferme-{ferme.id}", sauf=user.id)
     return ferme_infos(db, ferme)
 
 #endregion

@@ -429,6 +429,12 @@ class ActionsSecretes(SQLModel, table=True):
     revealed_by: int | None = Field(default=None, foreign_key="users.id")
     reveal_mode: str | None = Field(default=None)  # auteur, moderateur ou date
     reveal_motif: str | None = Field(default=None)  # obligatoire quand un modérateur révèle
+    # Piège mortel (Codex) : déclaré au dépôt, il ne tue que si un modérateur RP le valide après la révélation
+    piege: bool | None = Field(default=False)
+    piege_verdict: str | None = Field(default=None)  # mortel ou blessure ; vide tant qu'aucun modérateur n'a tranché
+    piege_moderateur_id: int | None = Field(default=None, foreign_key="users.id")
+    piege_note: str | None = Field(default=None)
+    piege_decision_at: dt.datetime | None = Field(default=None)
 
 class ActionSecreteLectures(SQLModel, table=True):
     # Lecture d'une action scellée par un administrateur ou un modérateur RP (lecture tracée)
@@ -437,6 +443,17 @@ class ActionSecreteLectures(SQLModel, table=True):
     user_id: int | None = Field(default=None, foreign_key="users.id")
     role: str  # administrateur ou modérateur RP
     read_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class Notifications(SQLModel, table=True):
+    # Notification d'un joueur sur le site (cloche de la barre), écrite au moment des faits : voir crud_notifications
+    id: int | None = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    type: str  # appel, invitation, lien, lecture, revelation, decision, moderation, evenement, mercenaires, guerre
+    title: str
+    text: str | None = Field(default=None)
+    link: str | None = Field(default=None)  # chemin du site, ex. /guerre/3
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    read_at: dt.datetime | None = Field(default=None)
 
 class Personnages(SQLModel, table=True):
     # Personnage RP d'un joueur : autant qu'il le souhaite, sans validation

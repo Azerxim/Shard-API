@@ -256,6 +256,7 @@ Shard-API/
 │   │   ├── crud_calendrier.py   # Calendrier des événements RP, inscriptions, événements Discord programmés
 │   │   ├── crud_chroniques.py   # Chroniques : frise déduite des données, faits marquants
 │   │   ├── crud_lignees.py      # Liens de parenté, maisons nobles et leur arbre
+│   │   ├── crud_notifications.py # Notifications du site (cloche) : destinataires, envoi, lecture
 │   │   ├── fichiers.py          # Images envoyées (./uploads) : format, taille, nom aléatoire
 │   │   ├── crud_livres.py       # Liens des livres (religion, commerce, alliance, personnage)
 │   │   └── crud_nettoyage.py    # Cohérence des suppressions et références orphelines
@@ -275,6 +276,7 @@ Shard-API/
 │       ├── calendrier.py        # /api/calendrier
 │       ├── chroniques.py        # /api/chroniques
 │       ├── lignees.py           # /api/lignees
+│       ├── notifications.py     # /api/notifications
 │       ├── alliances.py         # /api/alliances
 │       ├── guerres.py           # /api/guerres
 │       ├── personnages.py       # /api/personnages
@@ -315,6 +317,7 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 | `userplatforms` | Compte externe lié : `platform` (`discord`, `microsoft`), `uid`, `username`, `avatar_url`. Un par plateforme et par utilisateur ; un compte externe n'appartient qu'à un utilisateur |
 | `oauthstates` | Paramètre `state` d'une autorisation en cours (usage unique, 10 minutes), `mode` `login` ou `link` |
 | `activesession` | Jeton d'accès, utilisateur, date d'expiration |
+| `notifications` | Notification du site : `user_id` (destinataire), `type`, `title`, `text`, `link` (chemin du site), `created_at`, `read_at` (vide tant qu'elle n'est pas lue) |
 
 ### Bibliothèque
 
@@ -616,6 +619,20 @@ pas), et classe les articles en stock d'abord, puis du moins cher au plus cher �
 | PUT | `/{MercenaireID}/rompre` | Idem, ou modérateur | Rompt le contrat : la troupe est démobilisée, la compagnie revient disponible |
 | DELETE | `/{MercenaireID}` | Idem, compagnie disponible | Dissout (soldats rendus à la ville) |
 
+### Modération — `/api/moderation`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/tableau` | Modérateur RP | `{ a_traiter: { guerres, ajustements, fermes, pieges }, suivi: { guerres, fermes, actions_scellees }, historique }` ; `propre` marque une demande ou un piège du modérateur lui-même ; historique : 200 dernières décisions et lectures tracées |
+
+### Notifications — `/api/notifications`
+
+| Méthode | Chemin | Droits | Description |
+| --- | --- | --- | --- |
+| GET | `/mine?limite=30` | U | `{ non_lues, notifications: [{ id, type, title, text, link, created_at, lue }] }`, plus récentes d'abord (200 au plus) ; purge au passage les notifications lues depuis plus de 30 jours |
+| PUT | `/lue/{NotificationID}` | Destinataire (404 sinon) | Marque une notification comme lue |
+| PUT | `/lues` | U | Marque toutes ses notifications comme lues |
+
 ### Personnages — `/api/personnages`
 
 | Méthode | Chemin | Droits | Description |
@@ -764,6 +781,7 @@ administrateur seulement) + somme des écarts acceptés, jamais négative. Les a
 | POST | `/lire/{ActionID}` | Auteur, ou A / modérateur RP (lecture enregistrée) | Contenu d'une action scellée |
 | POST | `/create` | Joueur du personnage, F/A de la civilisation ou religion | Scelle `{ title, content, entity_type, entity_id, guerre_id?, reveal_at? }` |
 | POST | `/{ActionID}/reveler` | Auteur, ou modérateur RP avec `motif` | Révèle l'action |
+| PUT | `/{ActionID}/piege` | Modérateur RP, pas l'auteur | Juge un piège révélé, déclaré au dépôt (`piege: true`) : `{ mortel, note }`, `note` obligatoire pour une blessure ; annoncé sur Discord |
 
 ### Monde — `/api/monde`
 
@@ -831,6 +849,30 @@ administrateur seulement) + somme des écarts acceptés, jamais négative. Les a
   visible de l'auteur aussitôt et de tous à la révélation. Être administrateur du site ne fait pas de vous l'auteur.
 - Révélation par l'auteur, par un modérateur RP (motif obligatoire, publié) ou à la date `reveal_at` fixée au dépôt
   (appliquée à la première lecture qui suit, sans tâche planifiée). Annonce Discord dans `platforms.discord.channels.actions`.
+
+### Notifications
+
+Écrites par `crud_notifications.notifier` au moment des faits, après l'enregistrement de l'action, et relevées par le
+site (cloche de la barre) toutes les minutes. Jamais adressées à celui qui agit, ni à un compte désactivé. Les
+« gestionnaires » d'une civilisation ou d'une religion sont son Fondateur et ses Admins ; ceux d'un personnage, son joueur.
+
+| Type | Fait | Destinataires |
+| --- | --- | --- |
+| `appel` | Appel aux armes | Gestionnaires de chaque civilisation appelée |
+| `appel` | Réponse à un appel (rejoint ou décline) | Gestionnaires des belligérants engagés du camp qui appelait |
+| `invitation` | Invitation d'une alliance / demande d'une civilisation | Gestionnaires de la civilisation invitée / du chef de file |
+| `invitation` | Réponse à l'invitation ou à la demande | L'autre partie |
+| `lien` | Lien de parenté en attente | Joueur du personnage dont l'accord est attendu |
+| `lien` | Lien accepté ou refusé | Joueur qui l'avait demandé |
+| `lecture` | Lecture tracée d'une action scellée | Auteurs de l'action (déposant et gestionnaires de l'entité) |
+| `revelation` | Révélation d'une action | Ses auteurs (sauf celui qui la révèle), et les gestionnaires des belligérants de sa guerre |
+| `moderation` | Déclaration de guerre, ferme déclarée ou retouchée, ajustement de population, piège révélé | Modérateurs RP et administrateurs (l'auteur exclu) |
+| `decision` | Déclaration refusée, ferme validée ou à corriger, ajustement accepté ou refusé, piège jugé | Le demandeur (ou les auteurs de l'action) |
+| `guerre` | Guerre validée, guerre terminée | Gestionnaires des belligérants engagés (et le déclarant à la validation) |
+| `evenement` | Événement du calendrier annulé | Joueurs inscrits |
+| `mercenaires` | Compagnie engagée / contrat rompu | Gestionnaires de la civilisation qui loue / de l'employeur |
+
+Une notification lue est supprimée après 30 jours ; au-delà de 200 par joueur, les plus anciennes disparaissent.
 
 ### Calendrier
 
@@ -904,7 +946,7 @@ Implémentée dans `services/crud_nettoyage.py`, et rejouée au démarrage pour 
 | Religion, commerce, alliance, personnage | Liens des livres supprimés |
 | Zone commerciale | Jours de marché supprimés ; ses foires replacées au centre de la ville |
 | Ville (en plus) | Foires supprimées ; fermes détachées |
-| Utilisateur (en plus) | Fermes et photos supprimées ; inscriptions aux événements supprimées ; événements et faits marquants conservés sans auteur |
+| Utilisateur (en plus) | Fermes et photos supprimées ; inscriptions aux événements et notifications supprimées ; événements et faits marquants conservés sans auteur |
 | Ville (calendrier) | Événements détachés (leur lieu en texte reste) |
 | Personnage (calendrier) | Inscriptions conservées, sans personnage |
 | Personnage (lignées) | Liens de parenté supprimés ; la maison qu'il dirigeait n'a plus de chef |

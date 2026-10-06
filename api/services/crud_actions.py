@@ -10,6 +10,9 @@ Actions secrètes : une action RP consignée avant d'être jouée, révélée pl
   lecture est enregistrée, visible de l'auteur aussitôt et de tous à la révélation.
 - Révélation par l'auteur, par un modérateur RP (motif obligatoire), ou automatiquement à la date fixée au dépôt.
   Aucune suppression ni modification : une action gênante ne peut pas disparaître.
+- Piège mortel (Codex, « L'assassinat par piège ») : déclaré comme tel au dépôt (jamais après), il ne tue qu'une fois
+  validé par un modérateur RP après sa révélation, qui peut aussi le réduire à une blessure (motif obligatoire). Un
+  modérateur ne tranche pas un piège dont il est l'auteur. Tant qu'elle est scellée, rien ne dit qu'une action est un piège.
 """
 import datetime as dt
 import hashlib
@@ -21,7 +24,7 @@ from sqlmodel import Session, select
 from ..core import utils
 from ..db import models, schemas
 from .crud import announce_discord, get_members_of_civilisation, get_members_of_religion
-from . import crud_conflits, crud_personnages
+from . import crud_conflits, crud_notifications, crud_personnages
 
 ENTITY_TYPES = ("personnage", "civilisation", "religion")
 
@@ -71,6 +74,13 @@ def est_auteur(db: Session, user: schemas.Users | None, db_action: models.Action
     get_members = get_members_of_civilisation if db_action.entity_type == "civilisation" else get_members_of_religion
     return any(member.user_id == user.id and member.role in ("Fondateur", "Admin") for member in get_members(db, db_action.entity_id, limit=10000))
 
+def auteurs(db: Session, db_action: models.ActionsSecretes) -> set:
+    # Comptes à prévenir de ce qui arrive à l'action : son déposant et ceux qui agissent au nom de son auteur
+    return {db_action.created_by} | crud_notifications.gestionnaires(db, db_action.entity_type, db_action.entity_id)
+
+def _lien(db_action: models.ActionsSecretes) -> str:
+    return f"/actions-secretes#{code_action(db_action)}"
+
 def _lectures(db: Session, db_action: models.ActionsSecretes):
     statement = select(models.ActionSecreteLectures).where(models.ActionSecreteLectures.action_id == db_action.id).order_by(models.ActionSecreteLectures.read_at)
     return [{"user": crud_conflits._user_summary(db, lecture.user_id), "role": lecture.role, "read_at": lecture.read_at} for lecture in db.exec(statement).all()]
@@ -103,6 +113,11 @@ def action_complete(db: Session, db_action: models.ActionsSecretes):
         "reveal_mode": db_action.reveal_mode,
         "reveal_motif": db_action.reveal_motif,
         "lectures": _lectures(db, db_action),
+        "piege": bool(db_action.piege),
+        "piege_verdict": db_action.piege_verdict,
+        "piege_moderateur": crud_conflits._user_summary(db, db_action.piege_moderateur_id),
+        "piege_note": db_action.piege_note,
+        "piege_decision_at": db_action.piege_decision_at,
     }
 
 #endregion
@@ -124,6 +139,23 @@ def _reveler(db: Session, db_action: models.ActionsSecretes, mode: str, user_id:
     db.commit()
     db.refresh(db_action)
     _annoncer_revelation(db, db_action)
+    _notifier_revelation(db, db_action)
+
+def _notifier_revelation(db: Session, db_action: models.ActionsSecretes):
+    # Ses auteurs (sauf celui qui la révèle), les belligérants de sa guerre, et les modérateurs RP pour un piège à juger
+    code, entite = code_action(db_action), _entity_summary(db, db_action)["title"]
+    if db_action.reveal_mode == "date":
+        comment = "à la date fixée au dépôt"
+    elif db_action.reveal_mode == "moderateur":
+        comment = f"par la modération RP. Motif : {db_action.reveal_motif}"
+    else:
+        comment = "par son auteur"
+    crud_notifications.notifier(db, auteurs(db, db_action), "revelation", f"Votre action {code} est révélée", f"« {db_action.title} », révélée {comment}.", _lien(db_action), sauf=db_action.revealed_by)
+    if db_action.guerre_id:
+        concernes = crud_conflits._gestionnaires_guerre(db, db_action.guerre_id) - auteurs(db, db_action)
+        crud_notifications.notifier(db, concernes, "revelation", f"Action {code} révélée : {db_action.title}", f"{entite}, dans une guerre où vous êtes engagé.", _lien(db_action), sauf=db_action.revealed_by)
+    if db_action.piege:
+        crud_notifications.notifier(db, crud_notifications.moderateurs(db) - auteurs(db, db_action), "moderation", f"Piège à juger : {code}", f"« {db_action.title} » ({entite}) est révélée.", "/moderation", sauf=db_action.revealed_by)
 
 def _reveler_si_echue(db: Session, db_action: models.ActionsSecretes):
     # Révélation automatique, faite à la première lecture après la date fixée (pas de tâche planifiée)
@@ -143,6 +175,40 @@ def reveler(db: Session, user: schemas.Users, ID: int, body: schemas.ActionSecre
         _reveler(db, db_action, "moderateur", user.id, motif)
     else:
         raise HTTPException(status_code=403, detail="Seuls l'auteur et les modérateurs RP peuvent révéler cette action")
+    return {"action": action_complete(db, db_action)}
+
+def _annoncer_piege(db: Session, db_action: models.ActionsSecretes):
+    entite = _entity_summary(db, db_action)["title"]
+    verdict = "le piège est mortel" if db_action.piege_verdict == "mortel" else "le piège ne fait que blesser"
+    text = f"☠️ Piège **{code_action(db_action)}** ({entite}) : {verdict}, d'après la modération RP."
+    site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
+    announce_discord("actions", f"{text}\n{str(site).rstrip('/')}/actions-secretes#{code_action(db_action)}" if site else text)
+
+def decider_piege(db: Session, user: schemas.Users, ID: int, body: schemas.PiegeDecision):
+    # Validation après les faits : mortel, ou simple blessure (motif obligatoire)
+    crud_conflits._require_moderateur(user)
+    db_action = _require_action(db, ID)
+    if not db_action.piege:
+        raise HTTPException(status_code=400, detail="Cette action n'a pas été déclarée comme un piège à son dépôt")
+    if db_action.revealed_at is None:
+        raise HTTPException(status_code=400, detail="Un piège se juge après sa révélation")
+    if db_action.piege_verdict is not None:
+        raise HTTPException(status_code=400, detail="Ce piège a déjà été jugé")
+    if est_auteur(db, user, db_action):
+        raise HTTPException(status_code=403, detail="Un modérateur ne juge pas un piège dont il est l'auteur")
+    note = (body.note or "").strip() or None
+    if not body.mortel and not note:
+        raise HTTPException(status_code=400, detail="Expliquez pourquoi le piège ne tue pas")
+    db_action.piege_verdict = "mortel" if body.mortel else "blessure"
+    db_action.piege_note = note
+    db_action.piege_moderateur_id = user.id
+    db_action.piege_decision_at = dt.datetime.now()
+    db.add(db_action)
+    db.commit()
+    db.refresh(db_action)
+    _annoncer_piege(db, db_action)
+    verdict = "Il est mortel, d'après la modération RP." if body.mortel else f"Il ne fait que blesser, d'après la modération RP : {note}"
+    crud_notifications.notifier(db, auteurs(db, db_action), "decision", f"Piège {code_action(db_action)} jugé", verdict, _lien(db_action), sauf=user.id)
     return {"action": action_complete(db, db_action)}
 
 #endregion
@@ -182,8 +248,11 @@ def lire_action(db: Session, user: schemas.Users, ID: int):
     if db_action.revealed_at is None and not est_auteur(db, user, db_action):
         if not crud_conflits.is_moderateur(user):
             raise HTTPException(status_code=403, detail="Cette action est scellée jusqu'à sa révélation")
-        db.add(models.ActionSecreteLectures(action_id=db_action.id, user_id=user.id, role="administrateur" if user.is_admin else "modérateur RP"))
+        role = "administrateur" if user.is_admin else "modérateur RP"
+        db.add(models.ActionSecreteLectures(action_id=db_action.id, user_id=user.id, role=role))
         db.commit()
+        crud_notifications.notifier(db, auteurs(db, db_action), "lecture", f"Lecture tracée de votre action {code_action(db_action)}",
+                                    f"{user.full_name or user.username} ({role}) a lu « {db_action.title} » avant sa révélation.", _lien(db_action), sauf=user.id)
     return {"action": action_complete(db, db_action)}
 
 #endregion
@@ -231,6 +300,7 @@ def create_action(db: Session, user: schemas.Users, body: schemas.ActionSecreteC
         empreinte=calculer_empreinte(sel, title, content),
         created_by=user.id,
         reveal_at=reveal_at,
+        piege=bool(body.piege),
     )
     db.add(db_action)
     db.commit()

@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 
 from ..core import utils
 from ..db import models, schemas
-from . import crud_nettoyage
+from . import crud_nettoyage, crud_notifications
 from .crud import (
     announce_discord,
     delete_cartographies_by_types,
@@ -239,6 +239,7 @@ def invite_civilisation(db: Session, user: schemas.Users, ID: int, civilisationI
     db.add(invitation)
     db.commit()
     db.refresh(invitation)
+    _notifier_invitation(db, user, invitation)
     return {"resultat": "Invitation envoyée", "invitation": _invitation_infos(db, invitation)}
 
 def request_join(db: Session, user: schemas.Users, ID: int, civilisationID: int):
@@ -251,7 +252,27 @@ def request_join(db: Session, user: schemas.Users, ID: int, civilisationID: int)
     db.add(invitation)
     db.commit()
     db.refresh(invitation)
+    _notifier_invitation(db, user, invitation)
     return {"resultat": "Demande envoyée", "invitation": _invitation_infos(db, invitation)}
+
+def _gestionnaires_chef(db: Session, allianceID: int) -> set:
+    chef = _alliance_chef(db, allianceID)
+    return crud_notifications.gestionnaires(db, "civilisation", chef.civilisation_id) if chef else set()
+
+def _notifier_invitation(db: Session, user: schemas.Users, invitation: models.AllianceInvitations, reponse: str | None = None):
+    # Nouvelle invitation : la partie qui doit répondre ; réponse : la partie qui l'avait envoyée
+    alliance = get_alliance(db, invitation.alliance_id).title
+    civilisation = _entity_summary(db, "civilisation", invitation.civilisation_id)["title"]
+    lien = f"/alliance/{invitation.alliance_id}"
+    vers_civilisation = (invitation.direction == "invitation") != bool(reponse)
+    destinataires = crud_notifications.gestionnaires(db, "civilisation", invitation.civilisation_id) if vers_civilisation else _gestionnaires_chef(db, invitation.alliance_id)
+    if reponse:
+        title = f"{civilisation} {reponse} l'invitation de l'alliance {alliance}" if invitation.direction == "invitation" else f"L'alliance {alliance} {reponse} la demande de {civilisation}"
+    elif invitation.direction == "invitation":
+        title = f"{civilisation} est invitée à rejoindre l'alliance {alliance}"
+    else:
+        title = f"{civilisation} demande à rejoindre l'alliance {alliance}"
+    crud_notifications.notifier(db, destinataires, "invitation", title, None if reponse else "Une réponse est attendue.", lien, sauf=user.id)
 
 def _require_pending_invitation(db: Session, invitationID: int):
     invitation = db.exec(select(models.AllianceInvitations).where(models.AllianceInvitations.id == invitationID)).first()
@@ -278,6 +299,7 @@ def answer_invitation(db: Session, user: schemas.Users, invitationID: int, accep
     if accepter and not _alliance_membre(db, invitation.alliance_id, invitation.civilisation_id):
         db.add(models.AllianceMembres(alliance_id=invitation.alliance_id, civilisation_id=invitation.civilisation_id, role="Membre"))
     db.commit()
+    _notifier_invitation(db, user, invitation, "accepte" if accepter else "refuse")
     return {"resultat": "Invitation acceptée" if accepter else "Invitation refusée"}
 
 def cancel_invitation(db: Session, user: schemas.Users, invitationID: int):
@@ -434,6 +456,14 @@ def guerre_details(db: Session, db_guerre: models.Guerres):
     # Fiche complète : camps et chronologie
     return {**guerre_infos(db, db_guerre), "evenements": [evenement_infos(db, e) for e in _evenements(db, db_guerre.id)]}
 
+def _gestionnaires_guerre(db: Session, guerreID: int, camp: str | None = None) -> set:
+    # Fondateurs et admins des belligérants engagés (d'un camp, ou des deux)
+    ids = set()
+    for b in _belligerants(db, guerreID):
+        if b.status == "engage" and (camp is None or b.camp == camp):
+            ids |= crud_notifications.gestionnaires(db, b.entity_type, b.entity_id)
+    return ids
+
 def _annoncer(db_guerre: models.Guerres, text: str):
     # Salon Discord « guerres » (platforms.discord.channels.guerres), avec le lien de la guerre si site_url est configuré
     site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
@@ -542,6 +572,8 @@ def declare_guerre(db: Session, user: schemas.Users, v_guerre: schemas.GuerreDec
     defenseur = _get_entity(db, entity_type, v_guerre.defenseur_id)
     _add_evenement(db, db_guerre.id, "declaration", f"Déclaration de guerre de {attaquant.title} contre {defenseur.title}", v_guerre.casus_belli, camp="attaquant", user=user)
     db.commit()
+    crud_notifications.notifier(db, crud_notifications.moderateurs(db), "moderation", f"Déclaration de guerre à valider : {db_guerre.title}",
+                                f"{attaquant.title} contre {defenseur.title}", f"/guerre/{db_guerre.id}", sauf=user.id)
     return guerre_infos(db, db_guerre)
 
 def _require_guerre(db: Session, ID: int):
@@ -584,6 +616,8 @@ def valider_guerre(db: Session, user: schemas.Users, ID: int, v_validation: sche
     db.refresh(db_guerre)
     attaquant, defenseur = _leaders(db, ID)
     _annoncer(db_guerre, f"⚔️ **{db_guerre.title}** : {attaquant} contre {defenseur}. La guerre commence.")
+    crud_notifications.notifier(db, _gestionnaires_guerre(db, ID) | {db_guerre.declared_by}, "guerre", f"La guerre commence : {db_guerre.title}",
+                                f"{attaquant} contre {defenseur}, validée par la modération RP.", f"/guerre/{ID}", sauf=user.id)
     return guerre_infos(db, db_guerre)
 
 def refuser_guerre(db: Session, user: schemas.Users, ID: int, v_refus: schemas.GuerreRefus):
@@ -598,6 +632,8 @@ def refuser_guerre(db: Session, user: schemas.Users, ID: int, v_refus: schemas.G
     db.add(db_guerre)
     db.commit()
     db.refresh(db_guerre)
+    crud_notifications.notifier(db, _gestionnaires_guerre(db, ID, "attaquant") | {db_guerre.declared_by}, "decision", f"Déclaration refusée : {db_guerre.title}",
+                                v_refus.note or "Refusée par la modération RP.", f"/guerre/{ID}", sauf=user.id)
     return guerre_infos(db, db_guerre)
 
 def terminer_guerre(db: Session, user: schemas.Users, ID: int, v_fin: schemas.GuerreFin):
@@ -619,6 +655,7 @@ def terminer_guerre(db: Session, user: schemas.Users, ID: int, v_fin: schemas.Gu
     db.commit()
     db.refresh(db_guerre)
     _annoncer(db_guerre, f"🏳️ **{db_guerre.title}** est terminée : {db_guerre.issue}")
+    crud_notifications.notifier(db, _gestionnaires_guerre(db, ID), "guerre", f"Fin de la guerre : {db_guerre.title}", db_guerre.issue, f"/guerre/{ID}", sauf=user.id)
     return guerre_infos(db, db_guerre)
 
 def annuler_declaration(db: Session, user: schemas.Users, ID: int):
@@ -670,6 +707,11 @@ def appeler_aux_armes(db: Session, user: schemas.Users, ID: int, v_appel: schema
     for civilisation_id, alliance_id in cibles:
         db.add(models.GuerreBelligerants(guerre_id=ID, camp=v_appel.camp, entity_type="civilisation", entity_id=civilisation_id, status="appele", alliance_id=alliance_id))
     db.commit()
+    chef = _entity_summary(db, leader.entity_type, leader.entity_id)["title"]
+    for civilisation_id, _alliance_id in cibles:
+        appelee = _entity_summary(db, "civilisation", civilisation_id)["title"]
+        crud_notifications.notifier(db, crud_notifications.gestionnaires(db, "civilisation", civilisation_id), "appel", f"Appel aux armes : {db_guerre.title}",
+                                    f"{chef} appelle {appelee} dans le camp {CAMP_NAMES.get(v_appel.camp, v_appel.camp)}. Une réponse est attendue.", f"/guerre/{ID}", sauf=user.id)
     return guerre_infos(db, db_guerre)
 
 def _require_belligerant(db: Session, guerreID: int, belligerantID: int):
@@ -684,6 +726,8 @@ def repondre_appel(db: Session, user: schemas.Users, ID: int, belligerantID: int
     if b.status != "appele":
         raise HTTPException(status_code=400, detail="Cet appel aux armes a déjà reçu une réponse")
     _require_entity_rights(db, user, b.entity_type, b.entity_id)
+    # Le camp qui appelait, tel qu'il est avant la réponse
+    camp, appele = _gestionnaires_guerre(db, ID, b.camp), _entity_summary(db, b.entity_type, b.entity_id, b.entity_title)["title"]
     if accepter:
         b.status = "engage"
         b.joined_at = dt.datetime.now()
@@ -696,6 +740,7 @@ def repondre_appel(db: Session, user: schemas.Users, ID: int, belligerantID: int
     else:
         db.delete(b)
     db.commit()
+    crud_notifications.notifier(db, camp, "appel", f"{appele} {'répond à' if accepter else 'décline'} l'appel aux armes", f"Guerre : {db_guerre.title}", f"/guerre/{ID}", sauf=user.id)
     return guerre_infos(db, db_guerre)
 
 def retirer_belligerant(db: Session, user: schemas.Users, ID: int, belligerantID: int):

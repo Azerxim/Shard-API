@@ -55,4 +55,9 @@ def create_action(current_user: CurrentUser, action: schemas.ActionSecreteCreate
 def reveler_action(current_user: CurrentUser, ActionID: int, body: schemas.ActionSecreteRevelation, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "L'action est révélée", **crud_actions.reveler(db, current_user, ActionID, body)})
 
+@router.put("/{ActionID}/piege")
+def decider_piege(current_user: CurrentUser, ActionID: int, body: schemas.PiegeDecision, db: Session = Depends(get_db)):
+    # Modérateur RP : un piège révélé est-il mortel, ou ne fait-il que blesser ?
+    return _json({'code': 200, 'text': "Le piège a été jugé", **crud_actions.decider_piege(db, current_user, ActionID, body)})
+
 #endregion

@@ -292,6 +292,8 @@ def detacher_utilisateur(db: Session, user: models.Users):
         db.delete(session)
     for inscription in _all(db, models.EvenementInscriptions, models.EvenementInscriptions.user_id == user.id):
         db.delete(inscription)
+    for notification in _all(db, models.Notifications, models.Notifications.user_id == user.id):
+        db.delete(notification)
     supprimer_personnages_utilisateur(db, user.id)
 
     # Écrits et archives conservés, sans auteur
