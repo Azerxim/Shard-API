@@ -669,6 +669,7 @@ def annuler_declaration(db: Session, user: schemas.Users, ID: int):
     for evenement in _evenements(db, ID):
         db.delete(evenement)
     delete_cartographies_by_types(db, "guerre", ID)
+    crud_nettoyage.supprimer_liens_livres(db, "guerre", ID)
     db.delete(db_guerre)
     db.commit()
     return {"resultat": "Déclaration retirée"}

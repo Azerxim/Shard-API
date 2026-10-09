@@ -12,9 +12,10 @@ Ce module ne dépend que des modèles (crud, crud_conflits et crud_personnages p
 - Zone commerciale, ville, utilisateur : jours de marché, foires et fermes (crud_marches, crud_fermes ; rattrapés ici).
 - Ville, personnage, utilisateur : événements du calendrier et inscriptions (l'organisateur disparu garde son nom).
 - Personnage : liens de parenté, tête de sa maison ; civilisation : rattachement des maisons nobles.
-- Journal : messages signés par des personnages.
+- Journal : messages signés par des personnages, liens du journal (table journauxliens, voir crud_livres).
 - Livre : ses chapitres (supprimés avec lui par crud ; rattrapés ici au démarrage).
-- Livre, civilisation, religion, commerce, alliance, personnage : liens des livres (table livresliens, voir crud_livres).
+- Livre, civilisation, religion, commerce, alliance, guerre, personnage : liens des livres (table livresliens, voir crud_livres),
+  et des journaux pour ces entités (table journauxliens).
 - Utilisateur : adhésions, comptes liés, sessions, personnages ; refusé tant qu'il est fondateur.
 
 Guerres : une déclaration non validée dont un chef de camp disparaît est retirée ; une guerre commencée reste archivée
@@ -51,6 +52,8 @@ def vider_residence(db: Session, residence: str, ID: int):
 def supprimer_liens_journal(db: Session, journalID: int):
     for link in _all(db, models.PersonnageMessages, models.PersonnageMessages.journal_id == journalID):
         db.delete(link)
+    for lien in _all(db, models.JournauxLiens, models.JournauxLiens.journal_id == journalID):
+        db.delete(lien)
 
 def supprimer_personnages_utilisateur(db: Session, userID: int):
     for personnage in _all(db, models.Personnages, models.Personnages.user_id == userID):
@@ -75,11 +78,14 @@ def detacher_personnage(db: Session, personnageID: int):
         db.add(maison)
 
 def supprimer_liens_livres(db: Session, entity_type: str, entity_id: int):
-    # Liens des livres vers l'entité supprimée ; entity_type "livre" : tous les liens du livre
+    # Liens des livres et des journaux vers l'entité supprimée ; entity_type "livre" : tous les liens du livre
     condition = models.LivresLiens.livre_id == entity_id if entity_type == "livre" else (
         (models.LivresLiens.entity_type == entity_type) & (models.LivresLiens.entity_id == entity_id))
     for lien in _all(db, models.LivresLiens, condition):
         db.delete(lien)
+    if entity_type != "livre":
+        for lien in _all(db, models.JournauxLiens, models.JournauxLiens.entity_type == entity_type, models.JournauxLiens.entity_id == entity_id):
+            db.delete(lien)
 
 #endregion
 #region Alliances
@@ -165,6 +171,7 @@ def _retirer_declaration(db: Session, guerre: models.Guerres):
     for zone in _all(db, models.Cartographie, models.Cartographie.type == "guerre", models.Cartographie.type_id == guerre.id):
         liberer_zone(db, zone.id)
         db.delete(zone)
+    supprimer_liens_livres(db, "guerre", guerre.id)
     db.delete(guerre)
 
 def retirer_des_guerres(db: Session, entity_type: str, entity_id: int, title: str | None):
@@ -337,9 +344,13 @@ def nettoyer_references_orphelines(db: Session):
             db.delete(article)
             counts["articles"] += 1
 
-    modeles_lies = {"civilisation": models.Civilisations, "religion": models.Religions, "commerce": models.Commerces, "alliance": models.Alliances, "personnage": models.Personnages}
+    modeles_lies = {"civilisation": models.Civilisations, "religion": models.Religions, "commerce": models.Commerces, "alliance": models.Alliances, "guerre": models.Guerres, "personnage": models.Personnages}
     for lien in _all(db, models.LivresLiens):
         if not exists(models.Livres, lien.livre_id) or lien.entity_type not in modeles_lies or not exists(modeles_lies[lien.entity_type], lien.entity_id):
+            db.delete(lien)
+            counts["livres"] += 1
+    for lien in _all(db, models.JournauxLiens):
+        if not exists(models.Journaux, lien.journal_id) or lien.entity_type not in modeles_lies or not exists(modeles_lies[lien.entity_type], lien.entity_id):
             db.delete(lien)
             counts["livres"] += 1
     for contenu in _all(db, models.LivresContenus):

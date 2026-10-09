@@ -496,6 +496,7 @@ def create_journal(db: Session, user: schemas.Users, v_journal: schemas.Journal)
         link = "",
         uid = channel_uid if channel_uid else v_journal.uid,
         published_date = v_journal.published_date,
+        is_public = v_journal.is_public if v_journal.is_public is not None else True,
         created_at = dt.datetime.today()
     )
     
@@ -520,6 +521,7 @@ def create_journal_db(db: Session, user: schemas.Users, v_journal: schemas.Journ
         link = v_journal.link,
         uid = v_journal.uid,
         published_date = v_journal.published_date,
+        is_public = v_journal.is_public if v_journal.is_public is not None else True,
         created_at = dt.datetime.today()
     )
 

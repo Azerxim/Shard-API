@@ -102,11 +102,21 @@ class LivresContenus(SQLModel, table=True):
     page_number: int | None = Field(default=None)
 
 class LivresLiens(SQLModel, table=True):
-    # Livre lié à une civilisation, une religion, un commerce, une alliance ou un personnage (voir services/crud_livres.py).
+    # Livre lié à une civilisation, une religion, un commerce, une alliance, une guerre ou un personnage (voir services/crud_livres.py).
     # Un lien vers une civilisation donne aussi à ses dirigeants le droit de modifier le livre.
     id: int | None = Field(default=None, primary_key=True)
     livre_id: int = Field(foreign_key="livres.id", index=True)
-    entity_type: str                     # civilisation, religion, commerce, alliance ou personnage
+    entity_type: str                     # civilisation, religion, commerce, alliance, guerre ou personnage
+    entity_id: int = Field(index=True)
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class JournauxLiens(SQLModel, table=True):
+    # Journal lié à une civilisation, une religion, un commerce, une alliance, une guerre ou un personnage (voir services/crud_livres.py).
+    # Contrairement aux livres, aucun lien ne donne de droits : le journal reste à son auteur (salon Discord).
+    id: int | None = Field(default=None, primary_key=True)
+    journal_id: int = Field(foreign_key="journaux.id", index=True)
+    entity_type: str                     # civilisation, religion, commerce, alliance, guerre ou personnage
     entity_id: int = Field(index=True)
     created_by: int | None = Field(default=None, foreign_key="users.id")
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
@@ -134,6 +144,8 @@ class Civilisations(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
     description: str | None = Field(default=None)
+    # Description longue en Markdown, affichée sous la carte de la fiche (services/crud_descriptions.py)
+    description_longue: str | None = Field(default=None)
     date_founded: dt.date | None = Field(default=None)
     gouvernement_id: int | None = Field(default=None, foreign_key="gouvernements.id")
 
@@ -183,6 +195,8 @@ class Commerces(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
     description: str | None = Field(default=None)
+    # Description longue en Markdown, affichée sous la carte de la fiche (services/crud_descriptions.py)
+    description_longue: str | None = Field(default=None)
     date_founded: dt.date | None = Field(default=None)
 
     is_public: bool | None = Field(default=None)
@@ -238,6 +252,8 @@ class Religions(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
     description: str | None = Field(default=None)
+    # Description longue en Markdown, affichée sous la carte de la fiche (services/crud_descriptions.py)
+    description_longue: str | None = Field(default=None)
     date_founded: dt.date | None = Field(default=None)
     color: str | None = Field(default=None)
     icon: str | None = Field(default=None)
@@ -270,6 +286,8 @@ class Alliances(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     title: str
     description: str | None = Field(default=None)
+    # Description longue en Markdown, affichée sous la carte de la fiche (services/crud_descriptions.py)
+    description_longue: str | None = Field(default=None)
     type: str = Field(default="Militaire")  # "Militaire" ou "Diplomatique"
     color: str | None = Field(default=None)
     icon: str | None = Field(default=None)
@@ -461,6 +479,8 @@ class Personnages(SQLModel, table=True):
     user_id: int | None = Field(default=None, foreign_key="users.id")
     name: str
     description: str | None = Field(default=None)
+    # Description longue en Markdown, affichée sous la carte de la fiche (services/crud_descriptions.py)
+    description_longue: str | None = Field(default=None)
     image_url: str | None = Field(default=None)
     image_fichier: str | None = Field(default=None)  # portrait envoyé (./uploads/personnages), prioritaire sur image_url
     status: str = Field(default="vivant")  # vivant, mort ou disparu

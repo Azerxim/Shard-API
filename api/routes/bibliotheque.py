@@ -72,6 +72,25 @@ def read_journal_contents(JournalID: int, skip: int = 0, limit: int = 10000, db:
         func = {'code': 200, 'content': content}
     return JSONResponse(content=jsonable_encoder(func))
 
+@router.get("/journaux/liens/{journalID}", tags=["Journaux"])
+def read_liens_journal(journalID: int, db: Session = Depends(get_db)):
+    # Civilisations, religions, commerces, alliances et personnages liés au journal : [{ id, journal_id, entite: { type, id, title, … } }]
+    return JSONResponse(content=jsonable_encoder(crud_livres.liens_de(db, "journal", journalID)))
+
+@router.get("/journaux/entite/{EntityType}/{EntityID}/list", tags=["Journaux"])
+def read_journaux_of_entite(EntityType: str, EntityID: int, db: Session = Depends(get_db)):
+    # EntityType : civilisation, religion, commerce, alliance, guerre ou personnage ; [{ lien_id, journal }]
+    return JSONResponse(content=jsonable_encoder(crud_livres.ecrits_de_entite(db, "journal", EntityType, EntityID)))
+
+@router.post("/journaux/liens", tags=["Journaux"])
+def create_lien_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], lien: schemas.JournalLienCreate, db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le journal est lié", 'lien': crud_livres.lier(db, current_user, lien, "journal")}))
+
+@router.delete("/journaux/liens/{lienID}", tags=["Journaux"])
+def delete_lien_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], lienID: int, db: Session = Depends(get_db)):
+    crud_livres.delier(db, current_user, lienID, "journal")
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': "Le lien est retiré"}))
+
 #endregion
 # -----------------------------------------------
 #region Livres
@@ -121,6 +140,11 @@ def read_livres_by_civilisation(civilisationID: int, skip: int = 0, limit: int =
     livres = crud.get_livres_by_civilisation(db=db, civilisationID=civilisationID, skip=skip, limit=limit)
     return JSONResponse(content=jsonable_encoder(livres))
 
+@router.get("/liens/list", tags=["Livres", "Journaux"])
+def read_tous_les_liens(db: Session = Depends(get_db)):
+    # Tous les liens des livres et des journaux (recherche de la bibliothèque) : [{ support, ecrit_id, entite }]
+    return JSONResponse(content=jsonable_encoder(crud_livres.tous_les_liens(db)))
+
 @router.get("/livres/liens/{livreID}", tags=["Livres"])
 def read_liens_livre(livreID: int, db: Session = Depends(get_db)):
     # Religions, commerces, alliances et personnages liés au livre : [{ id, livre_id, entite: { type, id, title, … } }]
@@ -128,7 +152,7 @@ def read_liens_livre(livreID: int, db: Session = Depends(get_db)):
 
 @router.get("/livres/entite/{EntityType}/{EntityID}/list", tags=["Livres"])
 def read_livres_of_entite(EntityType: str, EntityID: int, db: Session = Depends(get_db)):
-    # EntityType : religion, commerce, alliance ou personnage ; [{ lien_id, livre }]
+    # EntityType : civilisation, religion, commerce, alliance, guerre ou personnage ; [{ lien_id, livre }]
     return JSONResponse(content=jsonable_encoder(crud_livres.livres_de_entite(db, EntityType, EntityID)))
 
 @router.post("/livres/liens", tags=["Livres"])

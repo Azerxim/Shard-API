@@ -118,7 +118,16 @@ class LivreContenu(BaseModel):
     
 class LivreLienCreate(BaseModel):
     livre_id: int
-    entity_type: str                      # civilisation, religion, commerce, alliance ou personnage
+    entity_type: str                      # civilisation, religion, commerce, alliance, guerre ou personnage
+    entity_id: int
+
+class DescriptionLongue(BaseModel):
+    # Markdown ; vide ou absent : la description longue est effacée
+    description_longue: str | None = None
+
+class JournalLienCreate(BaseModel):
+    journal_id: int
+    entity_type: str                      # civilisation, religion, commerce, alliance, guerre ou personnage
     entity_id: int
 
 ############### Civilisations ####################
