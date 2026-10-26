@@ -3,7 +3,7 @@ Notifications du site : la cloche de la barre de ShardUI-2.
 
 - Écrites par les autres domaines au moment des faits : appels aux armes, invitations d'alliance, liens de parenté à
   accepter, lectures tracées, révélations, décisions des modérateurs RP, demandes à leur soumettre, événements annulés,
-  compagnies de mercenaires engagées.
+  compagnies de mercenaires engagées, étapes des élections (ouverture du scrutin et du vote, second tour, résultat).
 - Jamais adressées à celui qui agit, ni à un compte désactivé.
 - Le site les relève régulièrement (pas de connexion permanente). Une notification lue est gardée JOURS_LUES jours ;
   au-delà de MAX_PAR_JOUEUR, les plus anciennes disparaissent.

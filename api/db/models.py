@@ -499,6 +499,7 @@ class Personnages(SQLModel, table=True):
     ville_id: int | None = Field(default=None, foreign_key="villes.id")
     quartier_id: int | None = Field(default=None, foreign_key="quartiers.id")
     maison_id: int | None = Field(default=None, foreign_key="maisons.id")  # maison noble (voir services/crud_lignees.py)
+    religion_id: int | None = Field(default=None, foreign_key="religions.id")  # foi : vote aux élections de sa religion
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)
     updated_at: dt.datetime | None = Field(default=None)
 
@@ -783,6 +784,81 @@ class MondeJoueurs(SQLModel, table=True):
     lieu_type: str | None = Field(default=None)           # lieu de résidence déduit du point de réapparition
     lieu_id: int | None = Field(default=None)
     lieu_title: str | None = Field(default=None)
+
+
+############### Postes de gouvernement et élections ####################
+
+class GouvernementPostes(SQLModel, table=True):
+    # Poste du gouvernement d'une civilisation ou d'une ville (« Roi », « Bourgmestre »), occupé par un personnage ;
+    # le représentant vote au nom de la civilisation (alliances) ou de la ville (religions). Voir services/crud_elections.py
+    id: int | None = Field(default=None, primary_key=True)
+    entity_type: str                                   # civilisation ou ville
+    entity_id: int = Field(index=True)
+    title: str
+    personnage_id: int | None = Field(default=None, foreign_key="personnages.id")
+    is_representant: bool = Field(default=False)       # un seul par civilisation ou par ville
+    ordre: int = Field(default=0)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class Scrutins(SQLModel, table=True):
+    # Élection RP d'une civilisation, d'une alliance ou d'une religion : candidatures jusqu'à l'ouverture du vote, vote
+    # jusqu'à la clôture (heures réelles), second tour éventuel ; résultat caché jusqu'au dépouillement
+    id: int | None = Field(default=None, primary_key=True)
+    title: str
+    description: str | None = Field(default=None)
+    entity_type: str                                   # civilisation, religion ou alliance
+    entity_id: int = Field(index=True)
+    entity_title: str | None = Field(default=None)     # nom conservé dans les archives
+    corps: str                                         # qui vote : personnages, villes ou civilisations
+    mode: str = Field(default="secret")                # secret ou public (bulletins nommés publiés au dépouillement)
+    deux_tours: bool = Field(default=False)
+    poste_id: int | None = Field(default=None, foreign_key="gouvernementpostes.id")  # poste mis en jeu
+    poste_title: str | None = Field(default=None)
+    vote_debut: dt.datetime
+    vote_fin: dt.datetime
+    tour: int = Field(default=1)
+    tour2_fin: dt.datetime | None = Field(default=None)
+    status: str = Field(default="ouvert")              # ouvert, clos ou annule
+    etape_annoncee: str | None = Field(default=None)   # dernière étape notifiée (vote, tour2) : jamais deux fois
+    resultat: str | None = Field(default=None)         # elu, egalite, sans_candidat ou sans_suffrage
+    elu_id: int | None = Field(default=None)           # candidat élu (scrutincandidats.id)
+    date_rp: dt.date | None = Field(default=None)      # date du scrutin dans le monde : le résultat entre dans les chroniques
+    created_by: int | None = Field(default=None, foreign_key="users.id")
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    closed_at: dt.datetime | None = Field(default=None)
+
+class ScrutinCandidats(SQLModel, table=True):
+    # Voix comptées au fil du vote, sans dire qui les a données (vote secret) ; montrées seulement au dépouillement
+    id: int | None = Field(default=None, primary_key=True)
+    scrutin_id: int = Field(foreign_key="scrutins.id", index=True)
+    personnage_id: int | None = Field(default=None, foreign_key="personnages.id")
+    nom: str                                           # nom conservé si le personnage disparaît
+    programme: str | None = Field(default=None)
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+    voix: int = Field(default=0)
+    au_second_tour: bool = Field(default=False)
+    voix_second_tour: int = Field(default=0)
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+
+class ScrutinVotants(SQLModel, table=True):
+    # Qui a voté, à chaque tour (jamais pour qui : voir ScrutinBulletins, en vote public seulement)
+    id: int | None = Field(default=None, primary_key=True)
+    scrutin_id: int = Field(foreign_key="scrutins.id", index=True)
+    tour: int = Field(default=1)
+    votant_type: str                                   # personnage, ville ou civilisation
+    votant_id: int
+    personnage_id: int | None = Field(default=None, foreign_key="personnages.id")  # qui a glissé le bulletin
+    user_id: int | None = Field(default=None, foreign_key="users.id")
+
+class ScrutinBulletins(SQLModel, table=True):
+    # Vote public : chaque bulletin avec le nom du votant, publié au dépouillement
+    id: int | None = Field(default=None, primary_key=True)
+    scrutin_id: int = Field(foreign_key="scrutins.id", index=True)
+    tour: int = Field(default=1)
+    candidat_id: int = Field(foreign_key="scrutincandidats.id")
+    votant_type: str
+    votant_id: int
+    votant_title: str                                  # personnage, ville ou civilisation, et qui l'a représentée
 
 
 ############### Templates ####################

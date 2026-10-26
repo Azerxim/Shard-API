@@ -3,7 +3,7 @@ Chroniques de Tetrago : frise de l'histoire du monde, remplie toute seule à par
 
 - Fondations des civilisations, villes, religions et commerces publics ; alliances conclues ; débuts et fins des
   guerres validées, batailles, sièges et traités de leur chronologie ; lignées : fondation des maisons nobles,
-  naissances et morts de leurs membres, mariages (crud_lignees).
+  naissances et morts de leurs membres, mariages (crud_lignees) ; élections closes sur un élu (crud_elections).
 - Les modérateurs RP y ajoutent des faits marquants (table chroniquesfaits) : ce que les données ne disent pas.
 - Rien de privé : entités publiques, guerres validées seulement.
 - La frise se lit en dates RP (date de fondation, dates de la guerre, date d'un fait raconté…), la plus récente
@@ -16,9 +16,9 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from ..db import models, schemas
-from . import crud_conflits, crud_lignees
+from . import crud_conflits, crud_elections, crud_lignees
 
-CATEGORIES = ("fondations", "diplomatie", "guerres", "lignees", "faits")
+CATEGORIES = ("fondations", "diplomatie", "guerres", "lignees", "elections", "faits")
 TITLE_MAX = 120
 
 
@@ -87,6 +87,9 @@ def _guerres(db: Session):
 def _lignees(db: Session):
     return [_entree(e["id"], "lignees", e["date"], e["title"], e["lien"], e["description"], e["date_rp"]) for e in crud_lignees.entrees_chroniques(db)]
 
+def _elections(db: Session):
+    return [_entree(e["id"], "elections", e["date"], e["title"], e["lien"], e["description"], e["date_rp"]) for e in crud_elections.entrees_chroniques(db)]
+
 def _faits(db: Session):
     return [_fait_infos(fait) for fait in db.exec(select(models.ChroniquesFaits)).all()]
 
@@ -99,7 +102,7 @@ def _fait_infos(fait: models.ChroniquesFaits):
 def chroniques(db: Session):
     # Toute la frise, par date RP, la plus récente d'abord (à date égale, la dernière inscrite d'abord) ;
     # sans date RP, une entrée n'y figure pas
-    entrees = _fondations(db) + _alliances(db) + _guerres(db) + _lignees(db) + _faits(db)
+    entrees = _fondations(db) + _alliances(db) + _guerres(db) + _lignees(db) + _elections(db) + _faits(db)
     return sorted((e for e in entrees if e["date_rp"]), key=lambda e: (e["date_rp"], e["date"], e["id"]), reverse=True)
 
 #endregion

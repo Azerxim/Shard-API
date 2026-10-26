@@ -219,6 +219,7 @@ def delete_alliance(db: Session, user: schemas.Users, ID: int):
         db_belligerant.alliance_id = None
         db.add(db_belligerant)
     crud_nettoyage.supprimer_liens_livres(db, "alliance", ID)
+    crud_nettoyage.supprimer_scrutins(db, "alliance", ID)
     db.delete(db_alliance)
     db.commit()
     return {"resultat": "Alliance dissoute"}

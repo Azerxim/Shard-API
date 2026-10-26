@@ -269,7 +269,8 @@ def create_action(db: Session, user: schemas.Users, body: schemas.ActionSecreteC
     if not entity:
         raise HTTPException(status_code=404, detail="L'auteur choisi n'existe pas")
     if body.entity_type == "personnage":
-        if entity.user_id != user.id:
+        # Un administrateur du site choisit parmi tous les personnages
+        if not crud_personnages.can_manage(user, entity):
             raise HTTPException(status_code=403, detail="On ne dépose une action qu'au nom de ses propres personnages")
         entity_title = entity.name
     else:

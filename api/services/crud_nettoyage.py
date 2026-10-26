@@ -12,6 +12,9 @@ Ce module ne dépend que des modèles (crud, crud_conflits et crud_personnages p
 - Zone commerciale, ville, utilisateur : jours de marché, foires et fermes (crud_marches, crud_fermes ; rattrapés ici).
 - Ville, personnage, utilisateur : événements du calendrier et inscriptions (l'organisateur disparu garde son nom).
 - Personnage : liens de parenté, tête de sa maison ; civilisation : rattachement des maisons nobles.
+- Élections (crud_elections) : les scrutins disparaissent avec leur civilisation, religion ou alliance ; les postes de
+  gouvernement avec leur civilisation ou leur ville. Un personnage supprimé libère ses postes, et ses candidatures
+  gardent son nom ; une religion supprimée efface la foi de ses fidèles.
 - Journal : messages signés par des personnages, liens du journal (table journauxliens, voir crud_livres).
 - Livre : ses chapitres (supprimés avec lui par crud ; rattrapés ici au démarrage).
 - Livre, civilisation, religion, commerce, alliance, guerre, personnage : liens des livres (table livresliens, voir crud_livres),
@@ -76,6 +79,11 @@ def detacher_personnage(db: Session, personnageID: int):
     for maison in _all(db, models.Maisons, models.Maisons.chef_id == personnageID):
         maison.chef_id = None
         db.add(maison)
+    # Élections : ses postes sont libérés, ses candidatures et ses votes gardés sans lui
+    for model in (models.GouvernementPostes, models.ScrutinCandidats, models.ScrutinVotants):
+        for row in _all(db, model, model.personnage_id == personnageID):
+            row.personnage_id = None
+            db.add(row)
 
 def supprimer_liens_livres(db: Session, entity_type: str, entity_id: int):
     # Liens des livres et des journaux vers l'entité supprimée ; entity_type "livre" : tous les liens du livre
@@ -87,6 +95,20 @@ def supprimer_liens_livres(db: Session, entity_type: str, entity_id: int):
         for lien in _all(db, models.JournauxLiens, models.JournauxLiens.entity_type == entity_type, models.JournauxLiens.entity_id == entity_id):
             db.delete(lien)
 
+def supprimer_scrutins(db: Session, entity_type: str, entity_id: int):
+    for scrutin in _all(db, models.Scrutins, models.Scrutins.entity_type == entity_type, models.Scrutins.entity_id == entity_id):
+        for model in (models.ScrutinBulletins, models.ScrutinVotants, models.ScrutinCandidats):
+            for row in _all(db, model, model.scrutin_id == scrutin.id):
+                db.delete(row)
+        db.delete(scrutin)
+
+def supprimer_postes(db: Session, entity_type: str, entity_id: int):
+    for poste in _all(db, models.GouvernementPostes, models.GouvernementPostes.entity_type == entity_type, models.GouvernementPostes.entity_id == entity_id):
+        for scrutin in _all(db, models.Scrutins, models.Scrutins.poste_id == poste.id):
+            scrutin.poste_id = None
+            db.add(scrutin)
+        db.delete(poste)
+
 #endregion
 #region Alliances
 
@@ -96,6 +118,7 @@ def _dissoudre_alliance(db: Session, allianceID: int):
     for belligerant in _all(db, models.GuerreBelligerants, models.GuerreBelligerants.alliance_id == allianceID):
         belligerant.alliance_id = None
         db.add(belligerant)
+    supprimer_scrutins(db, "alliance", allianceID)
     alliance = db.get(models.Alliances, allianceID)
     if alliance:
         db.delete(alliance)
@@ -246,10 +269,15 @@ def detacher_ville(db: Session, villeID: int):
         compagnie.ville_id = None
         db.add(compagnie)
     vider_residence(db, "ville", villeID)
+    supprimer_postes(db, "ville", villeID)
 
 def detacher_religion(db: Session, religionID: int, title: str | None):
     retirer_des_guerres(db, "religion", religionID, title)
     supprimer_liens_livres(db, "religion", religionID)
+    supprimer_scrutins(db, "religion", religionID)
+    for personnage in _all(db, models.Personnages, models.Personnages.religion_id == religionID):
+        personnage.religion_id = None
+        db.add(personnage)
 
 def detacher_civilisation(db: Session, civilisationID: int, title: str | None):
     retirer_civilisation_des_alliances(db, civilisationID)
@@ -268,6 +296,8 @@ def detacher_civilisation(db: Session, civilisationID: int, title: str | None):
     for maison in _all(db, models.Maisons, models.Maisons.civilisation_id == civilisationID):
         maison.civilisation_id = None
         db.add(maison)
+    supprimer_scrutins(db, "civilisation", civilisationID)
+    supprimer_postes(db, "civilisation", civilisationID)
 
 #endregion
 #region Utilisateurs
@@ -309,6 +339,7 @@ def detacher_utilisateur(db: Session, user: models.Users):
         (models.Guerres, "declared_by"), (models.Guerres, "moderator_id"), (models.PersonnageMessages, "linked_by"),
         (models.Evenements, "created_by"), (models.ChroniquesFaits, "created_by"),
         (models.Maisons, "created_by"), (models.PersonnageLiens, "demande_par"),
+        (models.Scrutins, "created_by"), (models.ScrutinCandidats, "user_id"), (models.ScrutinVotants, "user_id"),
     ):
         for row in _all(db, model, getattr(model, attribute) == user.id):
             setattr(row, attribute, None)

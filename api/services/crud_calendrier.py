@@ -4,11 +4,12 @@ Calendrier des événements RP : batailles prévues, fêtes, couronnements, cér
 - Dates en heure réelle du serveur (le serveur se joue en temps réel) : un événement s'annonce avant de commencer,
   dure au plus 31 jours, et ne se modifie plus une fois terminé.
 - Organisé au nom du joueur lui-même, ou d'une civilisation, d'une religion, d'un commerce (Fondateur ou Admin) ou
-  d'une alliance (Fondateur ou Admin de la civilisation chef de file). Une bataille peut être rattachée à une guerre en
+  d'une alliance (Fondateur ou Admin de la civilisation chef de file). Événement global (au nom de Tetrago, pour tout
+  le serveur) : administrateurs du site seulement ; les modérateurs RP le gèrent. Une bataille peut être rattachée à une guerre en
   cours par un chef de camp ou un modérateur RP (mêmes droits que la chronologie de la guerre).
 - Gèrent l'événement (modifier, annuler) : son créateur, les dirigeants de l'organisateur, les modérateurs RP.
 - Inscriptions : tout joueur connecté, jusqu'au début, éventuellement sous les traits d'un de ses personnages (vivant
-  ou disparu), dans la limite des places.
+  ou disparu ; un administrateur choisit parmi tous les personnages), dans la limite des places.
 - Annoncé dans le salon Discord `platforms.discord.channels.evenements` (annonce, changement de date, annulation), et
   reproduit en événement programmé du serveur Discord (créé, mis à jour, supprimé à l'annulation), en tâche de fond.
 - Les foires des villes publiques (crud_marches) figurent aussi au calendrier, en lecture seule.
@@ -37,7 +38,8 @@ TYPES = {
     "conseil": "Conseil",
     "autre": "Événement",
 }
-ORGANISATEURS = ("joueur", "civilisation", "religion", "commerce", "alliance")
+ORGANISATEURS = ("joueur", "civilisation", "religion", "commerce", "alliance", "global")
+NOM_GLOBAL = "Tetrago"
 TITLE_MAX = 120
 DUREE_MAX = dt.timedelta(days=31)
 # Discord exige une fin pour un événement « lieu externe » : durée prêtée à un événement sans heure de fin
@@ -97,9 +99,11 @@ def peut_gerer(db: Session, user: schemas.Users | None, evenement: models.Evenem
         return False
     if crud_conflits.is_moderateur(user) or evenement.created_by == user.id:
         return True
-    return evenement.organisateur_type != "joueur" and peut_parler_au_nom_de(db, user, evenement.organisateur_type, evenement.organisateur_id)
+    return evenement.organisateur_type not in ("joueur", "global") and peut_parler_au_nom_de(db, user, evenement.organisateur_type, evenement.organisateur_id)
 
 def _organisateur_infos(db: Session, evenement: models.Evenements):
+    if evenement.organisateur_type == "global":
+        return {"type": "global", "id": None, "title": NOM_GLOBAL}
     if evenement.organisateur_type == "joueur":
         auteur = crud_conflits._user_summary(db, evenement.created_by)
         return {"type": "joueur", "id": auteur["id"] if auteur else None, "title": (auteur["full_name"] or auteur["username"]) if auteur else "Compte supprimé"}
@@ -310,7 +314,10 @@ def create_evenement(db: Session, user: schemas.Users, body: schemas.EvenementCr
     if kind not in ORGANISATEURS:
         raise HTTPException(status_code=400, detail=f"Organisateur inconnu : {', '.join(ORGANISATEURS)}")
     entite = None
-    if kind != "joueur":
+    if kind == "global":
+        if not user.is_admin:
+            raise HTTPException(status_code=403, detail="Seuls les administrateurs du site annoncent un événement global")
+    elif kind != "joueur":
         entite = _entite(db, kind, body.organisateur_id)
         if not entite:
             raise HTTPException(status_code=404, detail="L'organisateur n'existe pas")
@@ -319,7 +326,8 @@ def create_evenement(db: Session, user: schemas.Users, body: schemas.EvenementCr
     evenement = models.Evenements(
         title=body.title, description=body.description, type=body.type, date_debut=body.date_debut, date_fin=body.date_fin,
         lieu=body.lieu, ville_id=body.ville_id, guerre_id=body.guerre_id, places=body.places,
-        organisateur_type=kind, organisateur_id=entite.id if entite else None, organisateur_title=entite.title if entite else None,
+        organisateur_type=kind, organisateur_id=entite.id if entite else None,
+        organisateur_title=entite.title if entite else (NOM_GLOBAL if kind == "global" else None),
         created_by=user.id,
     )
     _verifier(db, user, evenement, nouveau=True)
@@ -405,7 +413,7 @@ def inscrire(db: Session, user: schemas.Users, ID: int, body: schemas.EvenementI
     personnage = None
     if body.personnage_id is not None:
         personnage = crud_personnages.get_personnage(db, body.personnage_id)
-        if not personnage or personnage.user_id != user.id:
+        if not personnage or not crud_personnages.can_manage(user, personnage):
             raise HTTPException(status_code=403, detail="On ne s'inscrit que sous les traits de ses propres personnages")
         if personnage.status == "mort":
             raise HTTPException(status_code=400, detail=f"{personnage.name} est mort : il ne participe plus aux événements")

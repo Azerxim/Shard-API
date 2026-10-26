@@ -34,6 +34,7 @@ from .routes.calendrier import router as calendrier_router
 from .routes.chroniques import router as chroniques_router
 from .routes.lignees import router as lignees_router
 from .routes.descriptions import router as descriptions_router
+from .routes.elections import router as elections_router
 
 
 ################# App Initialization #################
@@ -157,6 +158,7 @@ app.include_router(chroniques_router)
 app.include_router(lignees_router)
 
 app.include_router(descriptions_router)
+app.include_router(elections_router)
 
 ################# 404 Handler #################
 

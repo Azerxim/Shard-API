@@ -494,6 +494,7 @@ class PersonnageCreate(EmptyStringAsNone):
     espece_id: int | None = None
     classe_id: int | None = None
     grade: str | None = None
+    religion_id: int | None = None          # foi du personnage
     skin_source: str | None = "aucun"       # aucun, minecraft (compte lié du joueur), lien ou fichier (déjà envoyé)
     skin_url: str | None = None
 
@@ -905,6 +906,45 @@ class MondeReleveCreate(BaseModel):
     lieux: List[MondeLieuStat] = []
     zones: List[MondeZoneStat] = []
     joueurs: List[MondeJoueurStat] = []
+
+
+############### Postes de gouvernement et élections ####################
+
+class PosteCreate(EmptyStringAsNone):
+    entity_type: str                              # civilisation ou ville
+    entity_id: int
+    title: str
+    personnage_id: int | None = None              # un personnage résident de la civilisation
+    is_representant: bool | None = False
+
+class PosteUpdate(EmptyStringAsNone):
+    # Les champs envoyés remplacent les anciens ; personnage_id envoyé vide libère le poste
+    title: str | None = None
+    personnage_id: int | None = None
+    is_representant: bool | None = None
+    ordre: int | None = None
+
+class ScrutinCreate(EmptyStringAsNone):
+    title: str
+    description: str | None = None
+    entity_type: str                              # civilisation, religion ou alliance
+    entity_id: int
+    corps: str | None = None                      # religion : personnages (fidèles) ou villes ; imposé ailleurs
+    mode: str | None = "secret"                   # secret ou public
+    deux_tours: bool | None = False
+    poste_id: int | None = None                   # civilisation : poste de son gouvernement ou de l'une de ses villes
+    vote_debut: datetime.datetime                 # heures réelles du serveur
+    vote_fin: datetime.datetime
+    date_rp: datetime.date | None = None
+
+class CandidatureCreate(EmptyStringAsNone):
+    personnage_id: int
+    programme: str | None = None
+
+class VoteCreate(EmptyStringAsNone):
+    votant_type: str                              # personnage, ville ou civilisation
+    votant_id: int
+    candidat_id: int
 
 
 ############### Templates ####################

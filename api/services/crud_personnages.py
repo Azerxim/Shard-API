@@ -167,6 +167,7 @@ def personnage_infos(db: Session, personnage: models.Personnages):
     espece = db.get(models.PersonnageEspeces, personnage.espece_id) if personnage.espece_id else None
     classe = db.get(models.PersonnageClasses, personnage.classe_id) if personnage.classe_id else None
     maison = db.get(models.Maisons, personnage.maison_id) if personnage.maison_id else None
+    religion = db.get(models.Religions, personnage.religion_id) if personnage.religion_id else None
     return {
         "personnage": personnage.model_dump(),
         "joueur": {"id": user.id, "username": user.username, "full_name": user.full_name} if user else None,
@@ -176,6 +177,7 @@ def personnage_infos(db: Session, personnage: models.Personnages):
         "espece": {"id": espece.id, "title": espece.title} if espece else None,
         "classe": {"id": classe.id, "title": classe.title} if classe else None,
         "maison": {"id": maison.id, "title": maison.title, "couleur": maison.couleur, "icon": maison.icon} if maison else None,
+        "religion": {"id": religion.id, "title": religion.title, "color": religion.color, "icon": religion.icon} if religion else None,
         "messages_count": len(_links_of_personnage(db, personnage.id)),
     }
 
@@ -247,6 +249,8 @@ def _check_values(db: Session, personnage: models.Personnages):
         ID = getattr(personnage, config["column"])
         if ID and not db.get(config["model"], ID):
             raise HTTPException(status_code=404, detail=f"Cette {config['label']} n'existe pas")
+    if personnage.religion_id and not db.get(models.Religions, personnage.religion_id):
+        raise HTTPException(status_code=404, detail="Cette religion n'existe pas")
 
 def _apply_skin(db: Session, personnage: models.Personnages, a_supprimer: list):
     personnage.skin_source = personnage.skin_source or "aucun"
@@ -419,7 +423,8 @@ def _message_link(db: Session, journalID: int, messageID: str):
 
 def link_message(db: Session, user: schemas.Users, body: schemas.PersonnageMessageLink):
     personnage = _require_personnage(db, body.personnage_id)
-    if personnage.user_id != user.id:
+    # Un administrateur du site choisit parmi tous les personnages
+    if not can_manage(user, personnage):
         raise HTTPException(status_code=403, detail="Vous ne pouvez associer vos messages qu'à vos propres personnages")
     journal = get_journal(db, body.journal_id)
     if not journal:
