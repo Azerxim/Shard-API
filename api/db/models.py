@@ -674,14 +674,17 @@ class MondeReleves(SQLModel, table=True):
     chunks_actifs: int | None = Field(default=None)       # chunks où des joueurs ont passé du temps
     heures_presence: float | None = Field(default=None)   # InhabitedTime cumulé, en heures
     lits: int | None = Field(default=None)
-    lits_actifs: int | None = Field(default=None)         # lits dans un chunk fréquenté (seuil ci-dessous)
+    lits_actifs: int | None = Field(default=None)         # lits dans un chunk où des joueurs ont passé du temps
     villageois: int | None = Field(default=None)
     entites: int | None = Field(default=None)
+    population: int | None = Field(default=None)          # somme des populations mesurées des villes
+    chunks_illisibles: int | None = Field(default=None)   # chunks corrompus ou compressés autrement, ignorés
     joueurs: int | None = Field(default=None)
     joueurs_actifs: int | None = Field(default=None)
     heures_jeu: float | None = Field(default=None)        # temps de jeu cumulé des joueurs
 
     # Réglages utilisés pour le calcul, conservés pour comparer deux relevés
+    # seuil_heures_lit : présence minimale d'un chunk pour compter ses lits (relevés anciens ; aucun seuil depuis)
     seuil_heures_lit: float | None = Field(default=None)
     seuil_jours_actif: int | None = Field(default=None)
     seuil_heures_actif: float | None = Field(default=None)
@@ -702,6 +705,8 @@ class MondeDimensionsStats(SQLModel, table=True):
     lits_actifs: int | None = Field(default=None)
     villageois: int | None = Field(default=None)
     entites: int | None = Field(default=None)
+    regions: int | None = Field(default=None)             # fichiers region/*.mca lus
+    chunks_illisibles: int | None = Field(default=None)
     taille_octets: int | None = Field(default=None)
 
 class MondeLieux(SQLModel, table=True):
@@ -718,7 +723,7 @@ class MondeLieux(SQLModel, table=True):
     x: int | None = Field(default=None)
     z: int | None = Field(default=None)
 
-    population: int | None = Field(default=None)          # population mesurée (voir seuil_heures_lit)
+    population: int | None = Field(default=None)          # population mesurée : lits des chunks touchant le lieu
     # Population affichée sur le site avant ce relevé : les villes et quartiers reprennent ensuite la mesure
     population_declaree: int | None = Field(default=None)
     chunks: int | None = Field(default=None)
@@ -729,6 +734,8 @@ class MondeLieux(SQLModel, table=True):
     villageois: int | None = Field(default=None)
     joueurs_presents: int | None = Field(default=None)    # dernière position dans le lieu
     joueurs_residents: int | None = Field(default=None)   # point de réapparition (lit) dans le lieu
+    joueurs_residents_actifs: int | None = Field(default=None)
+    superficie: int | None = Field(default=None)          # blocs², d'après les frontières ou le rayon
     personnages: int | None = Field(default=None)         # personnages RP domiciliés
 
 class MondeZones(SQLModel, table=True):
@@ -771,7 +778,13 @@ class MondeJoueurs(SQLModel, table=True):
     blocs_mines: int | None = Field(default=None)
     distance_km: float | None = Field(default=None)
     nuits_dormies: int | None = Field(default=None)
+    echanges_villageois: int | None = Field(default=None)
+    animaux_eleves: int | None = Field(default=None)
+    poissons_peches: int | None = Field(default=None)
+    objets_craftes: int | None = Field(default=None)
+    heures_sans_mourir: float | None = Field(default=None)  # temps de jeu depuis la dernière mort
     niveau: int | None = Field(default=None)
+    mode_jeu: str | None = Field(default=None)            # survie, creatif, aventure, spectateur
     derniere_activite: dt.datetime | None = Field(default=None)  # date du fichier de sauvegarde du joueur
     is_actif: bool | None = Field(default=None)
 

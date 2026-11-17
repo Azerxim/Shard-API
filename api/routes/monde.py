@@ -49,7 +49,7 @@ def read_releves(current_user: CurrentAdmin, limit: int = 52, db: Session = Depe
 
 @router.get("/resume")
 def read_resume(current_user: CurrentAdmin, releve_id: int | None = None, db: Session = Depends(get_db)):
-    # { releve, precedent, evolution, dimensions, lieux, zones, joueurs, releves }
+    # { releve, precedent, evolution, dimensions, lieux, zones, joueurs, releves, historique }
     return _json(crud_monde.resume(db, releve_id))
 
 @router.post("/pseudos")

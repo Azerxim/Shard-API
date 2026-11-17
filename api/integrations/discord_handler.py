@@ -358,7 +358,8 @@ def _message_data(message) -> dict:
             "id": str(message.author.id),
             "is_bot": message.author.bot
         },
-        "content": message.content,
+        # Mentions (<@id>, <@&id>, <#id>) remplacées par les noms ; le Markdown Discord est interprété par le site
+        "content": message.clean_content,
         "timestamp": message.created_at.isoformat(),
         "edited_at": message.edited_at.isoformat() if message.edited_at else None,
         "attachments": [
