@@ -100,6 +100,9 @@ def enregistrer_releve(db: Session, payload: schemas.MondeReleveCreate):
     releve.lits_actifs = _somme(d.lits_actifs for d in payload.dimensions)
     releve.villageois = _somme(d.villageois for d in payload.dimensions)
     releve.entites = _somme(d.entites for d in payload.dimensions)
+    releve.chunks_illisibles = _somme(d.chunks_illisibles for d in payload.dimensions)
+    # Population du monde : villes seulement (les quartiers sont inclus dans leur ville, les civilisations en sont la somme)
+    releve.population = _somme(l.population for l in payload.lieux if l.entity_type == "ville")
     releve.joueurs = len(payload.joueurs)
     releve.joueurs_actifs = len([j for j in payload.joueurs if j.is_actif])
     releve.heures_jeu = round(_somme(j.heures_jeu for j in payload.joueurs), 2)
@@ -305,14 +308,63 @@ def _lieu_infos(db: Session, lieu: models.MondeLieux):
         entite = crud.get_quartier_by_id(db, lieu.entity_id)
     elif lieu.entity_type == "civilisation":
         entite = crud.get_civilisation_by_id(db, lieu.entity_id)
-    return {**lieu.model_dump(), "titre_actuel": entite.title if entite else None, "supprime": entite is None}
+    return {
+        **lieu.model_dump(),
+        "titre_actuel": entite.title if entite else None,
+        "supprime": entite is None,
+        # Fiche d'une ville : /civilisation/<civilisation_id>/ville/<id>
+        "civilisation_id": getattr(entite, "civilisation_id", None) if lieu.entity_type == "ville" else None,
+    }
 
 
 def lieux(db: Session, releve_id: int | None = None):
     """Mesures par ville, quartier et civilisation, les plus fréquentés d'abord."""
     releve = _releve_ou_dernier(db, releve_id)
     lignes = _lignes(db, models.MondeLieux, releve.id, models.MondeLieux.heures_presence.desc())
-    return {"releve": releve, "lieux": [_lieu_infos(db, lieu) for lieu in lignes]}
+    precedent = _precedent(db, releve)
+    # Population du même lieu au relevé précédent, pour suivre son évolution
+    avant = {}
+    if precedent:
+        for ligne in _lignes(db, models.MondeLieux, precedent.id):
+            avant[(ligne.entity_type, ligne.entity_id)] = ligne.population
+    resultat = []
+    for lieu in lignes:
+        infos = _lieu_infos(db, lieu)
+        infos["population_precedente"] = avant.get((lieu.entity_type, lieu.entity_id))
+        resultat.append(infos)
+    return {"releve": releve, "lieux": resultat}
+
+
+def _precedent(db: Session, releve: models.MondeReleves):
+    return db.exec(
+        select(models.MondeReleves).where(models.MondeReleves.id < releve.id).order_by(models.MondeReleves.id.desc())
+    ).first()
+
+
+def _population_villes(db: Session, releve_id: int):
+    return _somme(ligne.population for ligne in db.exec(select(models.MondeLieux).where(
+        models.MondeLieux.releve_id == releve_id, models.MondeLieux.entity_type == "ville")).all())
+
+
+def historique(db: Session, limit: int = 52):
+    """Totaux des derniers relevés, du plus ancien au plus récent (courbes d'évolution).
+
+    Les relevés antérieurs au champ `population` reprennent la somme de leurs villes.
+    """
+    releves = list(reversed(liste_releves(db, limit)))
+    manquants = [releve.id for releve in releves if releve.population is None]
+    sommes = {}
+    if manquants:
+        for ligne in db.exec(select(models.MondeLieux).where(
+                models.MondeLieux.releve_id.in_(manquants), models.MondeLieux.entity_type == "ville")).all():
+            sommes[ligne.releve_id] = sommes.get(ligne.releve_id, 0) + (ligne.population or 0)
+    champs = ("heures_presence", "heures_jeu", "joueurs", "joueurs_actifs", "lits", "villageois", "chunks")
+    return [{
+        "id": releve.id,
+        "date": releve.releve_at or releve.created_at,
+        "population": releve.population if releve.population is not None else sommes.get(releve.id, 0),
+        **{champ: getattr(releve, champ) for champ in champs},
+    } for releve in releves]
 
 
 def historique_lieu(db: Session, entity_type: str, entity_id: int, limit: int = 52):
@@ -331,16 +383,16 @@ def historique_lieu(db: Session, entity_type: str, entity_id: int, limit: int = 
 
 
 def resume(db: Session, releve_id: int | None = None, zones_limit: int = 20, joueurs_limit: int = 200):
-    """Tableau de bord : dernier relevé, évolution depuis le précédent et détail complet."""
+    """Tableau de bord : dernier relevé, évolution depuis le précédent, historique des totaux et détail complet."""
     releve = _releve_ou_dernier(db, releve_id)
-    precedent = db.exec(
-        select(models.MondeReleves).where(models.MondeReleves.id < releve.id).order_by(models.MondeReleves.id.desc())
-    ).first()
+    precedent = _precedent(db, releve)
     evolution = {}
     if precedent:
         for champ in ("chunks", "chunks_actifs", "heures_presence", "lits", "lits_actifs", "villageois",
-                      "joueurs", "joueurs_actifs", "heures_jeu"):
+                      "joueurs", "joueurs_actifs", "heures_jeu", "population"):
             ancien, nouveau = getattr(precedent, champ), getattr(releve, champ)
+            if champ == "population" and ancien is None:
+                ancien = _population_villes(db, precedent.id)  # relevé antérieur au champ population
             if ancien is not None and nouveau is not None:
                 evolution[champ] = round(nouveau - ancien, 2)
     return {
@@ -352,6 +404,7 @@ def resume(db: Session, releve_id: int | None = None, zones_limit: int = 20, jou
         "zones": zones(db, releve.id, zones_limit)["zones"],
         "joueurs": joueurs(db, releve.id, limit=joueurs_limit)["joueurs"],
         "releves": liste_releves(db, 52),
+        "historique": historique(db, 52),
     }
 
 #endregion

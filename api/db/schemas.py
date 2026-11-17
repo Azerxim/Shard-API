@@ -825,6 +825,8 @@ class MondeDimensionStat(BaseModel):
     lits_actifs: int | None = None
     villageois: int | None = None
     entites: int | None = None
+    regions: int | None = None
+    chunks_illisibles: int | None = None
     taille_octets: int | None = None
 
 class MondeLieuStat(BaseModel):
@@ -846,6 +848,8 @@ class MondeLieuStat(BaseModel):
     villageois: int | None = None
     joueurs_presents: int | None = None
     joueurs_residents: int | None = None
+    joueurs_residents_actifs: int | None = None
+    superficie: int | None = None
 
 class MondeZoneStat(BaseModel):
     rang: int | None = None
@@ -876,7 +880,13 @@ class MondeJoueurStat(BaseModel):
     blocs_mines: int | None = None
     distance_km: float | None = None
     nuits_dormies: int | None = None
+    echanges_villageois: int | None = None
+    animaux_eleves: int | None = None
+    poissons_peches: int | None = None
+    objets_craftes: int | None = None
+    heures_sans_mourir: float | None = None
     niveau: int | None = None
+    mode_jeu: str | None = None
     derniere_activite: datetime.datetime | None = None
     is_actif: bool | None = None
     dernier_x: int | None = None
@@ -897,7 +907,8 @@ class MondeReleveCreate(BaseModel):
     data_version: int | None = None
     duration_seconds: float | None = None
     taille_octets: int | None = None
-    seuil_heures_lit: float | None = None
+    chunks_illisibles: int | None = None
+    seuil_heures_lit: float | None = None          # relevés anciens : aucun seuil de présence depuis
     seuil_jours_actif: int | None = None
     seuil_heures_actif: float | None = None
     taille_tuile: int | None = None

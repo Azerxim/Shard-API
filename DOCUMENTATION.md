@@ -388,11 +388,11 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 
 | Table | Contenu |
 | --- | --- |
-| `mondereleves` | Un relevé : monde, durée, taille, totaux (chunks, heures de présence, lits, villageois, entités, joueurs) et seuils utilisés |
-| `mondedimensionsstats` | Totaux par dimension |
-| `mondelieux` | Mesure par civilisation, ville ou quartier : `methode` (frontières ou rayon), `population`, `population_declaree` (valeur avant le relevé), `personnages` domiciliés, joueurs présents |
+| `mondereleves` | Un relevé : monde, durée, taille, totaux (chunks, chunks illisibles, heures de présence, lits, villageois, entités, joueurs, `population` = somme des villes) et seuils utilisés (`seuil_heures_lit` : relevés anciens seulement) |
+| `mondedimensionsstats` | Totaux par dimension, fichiers de région lus et chunks illisibles |
+| `mondelieux` | Mesure par civilisation, ville ou quartier : `methode` (frontières ou rayon), `population`, `population_declaree` (valeur avant le relevé), `superficie` (blocs²), `personnages` domiciliés, joueurs présents et résidents (dont actifs) |
 | `mondezones` | Zones les plus fréquentées et lieu déclaré le plus proche |
-| `mondejoueurs` | Joueur par UUID : pseudo, `user_id` lié, temps de jeu, morts, distance, dernière position, lit, lieu |
+| `mondejoueurs` | Joueur par UUID : pseudo, `user_id` lié, mode de jeu, temps de jeu, morts, distance, échanges, élevage, pêche, craft, dernière position, lit, lieu |
 
 Les 104 derniers relevés sont conservés (deux ans à raison d'un par semaine).
 
@@ -789,7 +789,7 @@ administrateur seulement) + somme des écarts acceptés, jamais négative. Les a
 | --- | --- | --- | --- |
 | POST | `/releves` | En-tête `X-Monde-Key` ou jeton A | Enregistre un relevé et met à jour les populations |
 | GET | `/releves?limit=52` | A | Liste des relevés |
-| GET | `/resume?releve_id=` | A | `{ releve, precedent, evolution, dimensions, lieux, zones, joueurs, releves }` (dernier relevé par défaut) |
+| GET | `/resume?releve_id=` | A | `{ releve, precedent, evolution, dimensions, lieux, zones, joueurs, releves, historique }` (dernier relevé par défaut) ; chaque lieu porte `population_precedente`, `historique` les totaux des 52 derniers relevés, du plus ancien au plus récent |
 | POST | `/pseudos?releve_id=` | A | Cherche sur playerdb.co les pseudos manquants |
 | GET | `/joueurs?releve_id=&actifs=` | A | Joueurs |
 | GET | `/zones?releve_id=&limit=50` | A | Zones les plus fréquentées |
@@ -928,6 +928,8 @@ Une notification lue est supprimée après 30 jours ; au-delà de 200 par joueur
   l'API reçoit, complète et conserve.
 - À l'arrivée : totaux recalculés à partir des dimensions, population actuelle des villes et quartiers conservée dans
   `population_declaree`, personnages domiciliés ajoutés, joueurs reliés à leur compte par l'UUID Minecraft.
+- Population mesurée : tous les lits des chunks dont au moins un bloc est dans le lieu, sans seuil de présence (les relevés envoyés avant
+  ce changement ne comptaient que les chunks fréquentés au moins `seuil_heures_lit` heures).
 - **La population mesurée remplace celle des villes et quartiers.** Les lieux d'une dimension absente du relevé ne
   sont pas modifiés.
 - Pseudos : compte Minecraft lié, sinon celui fourni par le relevé, sinon playerdb.co (en tâche de fond après
