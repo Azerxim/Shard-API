@@ -475,6 +475,11 @@ L'administrateur du site a toujours accès.
 | POST | `/members/{CivilisationID}/add` | Fondateur/Admin | Ajoute un membre (`Admin` ou `Membre`) |
 | PUT | `/members/{CivilisationID}/{MemberID}/update` | Fondateur/Admin | Change le rôle |
 | DELETE | `/members/{CivilisationID}/remove?member_id=` | Fondateur/Admin | Retire un membre |
+| GET | `/demandes/mine` | Connecté | Ses demandes d'adhésion en attente : `[{ id, civilisation_id, civilisation, message, status, created_at }]` |
+| GET | `/demandes/{CivilisationID}/list` | Fondateur/Admin | Demandes en attente de la civilisation (`username`, `message`) |
+| POST | `/demandes/{CivilisationID}` | Connecté | Demande à rejoindre la civilisation, avec `message` facultatif (500 car.) ; refusée si déjà membre ou déjà en attente ; notifie ses dirigeants |
+| PUT | `/demandes/{DemandeID}/repondre` | Fondateur/Admin | `{ accepter }` : accepter en fait un `Membre` ; le joueur est notifié |
+| DELETE | `/demandes/{DemandeID}` | Son auteur | Retire la demande tant qu'elle attend |
 | PUT | `/members/{CivilisationID}/transfer` | Fondateur/A | Transfère le rôle de Fondateur (`user_id`, `former_role`) |
 | GET | `/gouvernement/list` | — | Gouvernements |
 | GET | `/gouvernement/read/{GouvernementID}` | — | Un gouvernement |
@@ -761,7 +766,7 @@ ville supprimée est simplement détachée.
 | Méthode | Chemin | Droits | Description |
 | --- | --- | --- | --- |
 | GET | `/ville/{VilleID}` | — | `{ mesuree, mesure: { releve_at, methode, rayon }, ajustements, en_attente, officielle }` |
-| GET | `/civilisation/{CivilisationID}` | — | `{ officielle, armee, habitants_par_soldat, villes }` (somme des villes, un soldat pour dix habitants) |
+| GET | `/civilisation/{CivilisationID}` | — | `{ officielle, armee, habitants_par_soldat, villes }` (somme des villes, un soldat pour cinq habitants) |
 | GET | `/ajustements/en-attente` | Modérateur RP | Demandes à valider, avec leur ville |
 | POST | `/ajustements` | F/A de la civilisation | Demande `{ ville_id, ecart, motif }` (écart non nul, motif obligatoire) |
 | PUT | `/ajustements/{ID}/decision` | Modérateur RP, sauf le demandeur | `{ accepte, note? }` |
@@ -918,6 +923,9 @@ Une notification lue est supprimée après 30 jours ; au-delà de 200 par joueur
 - Nombre illimité, sans validation. Seuls le joueur et les administrateurs les modifient.
 - Résidence cohérente : le quartier appartient à la ville, la ville à la civilisation ; les niveaux supérieurs sont
   complétés automatiquement.
+- Résidence réservée aux membres : hors administrateurs, un personnage ne s'installe que dans une civilisation (et ses
+  villes et quartiers) dont son joueur est membre (403 sinon). Un personnage qui y résidait déjà y reste si son joueur
+  la quitte. Pour devenir membre : demande d'adhésion (`/api/civilisations/demandes/…`, `crud_adhesions`).
 - Skin `minecraft` : l'UUID du compte Microsoft lié est copié à l'enregistrement.
 - Attribution d'un message : l'utilisateur doit être l'auteur Discord du message (compte Discord lié). Seul ce
   message est relu sur Discord et un extrait de 280 caractères est conservé.

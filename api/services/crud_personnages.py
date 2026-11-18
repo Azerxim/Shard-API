@@ -9,6 +9,7 @@ Personnages.
   ./uploads/personnages (services/fichiers.py) et servis par /api/personnages/fichier/{nom} ; ils sont supprimés quand
   on les remplace, qu'on choisit un lien ou une autre source de skin, ou avec le personnage.
 - Résidence cohérente : le quartier appartient à la ville et la ville à la civilisation (niveaux supérieurs complétés).
+  Seul un membre de la civilisation (ou un administrateur) y installe un personnage (demande d'adhésion : crud_adhesions).
 - Un message d'un journal (salon Discord) est attribué à un personnage par l'auteur Discord du message, reconnu grâce au
   compte Discord lié à son compte Tetrago. Seul ce message est relu ; un extrait est conservé pour la fiche.
 """
@@ -22,6 +23,7 @@ from .crud import (
     get_channel_message,
     get_civilisation_by_id,
     get_journal,
+    get_member_of_civilisation,
     get_quartier_by_id,
     get_user_by_id,
     get_ville_by_id,
@@ -276,8 +278,10 @@ def _apply_skin(db: Session, personnage: models.Personnages, a_supprimer: list):
             raise HTTPException(status_code=400, detail="Liez d'abord un compte Minecraft depuis le profil pour utiliser son skin")
         personnage.minecraft_uuid = link.uid
 
-def _apply_residence(db: Session, personnage: models.Personnages):
-    # Du plus précis au plus large : le quartier donne sa ville, la ville sa civilisation
+def _apply_residence(db: Session, personnage: models.Personnages, user: schemas.Users | None = None, civilisation_avant: int | None = None):
+    # Du plus précis au plus large : le quartier donne sa ville, la ville sa civilisation.
+    # Seul un membre de la civilisation (ou un administrateur) y installe un personnage ; un personnage qui y résidait
+    # déjà (civilisation_avant) y reste même si son joueur l'a quittée.
     if personnage.quartier_id:
         quartier = get_quartier_by_id(db, personnage.quartier_id)
         if not quartier:
@@ -294,14 +298,17 @@ def _apply_residence(db: Session, personnage: models.Personnages):
         personnage.civilisation_id = ville.civilisation_id
     if personnage.civilisation_id and not get_civilisation_by_id(db, personnage.civilisation_id):
         raise HTTPException(status_code=404, detail="Cette civilisation n'existe pas")
+    if (user and not user.is_admin and personnage.civilisation_id and personnage.civilisation_id != civilisation_avant
+            and not get_member_of_civilisation(db, personnage.civilisation_id, personnage.user_id)):
+        raise HTTPException(status_code=403, detail="Votre personnage ne peut résider que dans une civilisation dont vous êtes membre : demandez d'abord à la rejoindre")
 
-def _save(db: Session, personnage: models.Personnages, a_supprimer: list | None = None):
+def _save(db: Session, personnage: models.Personnages, a_supprimer: list | None = None, user: schemas.Users | None = None, civilisation_avant: int | None = None):
     # a_supprimer : fichiers remplacés, effacés du disque seulement une fois l'enregistrement validé
     a_supprimer = a_supprimer if a_supprimer is not None else []
     try:
         _check_values(db, personnage)
         _apply_skin(db, personnage, a_supprimer)
-        _apply_residence(db, personnage)
+        _apply_residence(db, personnage, user, civilisation_avant)
     except HTTPException:
         # Les valeurs refusées ne doivent pas rester sur l'objet si la session sert encore
         db.rollback()
@@ -316,11 +323,12 @@ def _save(db: Session, personnage: models.Personnages, a_supprimer: list | None 
 def create_personnage(db: Session, user: schemas.Users, body: schemas.PersonnageCreate):
     values = body.model_dump()
     values["status"] = values.get("status") or "vivant"
-    return _save(db, models.Personnages(**values, user_id=user.id, created_at=dt.datetime.now()))
+    return _save(db, models.Personnages(**values, user_id=user.id, created_at=dt.datetime.now()), user=user)
 
 def update_personnage(db: Session, user: schemas.Users, ID: int, body: schemas.PersonnageUpdate):
     personnage = _require_personnage(db, ID)
     _require_rights(user, personnage)
+    civilisation_avant = personnage.civilisation_id
     values = body.model_dump(exclude_unset=True)
     # Changer de civilisation (ou de ville) sans préciser la suite efface la ville et le quartier devenus incohérents
     if "civilisation_id" in values and values["civilisation_id"] != personnage.civilisation_id and "ville_id" not in values:
@@ -337,7 +345,7 @@ def update_personnage(db: Session, user: schemas.Users, ID: int, body: schemas.P
             continue
         setattr(personnage, key, value)
     personnage.updated_at = dt.datetime.now()
-    return _save(db, personnage, a_supprimer)
+    return _save(db, personnage, a_supprimer, user=user, civilisation_avant=civilisation_avant)
 
 def delete_personnage(db: Session, user: schemas.Users, ID: int):
     personnage = _require_personnage(db, ID)

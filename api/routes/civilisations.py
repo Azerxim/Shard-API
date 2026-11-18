@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, File
 from sqlmodel import Session
 
 from ..db import schemas
-from ..services import crud
+from ..services import crud, crud_adhesions
 from ..db.database import get_db
 
 # Créer un routeur pour les routes utilisateur
@@ -141,6 +141,32 @@ def update_civilisation_member(current_user: Annotated[schemas.Users, Depends(cr
         member_id=MemberID,
         member=member
     )
+
+#endregion
+# -----------------------------------------------
+# region Demandes d'adhésion (voir crud_adhesions)
+
+@router.get("/demandes/mine", tags=["Civilisations"])
+def read_my_demandes(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], db: Session = Depends(get_db)):
+    # [{ id, civilisation_id, civilisation, status, message, created_at }] : demandes du joueur encore en attente
+    return JSONResponse(content=jsonable_encoder(crud_adhesions.mes_demandes(db, current_user)))
+
+@router.get("/demandes/{CivilisationID}/list", tags=["Civilisations"])
+def list_demandes(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, db: Session = Depends(get_db)):
+    # Demandes en attente, pour le Fondateur, les Admins de la civilisation et les administrateurs du site
+    return JSONResponse(content=jsonable_encoder(crud_adhesions.demandes_de_civilisation(db, current_user, CivilisationID)))
+
+@router.post("/demandes/{CivilisationID}", tags=["Civilisations"])
+def create_demande(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], CivilisationID: int, body: schemas.DemandeAdhesion, db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder({'code': 200, **crud_adhesions.demander(db, current_user, CivilisationID, body)}))
+
+@router.put("/demandes/{DemandeID}/repondre", tags=["Civilisations"])
+def answer_demande(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], DemandeID: int, body: schemas.ReponseInvitation, db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder({'code': 200, **crud_adhesions.repondre(db, current_user, DemandeID, body.accepter)}))
+
+@router.delete("/demandes/{DemandeID}", tags=["Civilisations"])
+def cancel_demande(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], DemandeID: int, db: Session = Depends(get_db)):
+    return JSONResponse(content=jsonable_encoder({'code': 200, **crud_adhesions.retirer(db, current_user, DemandeID)}))
 
 #endregion
 # -----------------------------------------------

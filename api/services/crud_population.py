@@ -7,7 +7,7 @@ Population officielle des villes et des civilisations.
   et accepté ou refusé par un modérateur RP, qui ne peut pas valider sa propre demande. Un écart accepté reste valable
   d'un relevé à l'autre, jusqu'à ce qu'un modérateur le retire.
 - Population officielle d'une ville = mesure + écarts acceptés (jamais négative) ; celle d'une civilisation est la
-  somme de ses villes. Le Codex en tire l'armée autorisée : un soldat pour dix habitants (« Guerres & batailles »).
+  somme de ses villes. Le Codex en tire l'armée autorisée : un soldat pour cinq habitants (« Guerres & batailles »).
 """
 import datetime as dt
 
@@ -18,7 +18,7 @@ from ..db import models, schemas
 from .crud import _check_civilisation_rights, get_civilisation_by_id, get_ville_by_id, get_villes_by_civilisation_id
 from . import crud_conflits, crud_notifications
 
-HABITANTS_PAR_SOLDAT = 10
+HABITANTS_PAR_SOLDAT = 5
 STATUTS = ("en_attente", "accepte", "refuse", "retire")
 
 

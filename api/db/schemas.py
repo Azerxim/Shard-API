@@ -479,6 +479,9 @@ class AllianceMembreUpdate(BaseModel):
 class ReponseInvitation(BaseModel):
     accepter: bool
 
+class DemandeAdhesion(BaseModel):
+    message: str | None = None  # quelques mots pour se présenter aux dirigeants de la civilisation
+
 ############### Personnages ####################
 
 class PersonnageCreate(EmptyStringAsNone):

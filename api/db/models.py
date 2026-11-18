@@ -130,6 +130,18 @@ class CivilisationMembers(SQLModel, table=True):
     role: str | None = Field(default=None)
     joined_at: dt.datetime = Field(default_factory=dt.datetime.now)
 
+class CivilisationDemandes(SQLModel, table=True):
+    # Demande d'un joueur pour devenir membre d'une civilisation, acceptée ou refusée par son Fondateur ou ses Admins
+    # (voir services/crud_adhesions.py)
+    id: int | None = Field(default=None, primary_key=True)
+    civilisation_id: int = Field(foreign_key="civilisations.id", index=True)
+    user_id: int = Field(foreign_key="users.id", index=True)
+    message: str | None = Field(default=None)
+    status: str = Field(default="en_attente")  # en_attente, acceptee, refusee, annulee
+    created_at: dt.datetime = Field(default_factory=dt.datetime.now)
+    answered_at: dt.datetime | None = Field(default=None)
+    answered_by: int | None = Field(default=None, foreign_key="users.id")
+
 class Gouvernements(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     civilisation_id: int | None = Field(default=None, foreign_key="civilisations.id")
@@ -372,7 +384,7 @@ class GuerreTroupes(SQLModel, table=True):
     ville_id: int | None = Field(default=None, foreign_key="villes.id", index=True)  # vidée si la ville disparaît
     ville_title: str | None = Field(default=None)
     title: str
-    effectif: int  # soldats ; un pour dix habitants de la ville au plus, toutes guerres en cours confondues
+    effectif: int  # soldats ; un pour cinq habitants de la ville au plus, toutes guerres en cours confondues
     position: str = Field(default="en_mouvement")  # champ_de_bataille ou en_mouvement
     zone_id: int | None = Field(default=None, foreign_key="cartographie.id")  # champ de bataille, ou destination du mouvement
     status: str = Field(default="mobilisee")  # mobilisee ou demobilisee

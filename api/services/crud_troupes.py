@@ -2,7 +2,7 @@
 Troupes des guerres : levées ville par ville, toujours sur un champ de bataille ou en mouvement.
 
 - Une civilisation engagée dans une guerre en cours lève des troupes dans ses villes (Fondateur ou Admin). Une ville
-  fournit au plus un soldat pour dix habitants de sa population officielle (crud_population), toutes guerres en cours
+  fournit au plus un soldat pour cinq habitants de sa population officielle (crud_population), toutes guerres en cours
   et compagnies de mercenaires confondues : un soldat ne combat jamais en deux lieux à la fois (Codex, « Guerres & batailles »).
 - Une troupe mobilisée est soit sur un champ de bataille (une zone de conflit tracée pour la guerre), soit en
   mouvement, vers une zone de la guerre ou sans destination annoncée. Sans zone tracée, elle ne peut qu'être en mouvement.
