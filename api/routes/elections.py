@@ -25,6 +25,12 @@ def read_postes_personnage(PersonnageID: int, db: Session = Depends(get_db)):
     # Rôles d'un personnage : [{ id, title, is_representant, lieu: { type, id, title, lien } }]
     return _json(crud_elections.postes_du_personnage(db, PersonnageID))
 
+@router.get("/postes/titulaires/{CivilisationID}")
+def read_titulaires_possibles(CivilisationID: int, db: Session = Depends(get_db)):
+    # Personnages qui peuvent occuper un poste de la civilisation ou de ses villes : ses résidents et ceux des
+    # civilisations qu'elle dirige (fiches, comme /personnages/residence)
+    return _json(crud_elections.titulaires_possibles(db, CivilisationID))
+
 @router.get("/postes/{EntityType}/{EntityID}")
 def read_postes(EntityType: str, EntityID: int, db: Session = Depends(get_db)):
     # Postes du gouvernement d'une civilisation ou d'une ville, et leurs titulaires

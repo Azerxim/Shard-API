@@ -3,19 +3,22 @@ Postes de gouvernement et élections RP.
 
 Postes
 - Le gouvernement d'une civilisation, et celui de chacune de ses villes, a des postes (« Roi », « Bourgmestre »),
-  chacun occupé par un personnage résident de la civilisation (un administrateur du site y nomme n'importe quel personnage). Un seul poste par civilisation ou par ville est le
+  chacun occupé par un personnage résident de la civilisation ou d'une civilisation qu'elle dirige (un administrateur du
+  site y nomme n'importe quel personnage). Un seul poste par civilisation ou par ville est le
   représentant : son titulaire vote au nom de la civilisation (alliances) ou de la ville (religions).
 - Fondateur et Admins de la civilisation (ou administrateur du site) gèrent les postes, ceux de ses villes compris.
 
 Scrutins
 - Ouverts par le fondateur ou un admin de la civilisation, de la religion, ou de la civilisation chef de file d'une
   alliance ; sans validation. Annulables par eux tant qu'ils ne sont pas clos.
-- Qui vote (corps) : civilisation, ses personnages résidents ; alliance, une voix par civilisation membre (pas les
+- Qui vote (corps) : civilisation, ses personnages résidents, et une voix par civilisation qu'elle dirige (à tous les
+  niveaux), donnée par son représentant ; alliance, une voix par civilisation membre (pas les
   observateurs), donnée par son représentant ; religion, au choix à l'ouverture, ses fidèles (foi du personnage) ou
   une voix par ville où elle a la plus forte influence, donnée par le représentant de la ville. Seuls les personnages
   vivants votent ou se présentent ; un joueur vote avec chacun de ses personnages.
 - Candidats : les personnages liés (résidents, fidèles, résidents des civilisations membres), présentés par leur
-  joueur (ou un administrateur du site) jusqu'à l'ouverture du vote.
+  joueur (ou un administrateur du site) jusqu'à l'ouverture du vote. Dans une civilisation, tous les résidents des
+  civilisations qu'elle dirige se présentent aussi (seul leur représentant vote, au nom de sa civilisation).
 - Vote entre deux heures réelles. Secret : on retient qui a voté et le nombre de voix de chaque candidat, jamais le
   lien entre les deux. Public : chaque bulletin est conservé avec le nom du votant. Dans les deux cas, voix et
   bulletins ne sont montrés qu'au dépouillement.
@@ -88,6 +91,19 @@ def _civilisation_du_poste(db: Session, entity_type: str, entity_id: int):
         return get_civilisation_by_id(db, ville.civilisation_id) if ville and ville.civilisation_id else None
     return None
 
+def civilisations_du_peuple(db: Session, civilisationID: int) -> set[int]:
+    # La civilisation et celles qu'elle dirige, à tous les niveaux (une boucle de rattachements ne bloque pas)
+    peuple, a_voir = set(), [civilisationID]
+    while a_voir:
+        ID = a_voir.pop()
+        if ID in peuple:
+            continue
+        peuple.add(ID)
+        statement = select(models.Civilisations.id).where(
+            models.Civilisations.dirigeante_civilisation_id == ID, models.Civilisations.is_civilisation_dirigeante == False)  # noqa: E712
+        a_voir.extend(db.exec(statement).all())
+    return peuple
+
 #endregion
 #region Postes
 
@@ -145,8 +161,8 @@ def _verifier_titulaire(db: Session, user: schemas.Users, civilisation, personna
     personnage = crud_personnages.get_personnage(db, personnageID)
     if not personnage:
         raise HTTPException(status_code=404, detail="Ce personnage n'existe pas")
-    if personnage.civilisation_id != civilisation.id and not user.is_admin:
-        raise HTTPException(status_code=400, detail=f"{personnage.name} doit résider dans {civilisation.title} pour y occuper un poste")
+    if personnage.civilisation_id not in civilisations_du_peuple(db, civilisation.id) and not user.is_admin:
+        raise HTTPException(status_code=400, detail=f"{personnage.name} doit résider dans {civilisation.title} ou dans une civilisation qu'elle dirige pour y occuper un poste")
 
 def _seul_representant(db: Session, poste: models.GouvernementPostes):
     for autre in _postes(db, poste.entity_type, poste.entity_id):
@@ -249,7 +265,7 @@ def _villes_majoritaires(db: Session, religionID: int):
     return villes
 
 def personnages_lies(db: Session, entity_type: str, entity_id: int):
-    # Personnages vivants qui peuvent se présenter : résidents, fidèles, résidents des civilisations membres
+    # Personnages vivants qui votent (corps « personnages ») : résidents, fidèles, résidents des civilisations membres
     if entity_type == "civilisation":
         return _vivants(db, models.Personnages.civilisation_id == entity_id)
     if entity_type == "religion":
@@ -257,10 +273,30 @@ def personnages_lies(db: Session, entity_type: str, entity_id: int):
     membres = _civilisations_membres(db, entity_id)
     return _vivants(db, models.Personnages.civilisation_id.in_(membres)) if membres else []
 
+def candidats_possibles(db: Session, entity_type: str, entity_id: int):
+    # Personnages liés, et dans une civilisation tous les résidents de celles qu'elle dirige
+    if entity_type == "civilisation":
+        return _vivants(db, models.Personnages.civilisation_id.in_(civilisations_du_peuple(db, entity_id)))
+    return personnages_lies(db, entity_type, entity_id)
+
+def titulaires_possibles(db: Session, civilisationID: int):
+    # Titulaires possibles d'un poste de la civilisation ou de ses villes (fiches, comme les habitants)
+    if not get_civilisation_by_id(db, civilisationID):
+        raise HTTPException(status_code=404, detail="Cette civilisation n'existe pas")
+    statement = select(models.Personnages).where(models.Personnages.civilisation_id.in_(civilisations_du_peuple(db, civilisationID)))
+    return crud_personnages._sorted_infos(db, db.exec(statement).all())
+
 def votants(db: Session, scrutin: models.Scrutins):
     # [{ type, id, title, personnage }] : chaque voix et le personnage qui la donne (None : personne pour voter)
     if scrutin.corps == "personnages":
-        return [{"type": "personnage", "id": p.id, "title": p.name, "personnage": p} for p in personnages_lies(db, scrutin.entity_type, scrutin.entity_id)]
+        result = [{"type": "personnage", "id": p.id, "title": p.name, "personnage": p} for p in personnages_lies(db, scrutin.entity_type, scrutin.entity_id)]
+        if scrutin.entity_type == "civilisation":
+            # Les civilisations dirigées votent chacune une fois, par leur représentant
+            for civilisationID in sorted(civilisations_du_peuple(db, scrutin.entity_id) - {scrutin.entity_id}):
+                civilisation = get_civilisation_by_id(db, civilisationID)
+                if civilisation:
+                    result.append({"type": "civilisation", "id": civilisation.id, "title": civilisation.title, "personnage": _representant(db, "civilisation", civilisation.id)})
+        return result
     if scrutin.corps == "civilisations":
         result = []
         for civilisationID in _civilisations_membres(db, scrutin.entity_id):
@@ -303,11 +339,11 @@ def _cloturer(db: Session, scrutin: models.Scrutins, resultat: str, elu: models.
     scrutin.elu_id = elu.id if elu else None
     scrutin.closed_at = dt.datetime.now()
     db.add(scrutin)
-    # L'élu prend le poste mis en jeu, s'il réside toujours dans la civilisation
+    # L'élu prend le poste mis en jeu, s'il réside toujours dans la civilisation ou dans l'une de celles qu'elle dirige
     poste = db.get(models.GouvernementPostes, scrutin.poste_id) if scrutin.poste_id else None
     personnage = crud_personnages.get_personnage(db, elu.personnage_id) if elu and elu.personnage_id else None
     civilisation = _civilisation_du_poste(db, poste.entity_type, poste.entity_id) if poste else None
-    if poste and personnage and civilisation and personnage.civilisation_id == civilisation.id:
+    if poste and personnage and civilisation and personnage.civilisation_id in civilisations_du_peuple(db, civilisation.id):
         poste.personnage_id = personnage.id
         db.add(poste)
     db.commit()
@@ -460,7 +496,7 @@ def read_scrutin(db: Session, user: schemas.Users | None, ID: int):
     ] if scrutin.status == "ouvert" else []
     deja = {c.personnage_id for c in candidats}
     mes_candidats_possibles = [
-        crud_lignees.personnage_resume(p) for p in personnages_lies(db, scrutin.entity_type, scrutin.entity_id)
+        crud_lignees.personnage_resume(p) for p in candidats_possibles(db, scrutin.entity_type, scrutin.entity_id)
         if user and (p.user_id == user.id or user.is_admin) and p.id not in deja
     ] if phase(scrutin) == "candidatures" else []
     bulletins = []
@@ -473,7 +509,7 @@ def read_scrutin(db: Session, user: schemas.Users | None, ID: int):
         "description": scrutin.description,
         "candidats": [_candidat_infos(db, c, clos) for c in candidats],
         "votants_count": len(corps),
-        "votants_sans_representant": [v["title"] for v in corps if not v["personnage"]] if scrutin.corps != "personnages" else [],
+        "votants_sans_representant": [v["title"] for v in corps if not v["personnage"]],
         "participation": {"tour1": _participation(db, scrutin, 1), "tour2": _participation(db, scrutin, 2)},
         "mes_voix": mes_voix,
         "a_voter": en_vote and any(not v["a_vote"] for v in mes_voix),
@@ -557,7 +593,7 @@ def create_scrutin(db: Session, user: schemas.Users, body: schemas.ScrutinCreate
     db.add(scrutin)
     db.commit()
     db.refresh(scrutin)
-    joueurs = {p.user_id for p in personnages_lies(db, scrutin.entity_type, scrutin.entity_id)} | _joueurs_votants(db, scrutin)
+    joueurs = {p.user_id for p in candidats_possibles(db, scrutin.entity_type, scrutin.entity_id)} | _joueurs_votants(db, scrutin)
     _notifier(db, scrutin, joueurs, f"Scrutin ouvert : {scrutin.title}", f"Candidatures jusqu'au {_heure(debut)}, vote jusqu'au {_heure(fin)}.", sauf=user.id)
     return read_scrutin(db, user, scrutin.id)
 
@@ -588,7 +624,7 @@ def candidater(db: Session, user: schemas.Users, ID: int, body: schemas.Candidat
     personnage = crud_personnages.get_personnage(db, body.personnage_id)
     if not personnage or not crud_personnages.can_manage(user, personnage):
         raise HTTPException(status_code=403, detail="Vous ne présentez que vos propres personnages")
-    if personnage.id not in {p.id for p in personnages_lies(db, scrutin.entity_type, scrutin.entity_id)}:
+    if personnage.id not in {p.id for p in candidats_possibles(db, scrutin.entity_type, scrutin.entity_id)}:
         raise HTTPException(status_code=400, detail=f"{personnage.name} n'est pas lié à {scrutin.entity_title} : il ne peut pas s'y présenter")
     if any(c.personnage_id == personnage.id for c in _candidats(db, scrutin.id)):
         raise HTTPException(status_code=400, detail=f"{personnage.name} est déjà candidat")
