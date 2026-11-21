@@ -16,13 +16,15 @@ import datetime as dt
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..core import utils
 from ..db import models, schemas
-from .crud import announce_discord, get_dimension_by_id, get_ville_by_id
+from .crud import get_dimension_by_id, get_ville_by_id
+from . import annonces
 from .crud_conflits import _require_moderateur, _user_summary, is_moderateur
 from . import crud_notifications, fichiers
 
 TYPES = ("cultures", "elevage", "mobs", "ressources", "automatique", "autre")
+# Libellés du site (ShardUI-2 config/fermes.js), pour les annonces Discord
+TYPES_LIBELLES = {"cultures": "Cultures", "elevage": "Élevage", "mobs": "Mobs", "ressources": "Minerais & ressources", "automatique": "Redstone & machines", "autre": "Autre"}
 STATUTS = ("en_attente", "validee", "a_corriger")
 PHOTO_DOSSIER = "fermes"
 PHOTO_MAX_OCTETS = fichiers.MAX_OCTETS
@@ -68,11 +70,20 @@ def _texte(valeur: str | None) -> str | None:
 
 def _signaler(db: Session, ferme: models.Fermes, texte: str):
     # Salon des modérateurs ; le lien mène à la file de validation
-    site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
     declarant = _user_summary(db, ferme.user_id)
     nom = (declarant or {}).get("full_name") or (declarant or {}).get("username") or "un joueur"
-    lien = f"\n{str(site).rstrip('/')}/fermes#ferme-{ferme.id}" if site else ""
-    announce_discord("fermes", f"🌾 {texte} : **{ferme.title}** ({nom}), X {ferme.x} · Z {ferme.z}.{lien}")
+    dimension = get_dimension_by_id(db, ferme.dimension_id) if ferme.dimension_id else None
+    ville = get_ville_by_id(db, ferme.ville_id) if ferme.ville_id else None
+    position = " · ".join(part for part in (dimension.title if dimension else None, f"X {ferme.x}", f"Y {ferme.y}" if ferme.y is not None else None, f"Z {ferme.z}") if part)
+    annonces.annoncer("fermes", f"🌾 {texte}", f"🌾 {texte} : **{ferme.title}** ({nom}), X {ferme.x} · Z {ferme.z}.", f"/fermes#ferme-{ferme.id}", [
+        annonces.champ("Type", TYPES_LIBELLES.get(ferme.type, ferme.type)),
+        annonces.champ("Déclarée par", nom),
+        annonces.champ("Ville", ville.title if ville else "Hors des villes"),
+        annonces.champ("Position", position),
+        annonces.champ("Production", ferme.production, en_ligne=False),
+        annonces.champ("Justification RP", ferme.justification, en_ligne=False),
+        annonces.champ("Habillage", ferme.habillage, en_ligne=False),
+    ])
     crud_notifications.notifier(db, crud_notifications.moderateurs(db), "moderation", f"{texte} : {ferme.title}", f"Déclarée par {nom}.", f"/fermes#ferme-{ferme.id}", sauf=ferme.user_id)
 
 #endregion

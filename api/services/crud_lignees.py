@@ -21,10 +21,11 @@ import re
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..core import utils
 from ..db import models, schemas
-from . import crud_conflits, crud_marches, crud_notifications, crud_personnages
-from .crud import announce_discord, get_civilisation_by_id
+from . import crud_conflits, crud_notifications, crud_personnages
+from .crud import get_civilisation_by_id
+from . import annonces
+from .temporalite import date_rp_texte
 
 TYPES = ("parent", "conjoint", "heritier")
 TITLE_MAX = 80
@@ -91,19 +92,23 @@ def lien_infos(db: Session, lien: models.PersonnageLiens):
 
 def _date_rp_texte(date: dt.date) -> str:
     # « 21 juin de l'an 419 » (années RP : pas de jour de la semaine, qui n'aurait pas de sens)
-    return f"{date.day}{'er' if date.day == 1 else ''} {crud_marches.MOIS[date.month - 1]} de l'an {date.year}"
+    return date_rp_texte(date)
 
-def _annoncer(texte: str, chemin: str):
-    # Salon Discord « lignees », avec le lien du site si site_url est configuré
-    site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
-    announce_discord("lignees", f"{texte}\n{str(site).rstrip('/')}{chemin}" if site else texte)
+def _maison_texte(db: Session, personnage: models.Personnages) -> str | None:
+    maison = db.get(models.Maisons, personnage.maison_id) if personnage.maison_id else None
+    return nom_maison(maison)[0].upper() + nom_maison(maison)[1:] if maison else None
 
 def _annoncer_mariage(db: Session, lien: models.PersonnageLiens):
+    # Salon Discord « lignees », en embed
     a, b = crud_personnages.get_personnage(db, lien.source_id), crud_personnages.get_personnage(db, lien.cible_id)
     if lien.type != "conjoint" or not a or not b:
         return
     quand = f", le {_date_rp_texte(lien.date_rp)}" if lien.date_rp else ""
-    _annoncer(f"💍 Mariage de **{a.name}** et **{b.name}**{quand}.", f"/personnage/{a.id}#famille")
+    annonces.annoncer("lignees", "💍 Mariage", f"💍 Mariage de **{a.name}** et **{b.name}**{quand}.", f"/personnage/{a.id}#famille", [
+        annonces.champ(a.name, _maison_texte(db, a) or "Sans maison"),
+        annonces.champ(b.name, _maison_texte(db, b) or "Sans maison"),
+        annonces.champ("Date RP", date_rp_texte(lien.date_rp)),
+    ])
 
 #endregion
 #region Famille d'un personnage
@@ -350,7 +355,14 @@ def create_maison(db: Session, user: schemas.Users, body: schemas.MaisonCreate):
     if maison.date_fondation:
         details.append(f"le {_date_rp_texte(maison.date_fondation)}")
     devise = f" Devise : « {maison.devise} »." if maison.devise else ""
-    _annoncer(f"🏰 Fondation de la {nom_maison(maison)}, {', '.join(details)}.{devise}", f"/maison/{maison.id}")
+    civilisation = get_civilisation_by_id(db, maison.civilisation_id) if maison.civilisation_id else None
+    annonces.annoncer("lignees", "🏰 Nouvelle maison", f"🏰 Fondation de la {nom_maison(maison)}, {', '.join(details)}.{devise}", f"/maison/{maison.id}", [
+        annonces.champ("Chef de la maison", chef.name),
+        annonces.champ("Civilisation", civilisation.title if civilisation and civilisation.is_public is not False else None),
+        annonces.champ("Fondée le", date_rp_texte(maison.date_fondation)),
+        annonces.champ("Devise", f"« {maison.devise} »" if maison.devise else None, en_ligne=False),
+        annonces.champ("Histoire", getattr(maison, "description", None), en_ligne=False),
+    ], couleur=annonces.couleur_hex(maison.couleur))
     return maison_infos(db, maison)
 
 def update_maison(db: Session, user: schemas.Users, ID: int, body: schemas.MaisonUpdate):

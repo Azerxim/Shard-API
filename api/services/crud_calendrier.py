@@ -26,8 +26,9 @@ from sqlmodel import Session, select
 from ..core import utils
 from ..db import models, schemas
 from ..integrations import discord_handler
-from . import crud_conflits, crud_marches, crud_notifications, crud_personnages
-from .crud import announce_discord, _check_commerce_rights, get_commerce_by_id, get_ville_by_id
+from . import annonces, crud_conflits, crud_marches, crud_notifications, crud_personnages
+from .temporalite import date_rp_du_jour, date_rp_texte
+from .crud import _check_commerce_rights, get_commerce_by_id, get_ville_by_id
 
 TYPES = {
     "bataille": "Bataille",
@@ -154,9 +155,29 @@ def _lien(evenement: models.Evenements) -> str | None:
     site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
     return f"{str(site).rstrip('/')}/calendrier?mois={evenement.date_debut:%Y-%m}#evenement-{evenement.id}" if site else None
 
-def _annoncer(evenement: models.Evenements, texte: str):
-    lien = _lien(evenement)
-    announce_discord("evenements", f"{texte}\n{lien}" if lien else texte)
+def _annoncer(db: Session, evenement: models.Evenements, titre: str, texte: str, annule: bool = False):
+    # Salon Discord « evenements », en embed : quand, où, par qui, et ce que c'est
+    guerre = db.get(models.Guerres, evenement.guerre_id) if evenement.guerre_id else None
+    debut = evenement.date_debut.astimezone() if evenement.date_debut.tzinfo is None else evenement.date_debut
+    champs = [
+        annonces.champ("Type", TYPES.get(evenement.type, evenement.type)),
+        annonces.champ("Organisé par", _organisateur_infos(db, evenement)["title"]),
+        annonces.champ("Début", _date_heure_texte(evenement.date_debut)),
+        annonces.champ("Fin", _date_heure_texte(evenement.date_fin) if evenement.date_fin else None),
+        annonces.champ("Dans le RP", date_rp_texte(date_rp_du_jour(debut))),
+        annonces.champ("Lieu", _lieu_texte(db, evenement)),
+    ]
+    if annule:
+        champs.append(annonces.champ("Motif", evenement.motif_annulation, en_ligne=False))
+    else:
+        inscrits = len(_inscriptions(db, evenement.id))
+        champs += [
+            annonces.champ("Places", f"{inscrits} inscrit{'s' if inscrits > 1 else ''} sur {evenement.places}" if evenement.places else "Sans limite"),
+            annonces.champ("Guerre", guerre.title if guerre else None),
+            annonces.champ("Description", evenement.description, en_ligne=False),
+        ]
+    chemin = f"/calendrier?mois={evenement.date_debut:%Y-%m}#evenement-{evenement.id}"
+    annonces.annoncer("evenements", titre, texte, chemin, champs, annonces.GRIS if annule else None)
 
 def _lieu_texte(db: Session, evenement: models.Evenements) -> str:
     db_ville = get_ville_by_id(db, evenement.ville_id) if evenement.ville_id else None
@@ -335,7 +356,7 @@ def create_evenement(db: Session, user: schemas.Users, body: schemas.EvenementCr
     db.commit()
     db.refresh(evenement)
     organisateur = _organisateur_infos(db, evenement)["title"]
-    _annoncer(evenement, f"📅 **{evenement.title}** ({TYPES[evenement.type].lower()}, par {organisateur}) : {_date_heure_texte(evenement.date_debut)}, {_lieu_texte(db, evenement)}.")
+    _annoncer(db, evenement, "📅 Nouvel événement", f"📅 **{evenement.title}** ({TYPES[evenement.type].lower()}, par {organisateur}) : {_date_heure_texte(evenement.date_debut)}, {_lieu_texte(db, evenement)}.")
     _synchroniser_discord(evenement.id)
     return evenement_infos(db, evenement)
 
@@ -369,7 +390,7 @@ def update_evenement(db: Session, user: schemas.Users, ID: int, body: schemas.Ev
     db.commit()
     db.refresh(evenement)
     if (evenement.date_debut, evenement.date_fin) != avant:
-        _annoncer(evenement, f"📅 **{evenement.title}** change de date : {_date_heure_texte(evenement.date_debut)}, {_lieu_texte(db, evenement)}.")
+        _annoncer(db, evenement, "📅 Événement déplacé", f"📅 **{evenement.title}** change de date : {_date_heure_texte(evenement.date_debut)}, {_lieu_texte(db, evenement)}.")
     _synchroniser_discord(evenement.id)
     return evenement_infos(db, evenement)
 
@@ -382,7 +403,7 @@ def annuler_evenement(db: Session, user: schemas.Users, ID: int, body: schemas.E
     db.commit()
     db.refresh(evenement)
     motif = f" Motif : {evenement.motif_annulation}" if evenement.motif_annulation else ""
-    _annoncer(evenement, f"📅 **{evenement.title}** ({_date_heure_texte(evenement.date_debut)}) est annulé.{motif}")
+    _annoncer(db, evenement, "📅 Événement annulé", f"📅 **{evenement.title}** ({_date_heure_texte(evenement.date_debut)}) est annulé.{motif}", annule=True)
     inscrits = {inscription.user_id for inscription in _inscriptions(db, evenement.id)}
     crud_notifications.notifier(db, inscrits, "evenement", f"Événement annulé : {evenement.title}", f"Prévu le {_date_heure_texte(evenement.date_debut)}.{motif}", f"/calendrier?mois={evenement.date_debut:%Y-%m}#evenement-{evenement.id}", sauf=user.id)
     _synchroniser_discord(evenement.id)

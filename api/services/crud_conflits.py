@@ -17,8 +17,9 @@ from sqlmodel import Session, select
 from ..core import utils
 from ..db import models, schemas
 from . import crud_nettoyage, crud_notifications
+from .temporalite import date_rp_du_jour, date_rp_texte
+from . import annonces
 from .crud import (
-    announce_discord,
     delete_cartographies_by_types,
     get_civilisation_by_id,
     get_members_of_civilisation,
@@ -465,10 +466,18 @@ def _gestionnaires_guerre(db: Session, guerreID: int, camp: str | None = None) -
             ids |= crud_notifications.gestionnaires(db, b.entity_type, b.entity_id)
     return ids
 
-def _annoncer(db_guerre: models.Guerres, text: str):
-    # Salon Discord « guerres » (platforms.discord.channels.guerres), avec le lien de la guerre si site_url est configuré
-    site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
-    announce_discord("guerres", f"{text}\n{str(site).rstrip('/')}/guerre/{db_guerre.id}" if site else text)
+def _annoncer(db_guerre: models.Guerres, titre: str, text: str, champs=(), couleur: int | None = None):
+    # Salon Discord « guerres » (platforms.discord.channels.guerres), en embed, avec le lien de la guerre si site_url est configuré
+    annonces.annoncer("guerres", titre, text, f"/guerre/{db_guerre.id}", champs, couleur)
+
+def _champs_camps(db: Session, guerreID: int):
+    # Un champ par camp : belligérants engagés, chef de camp en premier
+    champs = []
+    for camp, nom in (("attaquant", "Attaquants"), ("defenseur", "Défenseurs")):
+        engages = sorted((b for b in _belligerants(db, guerreID) if b.camp == camp and b.status == "engage"), key=lambda b: not b.is_leader)
+        noms = [_entity_summary(db, b.entity_type, b.entity_id, b.entity_title)["title"] + (" (chef de camp)" if b.is_leader else "") for b in engages]
+        champs.append(annonces.champ(nom, "\n".join(noms)))
+    return champs
 
 def _villes_cibles(db: Session, entity_type: str, entity_id: int):
     # Villes publiques exposées : celles de la civilisation, ou celles où la religion est implantée
@@ -562,6 +571,7 @@ def declare_guerre(db: Session, user: schemas.Users, v_guerre: schemas.GuerreDec
         casus_belli=v_guerre.casus_belli,
         description=v_guerre.description,
         status="en_attente",
+        date_declaration=v_guerre.date_declaration or date_rp_du_jour(),
         declared_by=user.id,
     )
     db.add(db_guerre)
@@ -571,7 +581,7 @@ def declare_guerre(db: Session, user: schemas.Users, v_guerre: schemas.GuerreDec
         db.add(models.GuerreBelligerants(guerre_id=db_guerre.id, camp=camp, entity_type=entity_type, entity_id=entity_id, is_leader=True, status="engage"))
     attaquant = _get_entity(db, entity_type, v_guerre.attaquant_id)
     defenseur = _get_entity(db, entity_type, v_guerre.defenseur_id)
-    _add_evenement(db, db_guerre.id, "declaration", f"Déclaration de guerre de {attaquant.title} contre {defenseur.title}", v_guerre.casus_belli, camp="attaquant", user=user)
+    _add_evenement(db, db_guerre.id, "declaration", f"Déclaration de guerre de {attaquant.title} contre {defenseur.title}", v_guerre.casus_belli, camp="attaquant", date_rp=db_guerre.date_declaration, user=user)
     db.commit()
     crud_notifications.notifier(db, crud_notifications.moderateurs(db), "moderation", f"Déclaration de guerre à valider : {db_guerre.title}",
                                 f"{attaquant.title} contre {defenseur.title}", f"/guerre/{db_guerre.id}", sauf=user.id)
@@ -592,8 +602,9 @@ def update_guerre(db: Session, user: schemas.Users, ID: int, v_guerre: schemas.G
     if not is_moderateur(user) and not (db_guerre.status == "en_attente" and _can_manage_camp(db, user, ID, "attaquant")):
         raise HTTPException(status_code=403, detail="Seul le camp attaquant (avant validation) ou un modérateur peut modifier la déclaration")
     data = v_guerre.model_dump(exclude_unset=True)
-    if data.get("title") is None:
-        data.pop("title", None)
+    for champ in ("title", "date_declaration"):  # vides : inchangés
+        if data.get(champ) is None:
+            data.pop(champ, None)
     for key, value in data.items():
         setattr(db_guerre, key, value)
     db.add(db_guerre)
@@ -607,7 +618,7 @@ def valider_guerre(db: Session, user: schemas.Users, ID: int, v_validation: sche
     if db_guerre.status != "en_attente":
         raise HTTPException(status_code=400, detail="Seule une déclaration en attente peut être validée")
     db_guerre.status = "en_cours"
-    db_guerre.date_debut = v_validation.date_debut or dt.date.today()
+    db_guerre.date_debut = v_validation.date_debut or date_rp_du_jour()  # date RP du jour si laissée vide
     db_guerre.moderation_note = v_validation.note
     db_guerre.moderator_id = user.id
     db_guerre.validated_at = dt.datetime.now()
@@ -616,7 +627,14 @@ def valider_guerre(db: Session, user: schemas.Users, ID: int, v_validation: sche
     db.commit()
     db.refresh(db_guerre)
     attaquant, defenseur = _leaders(db, ID)
-    _annoncer(db_guerre, f"⚔️ **{db_guerre.title}** : {attaquant} contre {defenseur}. La guerre commence.")
+    _annoncer(db_guerre, "⚔️ Début de guerre", f"**{db_guerre.title}** : {attaquant} contre {defenseur}. La guerre commence.", [
+        annonces.champ("Type", "Guerre de religion" if db_guerre.type == "Religion" else "Guerre militaire"),
+        annonces.champ("Déclarée le", date_rp_texte(db_guerre.date_declaration)),
+        annonces.champ("Début", date_rp_texte(db_guerre.date_debut)),
+        *_champs_camps(db, ID),
+        annonces.champ("Casus belli", db_guerre.casus_belli, en_ligne=False),
+        annonces.champ("Enjeux fixés par la modération", db_guerre.moderation_note, en_ligne=False),
+    ])
     crud_notifications.notifier(db, _gestionnaires_guerre(db, ID) | {db_guerre.declared_by}, "guerre", f"La guerre commence : {db_guerre.title}",
                                 f"{attaquant} contre {defenseur}, validée par la modération RP.", f"/guerre/{ID}", sauf=user.id)
     return guerre_infos(db, db_guerre)
@@ -646,7 +664,7 @@ def terminer_guerre(db: Session, user: schemas.Users, ID: int, v_fin: schemas.Gu
         raise HTTPException(status_code=400, detail="Indiquer l'issue de la guerre")
     db_guerre.status = "terminee"
     db_guerre.issue = v_fin.issue.strip()
-    db_guerre.date_fin = v_fin.date_fin or dt.date.today()
+    db_guerre.date_fin = v_fin.date_fin or date_rp_du_jour()
     db_guerre.ended_at = dt.datetime.now()
     if not db_guerre.moderator_id:
         db_guerre.moderator_id = user.id
@@ -655,7 +673,12 @@ def terminer_guerre(db: Session, user: schemas.Users, ID: int, v_fin: schemas.Gu
     db.add(db_guerre)
     db.commit()
     db.refresh(db_guerre)
-    _annoncer(db_guerre, f"🏳️ **{db_guerre.title}** est terminée : {db_guerre.issue}")
+    _annoncer(db_guerre, "🏳️ Fin de guerre", f"**{db_guerre.title}** est terminée : {db_guerre.issue}", [
+        annonces.champ("Du", date_rp_texte(db_guerre.date_debut)),
+        annonces.champ("Au", date_rp_texte(db_guerre.date_fin)),
+        *_champs_camps(db, ID),
+        annonces.champ("Issue", db_guerre.issue, en_ligne=False),
+    ], couleur=annonces.GRIS)
     crud_notifications.notifier(db, _gestionnaires_guerre(db, ID), "guerre", f"Fin de la guerre : {db_guerre.title}", db_guerre.issue, f"/guerre/{ID}", sauf=user.id)
     return guerre_infos(db, db_guerre)
 
@@ -794,7 +817,16 @@ def ajouter_evenement(db: Session, user: schemas.Users, ID: int, body: schemas.G
     _add_evenement(db, ID, kind, title, (body.description or "").strip() or None, camp=body.camp, date_rp=body.date_rp, user=user, auto=False)
     db.commit()
     if kind in EVENEMENTS_ANNONCES:
-        _annoncer(db_guerre, f"📜 **{db_guerre.title}** — {EVENEMENTS_RACONTES[kind]} : {title}")
+        chef = _camp_leader(db, ID, body.camp) if body.camp else None
+        camp = None
+        if body.camp:
+            camp = ("Attaquants" if body.camp == "attaquant" else "Défenseurs") + (f" ({_entity_summary(db, chef.entity_type, chef.entity_id, chef.entity_title)['title']})" if chef else "")
+        icone = {"bataille": "⚔️", "siege": "🏰", "traite": "📜"}.get(kind, "📜")
+        _annoncer(db_guerre, f"{icone} {EVENEMENTS_RACONTES[kind]} — {db_guerre.title}", f"**{db_guerre.title}** — {EVENEMENTS_RACONTES[kind]} : {title}", [
+            annonces.champ("Date RP", date_rp_texte(body.date_rp)),
+            annonces.champ("Camp", camp),
+            annonces.champ("Récit", (body.description or "").strip(), en_ligne=False),
+        ])
     return guerre_details(db, db_guerre)
 
 def supprimer_evenement(db: Session, user: schemas.Users, ID: int, evenementID: int):

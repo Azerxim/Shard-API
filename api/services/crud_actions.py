@@ -21,10 +21,9 @@ import secrets
 from fastapi import HTTPException
 from sqlmodel import Session, select
 
-from ..core import utils
 from ..db import models, schemas
-from .crud import announce_discord, get_members_of_civilisation, get_members_of_religion
-from . import crud_conflits, crud_notifications, crud_personnages
+from .crud import get_members_of_civilisation, get_members_of_religion
+from . import annonces, crud_conflits, crud_notifications, crud_personnages
 
 ENTITY_TYPES = ("personnage", "civilisation", "religion")
 
@@ -127,8 +126,22 @@ def _annoncer_revelation(db: Session, db_action: models.ActionsSecretes):
     # Salon Discord « actions » (platforms.discord.channels.actions), avec le lien si site_url est configuré
     entite = _entity_summary(db, db_action)["title"]
     text = f"🔓 Action secrète **{code_action(db_action)}** révélée : **{db_action.title}** ({entite}), scellée le {db_action.created_at:%d/%m/%Y à %H:%M}."
-    site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
-    announce_discord("actions", f"{text}\n{str(site).rstrip('/')}/actions-secretes#{code_action(db_action)}" if site else text)
+    if db_action.reveal_mode == "date":
+        revelation = "À la date fixée au dépôt"
+    elif db_action.reveal_mode == "moderateur":
+        revelation = f"Par la modération RP. Motif : {db_action.reveal_motif}"
+    else:
+        revelation = "Par son auteur"
+    guerre = db.get(models.Guerres, db_action.guerre_id) if db_action.guerre_id else None
+    annonces.annoncer("actions", "🔓 Action secrète révélée", text, _lien(db_action), [
+        annonces.champ("Code", code_action(db_action)),
+        annonces.champ("Au nom de", entite),
+        annonces.champ("Scellée le", f"{db_action.created_at:%d/%m/%Y à %H:%M}"),
+        annonces.champ("Révélée", revelation),
+        annonces.champ("Guerre", guerre.title if guerre else None),
+        annonces.champ("Piège", "Oui : la modération RP jugera s'il est mortel" if db_action.piege else None),
+        annonces.champ("Contenu", db_action.content, en_ligne=False),
+    ])
 
 def _reveler(db: Session, db_action: models.ActionsSecretes, mode: str, user_id: int | None = None, motif: str | None = None, when: dt.datetime | None = None):
     db_action.revealed_at = when or dt.datetime.now()
@@ -181,8 +194,13 @@ def _annoncer_piege(db: Session, db_action: models.ActionsSecretes):
     entite = _entity_summary(db, db_action)["title"]
     verdict = "le piège est mortel" if db_action.piege_verdict == "mortel" else "le piège ne fait que blesser"
     text = f"☠️ Piège **{code_action(db_action)}** ({entite}) : {verdict}, d'après la modération RP."
-    site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
-    announce_discord("actions", f"{text}\n{str(site).rstrip('/')}/actions-secretes#{code_action(db_action)}" if site else text)
+    annonces.annoncer("actions", "☠️ Piège jugé", text, _lien(db_action), [
+        annonces.champ("Code", code_action(db_action)),
+        annonces.champ("Action", db_action.title),
+        annonces.champ("Au nom de", entite),
+        annonces.champ("Verdict", "Mortel" if db_action.piege_verdict == "mortel" else "Simple blessure"),
+        annonces.champ("Décision de la modération", db_action.piege_note, en_ligne=False),
+    ])
 
 def decider_piege(db: Session, user: schemas.Users, ID: int, body: schemas.PiegeDecision):
     # Validation après les faits : mortel, ou simple blessure (motif obligatoire)

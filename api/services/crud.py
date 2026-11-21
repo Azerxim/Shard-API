@@ -390,13 +390,15 @@ def discord_category(category_key: str):
     category_id = ((utils.PLATFORMS.get("discord") or {}).get("categories") or {}).get(category_key)
     return int(category_id) if category_id else None
 
-def announce_discord(channel_key: str, content: str):
+def announce_discord(channel_key: str, content: str | None = None, embed: dict | None = None, texte: str | None = None):
     # Annonce dans le salon platforms.discord.channels.<channel_key>, en tâche de fond : ne bloque ni ne fait échouer la requête.
-    # Sans salon configuré, rien n'est envoyé. Tests : SHARD_FAKE_DISCORD_ANNOUNCEMENTS désigne un fichier (une annonce JSON par ligne).
+    # content : message texte ; embed : dictionnaire d'embed Discord (services/annonces.py), texte : sa version texte.
+    # Sans salon configuré, rien n'est envoyé. Tests : SHARD_FAKE_DISCORD_ANNOUNCEMENTS désigne un fichier (une annonce JSON
+    # par ligne, « content » : le texte, ou la version texte de l'embed).
     fake_file = os.environ.get("SHARD_FAKE_DISCORD_ANNOUNCEMENTS")
     if fake_file:
         with open(fake_file, "a", encoding="utf-8") as file:
-            file.write(json.dumps({"channel": channel_key, "content": content}, ensure_ascii=False) + "\n")
+            file.write(json.dumps({"channel": channel_key, "content": content or texte or "", "embed": embed}, ensure_ascii=False) + "\n")
         return True
     channel_id = ((utils.PLATFORMS.get("discord") or {}).get("channels") or {}).get(channel_key)
     if not channel_id:
@@ -404,7 +406,7 @@ def announce_discord(channel_key: str, content: str):
 
     def send():
         try:
-            asyncio.run(discord_handler.send_channel_message(str(channel_id), content))
+            asyncio.run(discord_handler.send_channel_message(str(channel_id), content, embed))
         except Exception as error:
             print(f"Annonce Discord ({channel_key}) impossible : {error}")
 

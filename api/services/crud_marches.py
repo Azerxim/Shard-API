@@ -18,7 +18,8 @@ from sqlmodel import Session, select
 
 from ..core import utils
 from ..db import models, schemas
-from .crud import announce_discord, check_cartographie_authorisation, get_cartographie_by_id, get_ville_by_id
+from .crud import check_cartographie_authorisation, get_cartographie_by_id, get_civilisation_by_id, get_ville_by_id
+from . import annonces
 
 JOURS = ("lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche")
 MOIS = ("janvier", "février", "mars", "avril", "mai", "juin", "juillet", "août", "septembre", "octobre", "novembre", "décembre")
@@ -50,12 +51,26 @@ def _lien_ville(db_ville: models.Villes) -> str | None:
     site = ((utils.PLATFORMS or {}).get("discord") or {}).get("site_url")
     return f"{str(site).rstrip('/')}/civilisation/{db_ville.civilisation_id}/ville/{db_ville.id}#marches" if site else None
 
-def _annoncer(db_ville: models.Villes, texte: str):
-    # Salon Discord « marches » ; rien pour une ville privée
+def _annoncer(db: Session, db_ville: models.Villes, foire: models.Foires, titre: str, texte: str, annulee: bool = False):
+    # Salon Discord « marches », en embed ; rien pour une ville privée
     if not _ville_publique(db_ville):
         return
-    lien = _lien_ville(db_ville)
-    announce_discord("marches", f"{texte}\n{lien}" if lien else texte)
+    civilisation = get_civilisation_by_id(db, db_ville.civilisation_id) if db_ville.civilisation_id else None
+    zone = get_cartographie_by_id(db, foire.zone_id) if foire.zone_id else None
+    champs = [
+        annonces.champ("Ville", db_ville.title),
+        annonces.champ("Civilisation", civilisation.title if civilisation and civilisation.is_public is not False else None),
+        annonces.champ("Dates", _periode_texte(foire)[0].upper() + _periode_texte(foire)[1:]),
+    ]
+    if not annulee:
+        champs += [
+            annonces.champ("Horaires", foire.horaires),
+            annonces.champ("Zone commerciale", zone.title if zone else None),
+            annonces.champ("Position", f"X {foire.x} · Z {foire.z}" if foire.x is not None and foire.z is not None else None),
+            annonces.champ("Description", foire.description, en_ligne=False),
+        ]
+    chemin = f"/civilisation/{db_ville.civilisation_id}/ville/{db_ville.id}#marches"
+    annonces.annoncer("marches", titre, texte, chemin, champs, annonces.GRIS if annulee else None)
 
 def jours_infos(marche: models.MarcheJours):
     jours = sorted(int(j) for j in marche.jours.split(",") if j.strip().isdigit())
@@ -202,7 +217,7 @@ def create_foire(db: Session, user: schemas.Users, body: schemas.FoireCreate):
     db.commit()
     db.refresh(foire)
     lieu = f" ({get_cartographie_by_id(db, foire.zone_id).title})" if foire.zone_id else ""
-    _annoncer(db_ville, f"🎪 **{foire.title}** : foire à {db_ville.title}{lieu}, {_periode_texte(foire)}{f', {foire.horaires}' if foire.horaires else ''}.")
+    _annoncer(db, db_ville, foire, "🎪 Nouvelle foire", f"🎪 **{foire.title}** : foire à {db_ville.title}{lieu}, {_periode_texte(foire)}{f', {foire.horaires}' if foire.horaires else ''}.")
     return foire_infos(db, foire, db_ville)
 
 def _require_foire(db: Session, user: schemas.Users, ID: int):
@@ -236,13 +251,13 @@ def update_foire(db: Session, user: schemas.Users, ID: int, body: schemas.FoireU
     db.commit()
     db.refresh(foire)
     if (foire.date_debut, foire.date_fin) != avant and foire.date_fin >= dt.date.today():
-        _annoncer(db_ville, f"🎪 **{foire.title}** à {db_ville.title} change de dates : {_periode_texte(foire)}.")
+        _annoncer(db, db_ville, foire, "🎪 Foire déplacée", f"🎪 **{foire.title}** à {db_ville.title} change de dates : {_periode_texte(foire)}.")
     return foire_infos(db, foire, db_ville)
 
 def delete_foire(db: Session, user: schemas.Users, ID: int):
     foire, db_ville = _require_foire(db, user, ID)
     if foire.date_fin >= dt.date.today():
-        _annoncer(db_ville, f"🎪 **{foire.title}** à {db_ville.title} ({_periode_texte(foire)}) est annulée.")
+        _annoncer(db, db_ville, foire, "🎪 Foire annulée", f"🎪 **{foire.title}** à {db_ville.title} ({_periode_texte(foire)}) est annulée.", annulee=True)
     db.delete(foire)
     db.commit()
     return True

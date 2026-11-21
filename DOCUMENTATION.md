@@ -108,6 +108,7 @@ Aucun de ces deux fichiers n'est versionné : ils contiennent des secrets.
 | `platforms.discord.channels.evenements` | Salon des annonces du calendrier (facultatif) ; les événements programmés du serveur demandent au bot la permission « Gérer les événements » |
 | `platforms.discord.categories.journaux` | Catégorie où `crud.create_journal` crée les salons de journaux (hors catégorie si absente) |
 | `platforms.monde.key` | Clé partagée avec le générateur de cartes (`MAP_STATS_API_KEY` côté Maps) |
+| `rp.debut`, `rp.ans_par_semaine` | Temporalité du RP (`services/temporalite.py`) : début de l'an 1, la même date que `VITE_SAISON_LANCEMENT` du site, et 2 ans RP par semaine réelle. Sert de date par défaut au début et à la fin d'une guerre ; sans `rp.debut`, la date réelle |
 
 `oauth2.<fournisseur>.client_secret` doit être le *Client Secret* OAuth2 du fournisseur, pas le jeton du bot.
 Chaque `redirect_uri` pointe vers la page `/auth/<fournisseur>/callback` de ShardUI-2 et doit être déclarée

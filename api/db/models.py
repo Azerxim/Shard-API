@@ -340,6 +340,7 @@ class Guerres(SQLModel, table=True):
     moderation_note: str | None = Field(default=None)
     date_debut: dt.date | None = Field(default=None)  # Dates RP
     date_fin: dt.date | None = Field(default=None)
+    date_declaration: dt.date | None = Field(default=None)  # Date RP de la déclaration (declared_at : instant réel)
     declared_by: int | None = Field(default=None, foreign_key="users.id")
     declared_at: dt.datetime = Field(default_factory=dt.datetime.now)
     moderator_id: int | None = Field(default=None, foreign_key="users.id")

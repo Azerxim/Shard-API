@@ -60,5 +60,9 @@
 		"monde": {
 			"key": "CLE DU GENERATEUR DE CARTES"
 		}
+	},
+	"rp": {
+		"debut": "2026-11-14T14:00:00+01:00",
+		"ans_par_semaine": 2
 	}
 }

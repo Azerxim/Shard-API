@@ -33,6 +33,7 @@ from sqlmodel import Session, select
 
 from ..db import models
 from . import fichiers
+from .temporalite import date_rp_du_jour
 
 
 def _all(db: Session, model, *conditions):
@@ -240,7 +241,7 @@ def retirer_des_guerres(db: Session, entity_type: str, entity_id: int, title: st
             vainqueurs = "défenseurs" if belligerant.camp == "attaquant" else "attaquants"
             guerre.status = "terminee"
             guerre.issue = f"Victoire des {vainqueurs} : {title or 'le camp adverse'} a disparu"
-            guerre.date_fin = dt.date.today()
+            guerre.date_fin = date_rp_du_jour()  # date RP du jour (temporalite.py)
             guerre.ended_at = dt.datetime.now()
             db.add(guerre)
             db.add(models.GuerreEvenements(guerre_id=guerre.id, type="fin", title=guerre.issue, is_auto=True))

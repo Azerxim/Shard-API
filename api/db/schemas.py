@@ -697,11 +697,13 @@ class GuerreDeclaration(EmptyStringAsNone):
     description: str | None = None
     attaquant_id: int
     defenseur_id: int
+    date_declaration: datetime.date | None = None  # date RP ; vide : la date du jour dans le RP
 
 class GuerreUpdate(EmptyStringAsNone):
     title: str | None = None
     casus_belli: str | None = None
     description: str | None = None
+    date_declaration: datetime.date | None = None  # vide : inchangée
 
 class GuerreValidation(EmptyStringAsNone):
     date_debut: datetime.date | None = None

@@ -435,9 +435,10 @@ async def get_channel_message(channel_id: str, message_id: str) -> dict | None:
         raise ValueError(f"Lecture du message Discord impossible : {result['error']}")
     return result["message"]
 
-async def send_channel_message(channel_id: str, content: str) -> bool:
+async def send_channel_message(channel_id: str, content: str | None = None, embed: dict | None = None) -> bool:
     """
-    Publie un message dans un salon Discord (annonces : guerres…).
+    Publie un message dans un salon Discord (annonces : guerres…), en texte et/ou en embed (dictionnaire au format de
+    l'API Discord, voir services/annonces.py).
 
     Returns:
         bool: True si le message a été envoyé
@@ -459,7 +460,8 @@ async def send_channel_message(channel_id: str, content: str) -> bool:
             channel = guild.get_channel(int(channel_id)) if guild else None
             if channel:
                 # Limite Discord : 2000 caractères par message
-                await channel.send(content[:2000])
+                await channel.send(content=content[:2000] if content else None,
+                                   embed=discord.Embed.from_dict(embed) if embed else None)
                 result["sent"] = True
             else:
                 print(f"Avertissement: Salon d'annonces Discord {channel_id} non trouvé")
