@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlmodel import Session
 
 from ..db import schemas
-from ..services import crud, crud_monde
+from ..services import crud, crud_monde, generation_carte
 from ..db.database import get_db
 
 # Statistiques du monde : relevés du générateur de cartes, réservés aux administrateurs (voir crud_monde)
@@ -78,5 +78,20 @@ def read_historique_lieu(current_user: CurrentAdmin, EntityType: str, EntityID: 
 @router.delete("/releves/{ReleveID}")
 def delete_releve(current_user: CurrentAdmin, ReleveID: int, db: Session = Depends(get_db)):
     return _json({'code': 200, **crud_monde.supprimer_releve(db, ReleveID)})
+
+#endregion
+
+
+# -----------------------------------------------
+#region Génération de la carte (administrateurs, voir services/generation_carte.py)
+
+@router.get("/generation")
+def read_generation(current_user: CurrentAdmin):
+    return _json(generation_carte.etat())
+
+
+@router.post("/generation")
+def lancer_generation(current_user: CurrentAdmin):
+    return _json(generation_carte.lancer(current_user.username))
 
 #endregion

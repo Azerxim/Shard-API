@@ -108,6 +108,7 @@ Aucun de ces deux fichiers n'est versionné : ils contiennent des secrets.
 | `platforms.discord.channels.evenements` | Salon des annonces du calendrier (facultatif) ; les événements programmés du serveur demandent au bot la permission « Gérer les événements » |
 | `platforms.discord.categories.journaux` | Catégorie où `crud.create_journal` crée les salons de journaux (hors catégorie si absente) |
 | `platforms.monde.key` | Clé partagée avec le générateur de cartes (`MAP_STATS_API_KEY` côté Maps) |
+| `platforms.monde.generateur` | Chemin de `run.sh` du générateur de cartes, lancé par le bouton « Générer la carte » de `/admin/monde` (`POST /api/monde/generation`, administrateurs, `services/generation_carte.py`). Par défaut `../Shard-Maps/scripts/map-generator/run.sh` ; l'API et Shard-Maps doivent être sur la même machine, sinon le bouton reste désactivé. Tests : `SHARD_FAKE_MAP_GENERATION` |
 | `rp.debut`, `rp.ans_par_semaine` | Temporalité du RP (`services/temporalite.py`) : début de l'an 1, la même date que `VITE_SAISON_LANCEMENT` du site, et 2 ans RP par semaine réelle. Sert de date par défaut au début et à la fin d'une guerre ; sans `rp.debut`, la date réelle |
 
 `oauth2.<fournisseur>.client_secret` doit être le *Client Secret* OAuth2 du fournisseur, pas le jeton du bot.
