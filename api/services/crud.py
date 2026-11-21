@@ -1221,6 +1221,8 @@ def update_gouvernement(db: Session, user: schemas.Users, gouvernementID: int, v
         # Mise à jour des informations
         if v_gouvernement.civilisation_id is not None:
             db_gouvernement.civilisation_id = v_gouvernement.civilisation_id
+        if v_gouvernement.title:
+            db_gouvernement.title = v_gouvernement.title
         if v_gouvernement.type is not None:
             db_gouvernement.type = v_gouvernement.type
         if v_gouvernement.description is not None:
