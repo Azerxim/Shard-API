@@ -1,7 +1,10 @@
 """
-Catalogue des boutiques : articles vendus par chaque magasin, avec leur prix en tetras (1 tetra = 1 diamant).
+Catalogue des boutiques : articles vendus par chaque magasin, avec leur prix en tetras, la monnaie frappée en jeu
+par la Monnaie de Tetrago (datapack Minted Coins) : 1 diamant = 8 tetras à la frappe, 1 tetra = 9 petits tetras.
 
-- Un article est vendu par lot : « 16 pains pour 1 tetra ». Le prix unitaire (prix / quantité) sert au classement.
+- Un prix est enregistré en petits tetras (`prix_petits`, nombre entier) : « 1 tetra et 4 petits » = 13.
+- Un article est vendu par lot : « 16 pains pour 1 tetra ». Le prix unitaire (prix / quantité, en petits tetras) sert au
+  classement.
 - Le catalogue d'un magasin est tenu par le Fondateur et les Admins de son commerce (ou un administrateur du site),
   comme le magasin lui-même.
 - La recherche « où acheter » ne parcourt que les magasins publics des commerces publics. Elle ignore la casse et les
@@ -28,7 +31,7 @@ def _normaliser(texte: str | None) -> str:
     return " ".join(sans_accents.lower().split())
 
 def prix_unitaire(article: models.MagasinArticles) -> float:
-    return article.prix / max(article.quantite or 1, 1)
+    return article.prix_petits / max(article.quantite or 1, 1)
 
 def article_infos(article: models.MagasinArticles):
     return {
@@ -37,7 +40,7 @@ def article_infos(article: models.MagasinArticles):
         "title": article.title,
         "categorie": article.categorie,
         "description": article.description,
-        "prix": article.prix,
+        "prix_petits": article.prix_petits,
         "quantite": article.quantite,
         "prix_unitaire": prix_unitaire(article),
         "en_stock": article.en_stock,
@@ -53,10 +56,10 @@ def _trier(articles):
     rang = {cle: index for index, cle in enumerate(CATEGORIES)}
     return sorted(articles, key=lambda a: (rang.get(a.categorie, len(CATEGORIES)), _normaliser(a.title)))
 
-def _valider(categorie: str | None, prix: int | None, quantite: int | None):
+def _valider(categorie: str | None, prix_petits: int | None, quantite: int | None):
     if categorie is not None and categorie not in CATEGORIES:
         raise HTTPException(status_code=400, detail=f"Catégorie inconnue : {categorie}")
-    if prix is not None and prix < 0:
+    if prix_petits is not None and prix_petits < 0:
         raise HTTPException(status_code=400, detail="Le prix ne peut pas être négatif")
     if quantite is not None and quantite < 1:
         raise HTTPException(status_code=400, detail="Un lot contient au moins un article")
@@ -140,13 +143,13 @@ def create_article(db: Session, user: schemas.Users, body: schemas.ArticleCreate
         raise HTTPException(status_code=400, detail="Un article doit avoir un nom")
     categorie = body.categorie or "divers"
     quantite = 1 if body.quantite is None else body.quantite
-    _valider(categorie, body.prix, quantite)
+    _valider(categorie, body.prix_petits, quantite)
     article = models.MagasinArticles(
         magasin_id=body.magasin_id,
         title=title,
         categorie=categorie,
         description=(body.description or "").strip() or None,
-        prix=body.prix,
+        prix_petits=body.prix_petits,
         quantite=quantite,
         en_stock=body.en_stock is not False,
     )
@@ -159,7 +162,7 @@ def update_article(db: Session, user: schemas.Users, ID: int, body: schemas.Arti
     article = _require_article(db, user, ID)
     data = body.model_dump(exclude_unset=True)
     # Un nom, un prix ou une taille de lot ne s'effacent pas ; la description, si
-    for key in ("title", "categorie", "prix", "quantite", "en_stock"):
+    for key in ("title", "categorie", "prix_petits", "quantite", "en_stock"):
         if data.get(key) is None:
             data.pop(key, None)
     if "title" in data:
@@ -168,7 +171,7 @@ def update_article(db: Session, user: schemas.Users, ID: int, body: schemas.Arti
             raise HTTPException(status_code=400, detail="Un article doit avoir un nom")
     if "description" in data:
         data["description"] = (data["description"] or "").strip() or None
-    _valider(data.get("categorie"), data.get("prix"), data.get("quantite"))
+    _valider(data.get("categorie"), data.get("prix_petits"), data.get("quantite"))
     for key, value in data.items():
         setattr(article, key, value)
     article.updated_at = dt.datetime.now()

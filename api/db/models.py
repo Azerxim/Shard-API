@@ -245,13 +245,13 @@ class CommerceMagasins(SQLModel, table=True):
     ville_id: int | None = Field(default=None, foreign_key="villes.id")
 
 class MagasinArticles(SQLModel, table=True):
-    # Article du catalogue d'un magasin, vendu par lot en tetras (voir services/crud_catalogue.py)
+    # Article du catalogue d'un magasin, vendu par lot en petits tetras (voir services/crud_catalogue.py)
     id: int | None = Field(default=None, primary_key=True)
     magasin_id: int | None = Field(default=None, foreign_key="commercemagasins.id", index=True)
     title: str
     categorie: str = Field(default="divers")
     description: str | None = Field(default=None)
-    prix: int = Field(default=0)          # en tetras, pour le lot entier (0 : offert)
+    prix_petits: int = Field(default=0)   # en petits tetras (1 tetra = 9 petits), pour le lot entier (0 : offert)
     quantite: int = Field(default=1)      # taille du lot : « 16 pains pour 1 tetra »
     en_stock: bool = Field(default=True)
     created_at: dt.datetime = Field(default_factory=dt.datetime.now)

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 
-from .db.database import get_db, create_db_and_tables, check_database_tables, migrate_commerces_owner_to_members, migrate_livres_civilisation_to_liens
+from .db.database import get_db, create_db_and_tables, check_database_tables, migrate_commerces_owner_to_members, migrate_livres_civilisation_to_liens, migrate_catalogue_prix_en_petits_tetras
 
 from .core import utils
 from topazdevsdk import colors
@@ -55,6 +55,7 @@ async def lifespan(app_: FastAPI):
     create_db_and_tables()
     migrate_commerces_owner_to_members()
     migrate_livres_civilisation_to_liens()
+    migrate_catalogue_prix_en_petits_tetras()
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     Base de données initialisée.")
     print(f"{colors.BColors.GREEN}INFO{colors.BColors.END}:     -------------------")
     

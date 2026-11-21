@@ -535,7 +535,7 @@ class ArticleCreate(EmptyStringAsNone):
     title: str
     categorie: str | None = None          # clé de crud_catalogue.CATEGORIES ; « divers » par défaut
     description: str | None = None
-    prix: int                             # en tetras, pour le lot entier
+    prix_petits: int                      # en petits tetras (1 tetra = 9 petits), pour le lot entier
     quantite: int | None = 1
     en_stock: bool | None = True
 
@@ -543,7 +543,7 @@ class ArticleUpdate(EmptyStringAsNone):
     title: str | None = None
     categorie: str | None = None
     description: str | None = None
-    prix: int | None = None
+    prix_petits: int | None = None
     quantite: int | None = None
     en_stock: bool | None = None
 

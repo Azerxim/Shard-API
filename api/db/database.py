@@ -102,6 +102,39 @@ def migrate_livres_civilisation_to_liens():
     else:
         print("Migration : liens créés, mais la colonne civilisation_id n'a pas pu être retirée (elle n'est plus lue).")
 
+def migrate_catalogue_prix_en_petits_tetras():
+    """
+    Ancienne colonne MagasinArticles.prix (tetras d'avant la frappe, 1 tetra = 1 diamant) -> prix_petits, en petits
+    tetras de la monnaie frappée (1 diamant = 8 tetras, 1 tetra = 9 petits) : la valeur en diamants est conservée,
+    1 ancien tetra = 72 petits tetras. À appeler avant check_database_tables, qui ajouterait prix_petits à 0.
+    Sans effet si déjà migré. Sauvegarde de la base avant toute modification.
+    """
+    from sqlalchemy import inspect, text
+    from . import models
+
+    inspector = inspect(engine)
+    if "magasinarticles" not in inspector.get_table_names():
+        return
+    existing_columns = [col['name'] for col in inspector.get_columns("magasinarticles")]
+    if "prix" not in existing_columns or "prix_petits" in existing_columns:
+        return
+
+    print("Migration : prix du catalogue en petits tetras (1 ancien tetra = 1 diamant = 72 petits tetras)...")
+    if backup_database("conversion des prix du catalogue") is None:
+        print("Migration annulée : sans sauvegarde, les prix du catalogue restent en anciens tetras.")
+        return
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE magasinarticles ADD COLUMN prix_petits INTEGER NOT NULL DEFAULT 0"))
+        total = connection.execute(text(f"UPDATE magasinarticles SET prix_petits = prix * {PETITS_TETRAS_PAR_ANCIEN_TETRA}")).rowcount
+    # Reconstruction de la table sans l'ancienne colonne, valeurs conservées
+    if _rebuild_table(models.MagasinArticles, existing_columns + ["prix_petits"], "colonne prix reprise par prix_petits"):
+        print(f"Migration terminée : {total} prix converti(s), colonne prix supprimée.")
+    else:
+        print(f"Migration : {total} prix converti(s), mais la colonne prix n'a pas pu être retirée (elle n'est plus lue).")
+
+# Un tetra d'avant la frappe valait un diamant ; un diamant se frappe en 8 tetras de 9 petits tetras
+PETITS_TETRAS_PAR_ANCIEN_TETRA = 8 * 9
+
 def backup_database(reason: str):
     """Copie le fichier SQLite avant la première modification de structure du démarrage.
     Renvoie le chemin de la sauvegarde, ou None si elle n'a pas pu être faite."""

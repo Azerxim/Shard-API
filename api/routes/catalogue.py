@@ -8,7 +8,7 @@ from ..db import schemas
 from ..services import crud, crud_catalogue
 from ..db.database import get_db
 
-# Catalogue des boutiques : articles et prix en tetras par magasin, recherche « où acheter » (voir crud_catalogue)
+# Catalogue des boutiques : articles et prix (en petits tetras) par magasin, recherche « où acheter » (voir crud_catalogue)
 router = APIRouter(prefix="/api/catalogue", tags=["Catalogue"])
 
 CurrentUser = Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)]
@@ -18,7 +18,7 @@ def _json(content):
 
 @router.get("/magasin/{MagasinID}")
 def read_catalogue_magasin(MagasinID: int, db: Session = Depends(get_db)):
-    # [{ id, title, categorie, description, prix, quantite, prix_unitaire, en_stock, updated_at }]
+    # [{ id, title, categorie, description, prix_petits, quantite, prix_unitaire, en_stock, updated_at }]
     return _json(crud_catalogue.catalogue_magasin(db, MagasinID))
 
 @router.get("/recherche")
