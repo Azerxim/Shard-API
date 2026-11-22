@@ -948,9 +948,22 @@ class ScrutinCreate(EmptyStringAsNone):
     corps: str | None = None                      # religion : personnages (fidèles) ou villes ; imposé ailleurs
     mode: str | None = "secret"                   # secret ou public
     deux_tours: bool | None = False
+    egalite: str | None = "personne"              # personne, tirage ou nouveau_vote
     poste_id: int | None = None                   # civilisation : poste de son gouvernement ou de l'une de ses villes
     vote_debut: datetime.datetime                 # heures réelles du serveur
     vote_fin: datetime.datetime
+    date_rp: datetime.date | None = None
+
+class ScrutinUpdate(EmptyStringAsNone):
+    # Seuls les champs envoyés sont modifiés (exclude_unset) ; un champ envoyé vide le remet à vide
+    title: str | None = None
+    description: str | None = None
+    mode: str | None = None
+    deux_tours: bool | None = None
+    egalite: str | None = None
+    poste_id: int | None = None
+    vote_debut: datetime.datetime | None = None
+    vote_fin: datetime.datetime | None = None
     date_rp: datetime.date | None = None
 
 class CandidatureCreate(EmptyStringAsNone):

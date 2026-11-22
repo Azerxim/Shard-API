@@ -72,6 +72,11 @@ def read_scrutin(ScrutinID: int, viewer: Viewer, db: Session = Depends(get_db)):
 def create_scrutin(current_user: CurrentUser, body: schemas.ScrutinCreate, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "Le scrutin est ouvert aux candidatures", 'scrutin': crud_elections.create_scrutin(db, current_user, body)})
 
+@router.put("/{ScrutinID}")
+def modifier_scrutin(current_user: CurrentUser, ScrutinID: int, body: schemas.ScrutinUpdate, db: Session = Depends(get_db)):
+    # Paramètres modifiables jusqu'à l'ouverture du vote
+    return _json({'code': 200, 'text': "Le scrutin est modifié", 'scrutin': crud_elections.modifier_scrutin(db, current_user, ScrutinID, body)})
+
 @router.post("/{ScrutinID}/annuler")
 def annuler_scrutin(current_user: CurrentUser, ScrutinID: int, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "Le scrutin est annulé", 'scrutin': crud_elections.annuler_scrutin(db, current_user, ScrutinID)})

@@ -23,13 +23,19 @@ Scrutins
   lien entre les deux. Public : chaque bulletin est conservé avec le nom du votant. Dans les deux cas, voix et
   bulletins ne sont montrés qu'au dépouillement.
 - Deux tours : sans majorité absolue des suffrages exprimés, les deux premiers (ex aequo compris) s'affrontent au second
-  tour, aussi long que le premier. À un tour, ou au second, le plus de voix l'emporte ; à égalité, personne n'est élu.
+  tour, aussi long que le premier. À un tour, ou au second, le plus de voix l'emporte.
+- Égalité en tête (quand aucun second tour n'a lieu) : l'organisateur a choisi à l'ouverture ce qui se passe. Personne
+  n'est élu (par défaut) ; tirage au sort parmi les ex aequo ; ou nouveau vote entre eux, de même durée, où une nouvelle
+  égalité ne donne personne élu.
+- Paramètres (titre, présentation, vote, tours, égalité, poste, dates) modifiables par l'organisateur jusqu'à l'ouverture
+  du vote, les candidatures déjà déposées restant. Le corps électoral ne change pas.
 - À la clôture, l'élu prend le poste mis en jeu (civilisation seulement), et le résultat daté en RP entre dans les
   chroniques.
 - Aucune tâche planifiée : chaque lecture fait avancer le scrutin (ouverture du vote, second tour, dépouillement), et
   les notifications de chaque étape ne partent qu'une fois.
 """
 import datetime as dt
+import secrets
 
 from fastapi import HTTPException
 from sqlmodel import Session, select
@@ -44,6 +50,7 @@ MODES = ("secret", "public")
 TITLE_MAX = 120
 POSTE_MAX = 60
 PROGRAMME_MAX = 5000
+EGALITES = ("personne", "tirage", "nouveau_vote")
 DUREE_MAX = dt.timedelta(days=30)
 DUREE_MIN = dt.timedelta(minutes=10)
 LIENS = {"civilisation": "/civilisation/{}", "religion": "/religion/{}", "alliance": "/alliance/{}"}
@@ -350,7 +357,7 @@ def _cloturer(db: Session, scrutin: models.Scrutins, resultat: str, elu: models.
     candidats = {c.user_id for c in _candidats(db, scrutin.id)}
     destinataires = _joueurs_votants(db, scrutin) | candidats | _organisateurs(db, scrutin.entity_type, scrutin.entity_id)
     textes = {
-        "elu": f"{elu.nom} est élu{' au poste de ' + scrutin.poste_title if scrutin.poste_title else ''}." if elu else None,
+        "elu": f"{elu.nom} est élu{' au poste de ' + scrutin.poste_title if scrutin.poste_title else ''}{' par tirage au sort' if scrutin.tirage else ''}." if elu else None,
         "egalite": "Égalité : personne n'est élu.",
         "sans_candidat": "Aucun candidat ne s'est présenté.",
         "sans_suffrage": "Personne n'a voté.",
@@ -361,6 +368,29 @@ def _en_tete(candidats, voix):
     meilleur = max((voix(c) for c in candidats), default=0)
     return [c for c in candidats if voix(c) == meilleur], meilleur
 
+def _lancer_second_tour(db: Session, scrutin: models.Scrutins, candidats, finalistes, texte: str):
+    # Second tour, ou nouveau vote après égalité : les finalistes seuls, sur une durée égale au premier tour
+    for candidat in candidats:
+        candidat.au_second_tour = candidat in finalistes
+        db.add(candidat)
+    scrutin.tour = 2
+    scrutin.tour2_fin = scrutin.vote_fin + (scrutin.vote_fin - scrutin.vote_debut)
+    scrutin.etape_annoncee = "tour2"
+    db.add(scrutin)
+    db.commit()
+    _notifier(db, scrutin, _joueurs_votants(db, scrutin) | {c.user_id for c in candidats}, f"Second tour : {scrutin.title}", texte)
+
+def _departager(db: Session, scrutin: models.Scrutins, tete, nouveau_vote_possible: bool):
+    # Égalité en tête quand aucun second tour n'est dû : la règle choisie par l'organisateur
+    noms = " et ".join(c.nom for c in tete)
+    if scrutin.egalite == "tirage":
+        scrutin.tirage = True
+        return _cloturer(db, scrutin, "elu", secrets.choice(tete))
+    if scrutin.egalite == "nouveau_vote" and nouveau_vote_possible:
+        return _lancer_second_tour(db, scrutin, _candidats(db, scrutin.id), tete,
+                                   f"Égalité : {noms} se départagent par un nouveau vote.")
+    return _cloturer(db, scrutin, "egalite")
+
 def _depouiller(db: Session, scrutin: models.Scrutins):
     candidats = _candidats(db, scrutin.id)
     if scrutin.tour == 2:
@@ -368,31 +398,27 @@ def _depouiller(db: Session, scrutin: models.Scrutins):
         tete, meilleur = _en_tete(finalistes, lambda c: c.voix_second_tour)
         if meilleur == 0:
             return _cloturer(db, scrutin, "sans_suffrage")
-        return _cloturer(db, scrutin, "elu", tete[0]) if len(tete) == 1 else _cloturer(db, scrutin, "egalite")
+        if len(tete) == 1:
+            return _cloturer(db, scrutin, "elu", tete[0])
+        # Un nouveau vote n'a pas de nouveau vote après lui : une nouvelle égalité ne donne personne élu
+        return _departager(db, scrutin, tete, nouveau_vote_possible=False)
 
     exprimes = sum(c.voix for c in candidats)
     if exprimes == 0:
         return _cloturer(db, scrutin, "sans_suffrage")
     tete, meilleur = _en_tete(candidats, lambda c: c.voix)
     if not scrutin.deux_tours:
-        return _cloturer(db, scrutin, "elu", tete[0]) if len(tete) == 1 else _cloturer(db, scrutin, "egalite")
+        if len(tete) == 1:
+            return _cloturer(db, scrutin, "elu", tete[0])
+        return _departager(db, scrutin, tete, nouveau_vote_possible=True)
     if len(tete) == 1 and meilleur * 2 > exprimes:
         return _cloturer(db, scrutin, "elu", tete[0])
 
     # Second tour : les deux premiers, ex aequo compris
     finalistes = tete if len(tete) >= 2 else tete + _en_tete([c for c in candidats if c not in tete], lambda c: c.voix)[0]
     finalistes = [c for c in finalistes if c.voix > 0] or finalistes
-    for candidat in finalistes:
-        candidat.au_second_tour = True
-        db.add(candidat)
-    scrutin.tour = 2
-    scrutin.tour2_fin = scrutin.vote_fin + (scrutin.vote_fin - scrutin.vote_debut)
-    scrutin.etape_annoncee = "tour2"
-    db.add(scrutin)
-    db.commit()
     noms = " et ".join(c.nom for c in finalistes)
-    _notifier(db, scrutin, _joueurs_votants(db, scrutin) | {c.user_id for c in candidats},
-              f"Second tour : {scrutin.title}", f"Pas de majorité absolue : {noms} s'affrontent au second tour.")
+    _lancer_second_tour(db, scrutin, candidats, finalistes, f"Pas de majorité absolue : {noms} s'affrontent au second tour.")
 
 def avancer(db: Session, scrutin: models.Scrutins, maintenant: dt.datetime | None = None):
     # Fait passer le scrutin aux étapes dont l'heure est venue ; sans effet s'il n'y a rien à faire
@@ -462,6 +488,8 @@ def scrutin_resume(db: Session, scrutin: models.Scrutins):
         "corps": scrutin.corps,
         "mode": scrutin.mode,
         "deux_tours": scrutin.deux_tours,
+        "egalite": scrutin.egalite,
+        "tirage": scrutin.tirage,
         "poste": {"id": scrutin.poste_id, "title": scrutin.poste_title} if scrutin.poste_title else None,
         "vote_debut": scrutin.vote_debut,
         "vote_fin": scrutin.vote_fin,
@@ -551,6 +579,34 @@ def _naive(moment: dt.datetime) -> dt.datetime:
     # Heures de saisie (datetime-local) : sans fuseau ; une heure avec fuseau est ramenée à l'heure du serveur
     return moment.astimezone().replace(tzinfo=None) if moment.tzinfo else moment
 
+def _verifier_egalite(valeur: str | None) -> str:
+    if valeur not in EGALITES:
+        raise HTTPException(status_code=400, detail="Règle d'égalité inconnue : personne, tirage au sort ou nouveau vote")
+    return valeur
+
+def _verifier_creneau(debut: dt.datetime, fin: dt.datetime):
+    if debut <= dt.datetime.now():
+        raise HTTPException(status_code=400, detail="Le vote s'ouvre plus tard : les candidatures se déposent d'ici là")
+    if fin - debut < DUREE_MIN:
+        raise HTTPException(status_code=400, detail="Le vote dure au moins dix minutes")
+    if fin - debut > DUREE_MAX:
+        raise HTTPException(status_code=400, detail="Le vote dure trente jours au plus")
+
+def _poste_en_jeu(db: Session, entity_type: str, entite, poste_id: int | None, scrutin_id: int | None = None):
+    # Poste mis en jeu : celui du gouvernement de la civilisation ou de l'une de ses villes, sans autre scrutin ouvert
+    if poste_id is None:
+        return None
+    if entity_type != "civilisation":
+        raise HTTPException(status_code=400, detail="Seule une civilisation met en jeu un poste de son gouvernement")
+    poste = _require_poste(db, poste_id)
+    civilisation = _civilisation_du_poste(db, poste.entity_type, poste.entity_id)
+    if not civilisation or civilisation.id != entite.id:
+        raise HTTPException(status_code=400, detail="Ce poste n'appartient pas au gouvernement de la civilisation ni de ses villes")
+    statement = select(models.Scrutins).where(models.Scrutins.poste_id == poste.id, models.Scrutins.status == "ouvert")
+    if any(s.id != scrutin_id for s in db.exec(statement).all()):
+        raise HTTPException(status_code=400, detail="Un scrutin en cours met déjà ce poste en jeu")
+    return poste
+
 def create_scrutin(db: Session, user: schemas.Users, body: schemas.ScrutinCreate):
     entite = _require_entite(db, body.entity_type, body.entity_id)
     if not peut_organiser(db, user, body.entity_type, body.entity_id):
@@ -567,36 +623,68 @@ def create_scrutin(db: Session, user: schemas.Users, body: schemas.ScrutinCreate
     mode = body.mode or "secret"
     if mode not in MODES:
         raise HTTPException(status_code=400, detail="Mode de vote inconnu : secret ou public")
+    egalite = _verifier_egalite(body.egalite or "personne")
 
     debut, fin = _naive(body.vote_debut), _naive(body.vote_fin)
-    if debut <= dt.datetime.now():
-        raise HTTPException(status_code=400, detail="Le vote s'ouvre plus tard : les candidatures se déposent d'ici là")
-    if fin - debut < DUREE_MIN:
-        raise HTTPException(status_code=400, detail="Le vote dure au moins dix minutes")
-    if fin - debut > DUREE_MAX:
-        raise HTTPException(status_code=400, detail="Le vote dure trente jours au plus")
-
-    poste = None
-    if body.poste_id is not None:
-        if body.entity_type != "civilisation":
-            raise HTTPException(status_code=400, detail="Seule une civilisation met en jeu un poste de son gouvernement")
-        poste = _require_poste(db, body.poste_id)
-        civilisation = _civilisation_du_poste(db, poste.entity_type, poste.entity_id)
-        if not civilisation or civilisation.id != entite.id:
-            raise HTTPException(status_code=400, detail="Ce poste n'appartient pas au gouvernement de la civilisation ni de ses villes")
-        if db.exec(select(models.Scrutins).where(models.Scrutins.poste_id == poste.id, models.Scrutins.status == "ouvert")).first():
-            raise HTTPException(status_code=400, detail="Un scrutin en cours met déjà ce poste en jeu")
+    _verifier_creneau(debut, fin)
+    poste = _poste_en_jeu(db, body.entity_type, entite, body.poste_id)
 
     scrutin = models.Scrutins(
         title=title, description=(body.description or "").strip() or None, entity_type=body.entity_type, entity_id=entite.id,
-        entity_title=entite.title, corps=corps, mode=mode, deux_tours=bool(body.deux_tours), poste_id=poste.id if poste else None,
-        poste_title=_titre_complet(db, poste) if poste else None, vote_debut=debut, vote_fin=fin, date_rp=body.date_rp, created_by=user.id,
+        entity_title=entite.title, corps=corps, mode=mode, deux_tours=bool(body.deux_tours), egalite=egalite,
+        poste_id=poste.id if poste else None, poste_title=_titre_complet(db, poste) if poste else None,
+        vote_debut=debut, vote_fin=fin, date_rp=body.date_rp, created_by=user.id,
     )
     db.add(scrutin)
     db.commit()
     db.refresh(scrutin)
     joueurs = {p.user_id for p in candidats_possibles(db, scrutin.entity_type, scrutin.entity_id)} | _joueurs_votants(db, scrutin)
     _notifier(db, scrutin, joueurs, f"Scrutin ouvert : {scrutin.title}", f"Candidatures jusqu'au {_heure(debut)}, vote jusqu'au {_heure(fin)}.", sauf=user.id)
+    return read_scrutin(db, user, scrutin.id)
+
+def modifier_scrutin(db: Session, user: schemas.Users, ID: int, body: schemas.ScrutinUpdate):
+    # Seuls les champs envoyés changent. Jusqu'à l'ouverture du vote : les règles ne changent pas sous les votants
+    scrutin = _require_scrutin(db, ID)
+    if not peut_organiser(db, user, scrutin.entity_type, scrutin.entity_id):
+        raise HTTPException(status_code=403, detail="Seuls ceux qui peuvent ouvrir le scrutin le modifient")
+    if phase(scrutin) != "candidatures":
+        raise HTTPException(status_code=400, detail="Le vote est ouvert : les paramètres ne se modifient plus")
+    champs = body.model_dump(exclude_unset=True)
+    if "title" in champs:
+        title = (champs["title"] or "").strip()
+        if not title:
+            raise HTTPException(status_code=400, detail="Donnez un titre au scrutin")
+        if len(title) > TITLE_MAX:
+            raise HTTPException(status_code=400, detail=f"Le titre ne dépasse pas {TITLE_MAX} caractères")
+        scrutin.title = title
+    if "description" in champs:
+        scrutin.description = (champs["description"] or "").strip() or None
+    if "mode" in champs:
+        if champs["mode"] not in MODES:
+            raise HTTPException(status_code=400, detail="Mode de vote inconnu : secret ou public")
+        scrutin.mode = champs["mode"]
+    if "deux_tours" in champs:
+        scrutin.deux_tours = bool(champs["deux_tours"])
+    if "egalite" in champs:
+        scrutin.egalite = _verifier_egalite(champs["egalite"])
+    if "poste_id" in champs:
+        entite = _require_entite(db, scrutin.entity_type, scrutin.entity_id)
+        poste = _poste_en_jeu(db, scrutin.entity_type, entite, champs["poste_id"], scrutin.id)
+        scrutin.poste_id = poste.id if poste else None
+        scrutin.poste_title = _titre_complet(db, poste) if poste else None
+    if "date_rp" in champs:
+        scrutin.date_rp = champs["date_rp"]
+    if "vote_debut" in champs or "vote_fin" in champs:
+        debut = _naive(champs.get("vote_debut") or scrutin.vote_debut)
+        fin = _naive(champs.get("vote_fin") or scrutin.vote_fin)
+        _verifier_creneau(debut, fin)
+        scrutin.vote_debut, scrutin.vote_fin = debut, fin
+    db.add(scrutin)
+    db.commit()
+    db.refresh(scrutin)
+    destinataires = {c.user_id for c in _candidats(db, scrutin.id)} | _joueurs_votants(db, scrutin)
+    _notifier(db, scrutin, destinataires, f"Scrutin modifié : {scrutin.title}",
+              f"Candidatures jusqu'au {_heure(scrutin.vote_debut)}, vote jusqu'au {_heure(scrutin.vote_fin)}.", sauf=user.id)
     return read_scrutin(db, user, scrutin.id)
 
 def _titre_complet(db: Session, poste: models.GouvernementPostes) -> str:

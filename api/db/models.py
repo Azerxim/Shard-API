@@ -838,6 +838,8 @@ class Scrutins(SQLModel, table=True):
     corps: str                                         # qui vote : personnages, villes ou civilisations
     mode: str = Field(default="secret")                # secret ou public (bulletins nommés publiés au dépouillement)
     deux_tours: bool = Field(default=False)
+    egalite: str = Field(default="personne")           # en cas d'égalité sans second tour : personne, tirage ou nouveau_vote
+    tirage: bool = Field(default=False)                # élu par tirage au sort parmi les ex aequo
     poste_id: int | None = Field(default=None, foreign_key="gouvernementpostes.id")  # poste mis en jeu
     poste_title: str | None = Field(default=None)
     vote_debut: dt.datetime
