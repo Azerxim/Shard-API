@@ -80,6 +80,11 @@ def annuler_scrutin(current_user: CurrentUser, ScrutinID: int, db: Session = Dep
 def candidater(current_user: CurrentUser, ScrutinID: int, body: schemas.CandidatureCreate, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "La candidature est déposée", 'scrutin': crud_elections.candidater(db, current_user, ScrutinID, body)})
 
+@router.put("/{ScrutinID}/candidatures/{CandidatID}")
+def modifier_programme(current_user: CurrentUser, ScrutinID: int, CandidatID: int, body: schemas.CandidatureUpdate, db: Session = Depends(get_db)):
+    # Programme en Markdown, modifiable jusqu'au début du vote
+    return _json({'code': 200, 'text': "Le programme est enregistré", 'scrutin': crud_elections.modifier_programme(db, current_user, ScrutinID, CandidatID, body)})
+
 @router.delete("/{ScrutinID}/candidatures/{CandidatID}")
 def retirer_candidature(current_user: CurrentUser, ScrutinID: int, CandidatID: int, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "La candidature est retirée", 'scrutin': crud_elections.retirer_candidature(db, current_user, ScrutinID, CandidatID)})

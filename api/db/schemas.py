@@ -955,7 +955,10 @@ class ScrutinCreate(EmptyStringAsNone):
 
 class CandidatureCreate(EmptyStringAsNone):
     personnage_id: int
-    programme: str | None = None
+    programme: str | None = None                  # Markdown
+
+class CandidatureUpdate(EmptyStringAsNone):
+    programme: str | None = None                  # Markdown ; vide = plus de programme
 
 class VoteCreate(EmptyStringAsNone):
     votant_type: str                              # personnage, ville ou civilisation

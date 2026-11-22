@@ -43,7 +43,7 @@ CORPS = {"personnages": "personnage", "villes": "ville", "civilisations": "civil
 MODES = ("secret", "public")
 TITLE_MAX = 120
 POSTE_MAX = 60
-PROGRAMME_MAX = 2000
+PROGRAMME_MAX = 5000
 DUREE_MAX = dt.timedelta(days=30)
 DUREE_MIN = dt.timedelta(minutes=10)
 LIENS = {"civilisation": "/civilisation/{}", "religion": "/religion/{}", "alliance": "/alliance/{}"}
@@ -507,7 +507,9 @@ def read_scrutin(db: Session, user: schemas.Users | None, ID: int):
     return {
         **scrutin_resume(db, scrutin),
         "description": scrutin.description,
-        "candidats": [_candidat_infos(db, c, clos) for c in candidats],
+        # programme_modifiable : le demandeur peut encore modifier ce programme (avant le début du vote)
+        "candidats": [{**_candidat_infos(db, c, clos), "programme_modifiable": phase(scrutin) == "candidatures" and peut_modifier_programme(db, user, c)}
+                      for c in candidats],
         "votants_count": len(corps),
         "votants_sans_representant": [v["title"] for v in corps if not v["personnage"]],
         "participation": {"tour1": _participation(db, scrutin, 1), "tour2": _participation(db, scrutin, 2)},
@@ -628,19 +630,50 @@ def candidater(db: Session, user: schemas.Users, ID: int, body: schemas.Candidat
         raise HTTPException(status_code=400, detail=f"{personnage.name} n'est pas lié à {scrutin.entity_title} : il ne peut pas s'y présenter")
     if any(c.personnage_id == personnage.id for c in _candidats(db, scrutin.id)):
         raise HTTPException(status_code=400, detail=f"{personnage.name} est déjà candidat")
-    programme = (body.programme or "").strip() or None
-    if programme and len(programme) > PROGRAMME_MAX:
-        raise HTTPException(status_code=400, detail=f"Le programme ne dépasse pas {PROGRAMME_MAX} caractères")
+    programme = _programme(body.programme)
     # user_id : le joueur du personnage, même présenté par un administrateur (notifications, retrait)
     db.add(models.ScrutinCandidats(scrutin_id=scrutin.id, personnage_id=personnage.id, nom=personnage.name, programme=programme, user_id=personnage.user_id or user.id))
     db.commit()
     return read_scrutin(db, user, scrutin.id)
 
-def retirer_candidature(db: Session, user: schemas.Users, ID: int, candidatID: int):
-    scrutin = _require_scrutin(db, ID)
+def _programme(texte: str | None) -> str | None:
+    # Programme en Markdown, affiché tel quel par le site (react-markdown, sans HTML brut)
+    programme = (texte or "").strip() or None
+    if programme and len(programme) > PROGRAMME_MAX:
+        raise HTTPException(status_code=400, detail=f"Le programme ne dépasse pas {PROGRAMME_MAX} caractères")
+    return programme
+
+def _require_candidat(db: Session, scrutin: models.Scrutins, candidatID: int) -> models.ScrutinCandidats:
     candidat = db.get(models.ScrutinCandidats, candidatID)
     if not candidat or candidat.scrutin_id != scrutin.id:
         raise HTTPException(status_code=404, detail="Cette candidature n'existe pas")
+    return candidat
+
+def peut_modifier_programme(db: Session, user: schemas.Users | None, candidat: models.ScrutinCandidats) -> bool:
+    # Le joueur du candidat, ou celui qui gère son personnage (administrateur du site)
+    if not user:
+        return False
+    if candidat.user_id == user.id:
+        return True
+    personnage = crud_personnages.get_personnage(db, candidat.personnage_id) if candidat.personnage_id else None
+    return bool(personnage and crud_personnages.can_manage(user, personnage))
+
+def modifier_programme(db: Session, user: schemas.Users, ID: int, candidatID: int, body: schemas.CandidatureUpdate):
+    # Le programme se modifie tant que les candidatures sont ouvertes, jusqu'au début du vote
+    scrutin = _require_scrutin(db, ID)
+    candidat = _require_candidat(db, scrutin, candidatID)
+    if not peut_modifier_programme(db, user, candidat):
+        raise HTTPException(status_code=403, detail="Seul le candidat modifie son programme")
+    if phase(scrutin) != "candidatures":
+        raise HTTPException(status_code=400, detail="Le vote est ouvert : le programme ne change plus")
+    candidat.programme = _programme(body.programme)
+    db.add(candidat)
+    db.commit()
+    return read_scrutin(db, user, scrutin.id)
+
+def retirer_candidature(db: Session, user: schemas.Users, ID: int, candidatID: int):
+    scrutin = _require_scrutin(db, ID)
+    candidat = _require_candidat(db, scrutin, candidatID)
     if not (candidat.user_id == user.id or peut_organiser(db, user, scrutin.entity_type, scrutin.entity_id)):
         raise HTTPException(status_code=403, detail="Seuls le candidat et les organisateurs retirent une candidature")
     if phase(scrutin) != "candidatures":
