@@ -86,6 +86,9 @@ class Journal(EmptyDatesAsNone):
     published_date: datetime.datetime | None = None
     created_at: datetime.datetime | None = None
     is_public: bool | None = None
+    categorie: str | None = None
+    # Création seulement : « creer » (nouveau salon, par défaut) ou « lier » (salon existant, identifiant dans uid)
+    salon: str | None = None
 
 
 class Livre(EmptyDatesAsNone):

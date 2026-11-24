@@ -69,6 +69,10 @@ class Journaux(SQLModel, table=True):
 
     is_public: bool | None = Field(default=None)
 
+    # Catégorie (services/salons_journaux.CATEGORIES) ; salon_cree : salon Discord créé par le site (True) ou lié (False)
+    categorie: str | None = Field(default=None)
+    salon_cree: bool | None = Field(default=None)
+
 class Livres(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     user_id: int | None = Field(default=None, foreign_key="users.id")

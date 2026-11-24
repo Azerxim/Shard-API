@@ -15,7 +15,7 @@ from ..integrations import discord_handler
 
 from ..core import utils
 from ..db import models, schemas
-from . import crud_nettoyage
+from . import crud_nettoyage, salons_journaux
 from ..db.database import get_db
 from topazdevsdk import colors
 
@@ -470,23 +470,17 @@ def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int 
         return {"error": 500, "message": f"Erreur serveur: {str(e)}"}
 
 def create_journal(db: Session, user: schemas.Users, v_journal: schemas.Journal):
-    # Créer le salon Discord si le titre est fourni
-    channel_uid = None
-    category_uid = discord_category("journaux")
-    if v_journal.title:
-        try:
-            # Utiliser asyncio pour exécuter la fonction asynchrone
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            channel_uid = loop.run_until_complete(
-                discord_handler.create_channel(v_journal.title, v_journal.description, category_uid)
-            )
-            loop.close()
-            print(f"\033[92mSalon Discord créé avec l'ID: {channel_uid}\033[0m")
-        except Exception as e:
-            print(f"Avertissement: Impossible de créer le salon Discord: {e}")
-            channel_uid = None
-    
+    # Salon Discord créé par le site, ou salon existant lié (services/salons_journaux.py)
+    categorie = salons_journaux.categorie_valide(v_journal.categorie, user)
+    if v_journal.salon == "lier":
+        channel_uid = salons_journaux.verifier_salon_a_lier(db, user, v_journal.uid)
+        salon_cree = False
+    elif v_journal.salon in (None, "", "creer"):
+        channel_uid = salons_journaux.creer_salon(v_journal.title, v_journal.description, categorie) if v_journal.title else None
+        salon_cree = True if channel_uid else None
+    else:
+        raise HTTPException(status_code=400, detail="Salon Discord : « creer » ou « lier »")
+
     db_journal = models.Journaux(
         user_id = user.id,
         author = v_journal.author,
@@ -496,7 +490,9 @@ def create_journal(db: Session, user: schemas.Users, v_journal: schemas.Journal)
         cover_icon = v_journal.cover_icon,
         cover_color = v_journal.cover_color,
         link = "",
-        uid = channel_uid if channel_uid else v_journal.uid,
+        uid = channel_uid,
+        salon_cree = salon_cree,
+        categorie = categorie,
         published_date = v_journal.published_date,
         is_public = v_journal.is_public if v_journal.is_public is not None else True,
         created_at = dt.datetime.today()
@@ -511,7 +507,10 @@ def create_journal(db: Session, user: schemas.Users, v_journal: schemas.Journal)
     db.refresh(db_journal)
     return db_journal
 
-def create_journal_db(db: Session, user: schemas.Users, v_journal: schemas.Journal):   
+def create_journal_db(db: Session, user: schemas.Users, v_journal: schemas.Journal):
+    # Import en base sans toucher à Discord : réservé aux administrateurs du site (le salon indiqué n'est pas vérifié)
+    if user.is_disabled or not user.is_admin:
+        raise HTTPException(status_code=403, detail="Accès refusé")
     db_journal = models.Journaux(
         user_id = user.id,
         author = v_journal.author,
@@ -522,6 +521,8 @@ def create_journal_db(db: Session, user: schemas.Users, v_journal: schemas.Journ
         cover_color = v_journal.cover_color,
         link = v_journal.link,
         uid = v_journal.uid,
+        salon_cree = False if v_journal.uid else None,
+        categorie = salons_journaux.categorie_valide(v_journal.categorie, user),
         published_date = v_journal.published_date,
         is_public = v_journal.is_public if v_journal.is_public is not None else True,
         created_at = dt.datetime.today()
@@ -542,36 +543,27 @@ def _check_civilisation_rights(db: Session, user: schemas.Users, civilisationID:
     db_members = get_members_of_civilisation(db, civilisationID, limit=10000) if civilisationID else []
     _check_member_rights(user, db_members)
 
-def delete_journal(db: Session, user: schemas.Users, v_journalid: int):
-    # Récupérer le journal pour obtenir son UID Discord
+def delete_journal(db: Session, user: schemas.Users, v_journalid: int, supprimer_salon: bool = True):
+    # supprimer_salon : supprime aussi le salon Discord créé par le site ; sinon il est seulement délié et reste sur Discord.
+    # Un salon lié (salon_cree False) n'est jamais supprimé. Anciens journaux (salon_cree None) : salon créé par le site.
     journal = get_journal(db, v_journalid)
     if not journal:
         raise HTTPException(status_code=404, detail="Le journal n'existe pas")
     _check_owner_rights(user, journal.user_id)
 
     try:
+        salon = "aucun"
         if journal.uid:
-            try:
-                # Supprimer le salon Discord associé
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                result = loop.run_until_complete(
-                    discord_handler.delete_channel(journal.uid)
-                )
-                loop.close()
-                if result:
-                    print(f"Salon Discord {journal.uid} supprimé avec succès")
-                else:
-                    print(f"Avertissement: Impossible de supprimer le salon Discord {journal.uid}")
-            except Exception as e:
-                print(f"Avertissement: Erreur suppression salon Discord {journal.uid}: {e}")
-        
+            if supprimer_salon and journal.salon_cree is not False:
+                salon = "supprime" if salons_journaux.supprimer_salon(journal.uid) else "introuvable"
+            else:
+                salon = "delie"
+
         # Supprimer le journal de la base de données
-        journal = get_journal(db, v_journalid)
         crud_nettoyage.supprimer_liens_journal(db, v_journalid)
         db.delete(journal)
         db.commit()
-        return {"fonction": "delete_journal", "resultat": "Journal supprimé"}
+        return {"fonction": "delete_journal", "resultat": "Journal supprimé", "salon": salon}
     except Exception as e:
         print(f"Erreur lors de la suppression du journal {v_journalid}: {e}")
         return {"fonction": "delete_journal", "erreur": "Une erreur est survenue lors de la suppression du journal", "details": str(e)}
@@ -583,31 +575,37 @@ async def update_journal(db: Session, user: schemas.Users, journalID: int, v_jou
         raise HTTPException(status_code=404, detail="Le journal n'existe pas")
     _check_owner_rights(user, db_journal.user_id)
 
-    if db_journal:
-        # Mise à jour des informations
-        if v_journal.title is not None:
-            db_journal.title = v_journal.title
-            await discord_handler.update_channel_name(db_journal.uid, v_journal.title)
-        if v_journal.author is not None:
-            db_journal.author = v_journal.author
-        if v_journal.description is not None:
-            db_journal.description = v_journal.description
-            await discord_handler.update_channel_description(db_journal.uid, v_journal.description)
-        if v_journal.cover_url is not None:
-            db_journal.cover_url = v_journal.cover_url
-        if v_journal.cover_icon is not None:
-            db_journal.cover_icon = v_journal.cover_icon
-        if v_journal.cover_color is not None:
-            db_journal.cover_color = v_journal.cover_color
-        if v_journal.published_date is not None:
-            db_journal.published_date = v_journal.published_date
-        if v_journal.is_public is not None:
-            db_journal.is_public = v_journal.is_public
-        db.add(db_journal)
-        db.commit()
-        db.refresh(db_journal)
-        return get_journal(db=db, ID=journalID)
-    return {"error": 404, "text": "Le journal n'a pas été trouvé"}
+    categorie = salons_journaux.categorie_valide(v_journal.categorie, user, db_journal.categorie) if v_journal.categorie is not None else None
+    # Nom, sujet et catégorie Discord du salon créé par le site (un salon lié n'est pas modifié)
+    await salons_journaux.mettre_a_jour_salon(
+        db_journal,
+        titre=v_journal.title if v_journal.title is not None and v_journal.title != db_journal.title else None,
+        description=v_journal.description if v_journal.description is not None and v_journal.description != db_journal.description else None,
+        categorie=categorie if categorie and categorie != db_journal.categorie else None,
+    )
+    # Mise à jour des informations
+    if v_journal.title is not None:
+        db_journal.title = v_journal.title
+    if v_journal.author is not None:
+        db_journal.author = v_journal.author
+    if v_journal.description is not None:
+        db_journal.description = v_journal.description
+    if v_journal.cover_url is not None:
+        db_journal.cover_url = v_journal.cover_url
+    if v_journal.cover_icon is not None:
+        db_journal.cover_icon = v_journal.cover_icon
+    if v_journal.cover_color is not None:
+        db_journal.cover_color = v_journal.cover_color
+    if v_journal.published_date is not None:
+        db_journal.published_date = v_journal.published_date
+    if v_journal.is_public is not None:
+        db_journal.is_public = v_journal.is_public
+    if categorie is not None:
+        db_journal.categorie = categorie
+    db.add(db_journal)
+    db.commit()
+    db.refresh(db_journal)
+    return get_journal(db=db, ID=journalID)
 #endregion
 
 #region Livres

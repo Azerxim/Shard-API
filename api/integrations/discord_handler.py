@@ -687,6 +687,34 @@ async def _guild_action(action):
         raise ValueError(f"Action Discord impossible : {result['error']}")
     return result["value"]
 
+async def get_channel_info(channel_id: str) -> dict | None:
+    """Salon du serveur : { id, name, category_id, type } (type « text » pour un salon textuel), ou None s'il n'y est pas."""
+    async def action(guild):
+        channel = guild.get_channel(int(channel_id))
+        if channel is None:
+            try:
+                channel = await guild.fetch_channel(int(channel_id))
+            except discord.NotFound:
+                return None
+        return {
+            "id": str(channel.id),
+            "name": channel.name,
+            "category_id": str(channel.category_id) if getattr(channel, "category_id", None) else None,
+            "type": "text" if isinstance(channel, discord.TextChannel) else str(channel.type),
+        }
+    return await _guild_action(action)
+
+async def move_channel(channel_id: str, category_id: int) -> bool:
+    """Range un salon dans une catégorie du serveur ; False si le salon ou la catégorie n'existe pas."""
+    async def action(guild):
+        channel = guild.get_channel(int(channel_id))
+        category = guild.get_channel(int(category_id))
+        if channel is None or not isinstance(category, discord.CategoryChannel):
+            return False
+        await channel.edit(category=category)
+        return True
+    return await _guild_action(action)
+
 async def _scheduled_event(guild, event_id: str):
     return guild.get_scheduled_event(int(event_id)) or await guild.fetch_scheduled_event(int(event_id))
 

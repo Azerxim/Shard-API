@@ -54,7 +54,8 @@
 				"lignees": 1234567890987654321
 			},
 			"categories": {
-				"journaux": 1234567890987654321
+				"journaux": 1234567890987654321,
+				"journaux_gazette": 1234567890987654321
 			}
 		},
 		"monde": {

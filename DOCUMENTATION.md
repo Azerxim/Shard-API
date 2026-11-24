@@ -107,6 +107,7 @@ Aucun de ces deux fichiers n'est versionné : ils contiennent des secrets.
 | `platforms.discord.channels.lignees` | Salon des fondations de maisons nobles et des mariages (facultatif) |
 | `platforms.discord.channels.evenements` | Salon des annonces du calendrier (facultatif) ; les événements programmés du serveur demandent au bot la permission « Gérer les événements » |
 | `platforms.discord.categories.journaux` | Catégorie où `crud.create_journal` crée les salons de journaux (hors catégorie si absente) |
+| `platforms.discord.categories.journaux_<categorie>` | Facultatif : catégorie Discord des journaux de cette catégorie (`monde`, `gazette`, `chronique`, `correspondance`, `carnet`, `proclamation`, `divers`), sinon `journaux` |
 | `platforms.monde.key` | Clé partagée avec le générateur de cartes (`MAP_STATS_API_KEY` côté Maps) |
 | `platforms.monde.generateur` | Chemin de `run.sh` du générateur de cartes, lancé par le bouton « Générer la carte » de `/admin/monde` (`POST /api/monde/generation`, administrateurs, `services/generation_carte.py`). Par défaut `../Shard-Maps/scripts/map-generator/run.sh` ; l'API et Shard-Maps doivent être sur la même machine, sinon le bouton reste désactivé. Tests : `SHARD_FAKE_MAP_GENERATION` |
 | `rp.debut`, `rp.ans_par_semaine` | Temporalité du RP (`services/temporalite.py`) : début de l'an 1, la même date que `VITE_SAISON_LANCEMENT` du site, et 2 ans RP par semaine réelle. Sert de date par défaut au début et à la fin d'une guerre ; sans `rp.debut`, la date réelle |
@@ -127,6 +128,7 @@ chez le fournisseur (Discord Developer Portal, Azure).
 | `SHARD_MONDE_KEY` | Remplace `platforms.monde.key` |
 | `SHARD_PLAYERDB_URL` | Autre service que playerdb.co pour les pseudos |
 | `SHARD_FAKE_JOURNAL_MESSAGES` | Lit les messages des journaux dans ce fichier JSON au lieu de Discord |
+| `SHARD_FAKE_DISCORD_CHANNELS` | Salons Discord des journaux lus et modifiés dans ce fichier JSON `{ "<id>": { name, category_id, type } }` au lieu de Discord (création, liaison, déplacement, suppression) |
 | `SHARD_FAKE_DISCORD_ANNOUNCEMENTS` | Écrit les annonces dans ce fichier (une ligne JSON par annonce) au lieu de Discord |
 | `SHARD_FAKE_DISCORD_EVENTS` | Écrit les opérations sur les événements programmés Discord (`create`, `edit`, `delete`) dans ce fichier |
 
@@ -325,7 +327,7 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 
 | Table | Contenu |
 | --- | --- |
-| `journaux` | Journal RP adossé à un salon Discord (`uid` = identifiant du salon), couverture (`cover_url`, `cover_icon`, `cover_color`), `link` (`/bibliotheque/journal/<id>`), `is_public` |
+| `journaux` | Journal RP adossé à un salon Discord (`uid` = identifiant du salon), couverture (`cover_url`, `cover_icon`, `cover_color`), `link` (`/bibliotheque/journal/<id>`), `is_public`, `categorie` (`services/salons_journaux.CATEGORIES` ; `monde` réservée aux A), `salon_cree` (salon créé par le site, ou `false` : salon existant lié) |
 | `livres` | Livre : auteur, couverture, `pages`, `language`, `is_public` (ses civilisations et autres liens : `livresliens`) |
 | `livresliens` | Lien d'un livre avec une civilisation, une religion, un commerce, une alliance ou un personnage : `livre_id`, `entity_type`, `entity_id` (plusieurs par livre). Remplace l'ancienne colonne `livres.civilisation_id`, reprise au démarrage par `migrate_livres_civilisation_to_liens` |
 | `livrescontenus` | Contenu d'un livre : `chapitre`, `sous_chapitre`, `ordre`, `indent`, `content`, `page_number` |
@@ -432,10 +434,11 @@ Les réponses n'ont pas toutes le même format : selon les routes, le statut est
 
 | Méthode | Chemin | Droits | Description |
 | --- | --- | --- | --- |
-| POST | `/journaux/create` | U | Crée le journal **et** son salon Discord |
-| POST | `/journaux/create/db` | U | Crée le journal en base seulement (salon existant, `uid` fourni) |
-| PUT | `/journaux/update/{JournalID}` | Auteur ou A | Met à jour (renomme aussi le salon et change sa description) |
-| DELETE | `/journaux/delete/{JournalID}` | Auteur ou A | Supprime le journal, son salon Discord et ses attributions de messages |
+| POST | `/journaux/create` | U | Crée le journal ; `salon` : `creer` (nouveau salon Discord, par défaut) ou `lier` (A seulement : salon textuel existant `uid` du serveur, pas déjà lié) ; `categorie` |
+| POST | `/journaux/create/db` | A | Crée le journal en base seulement (salon existant, `uid` fourni, non vérifié) |
+| PUT | `/journaux/update/{JournalID}` | Auteur ou A | Met à jour ; le salon créé par le site suit le titre, la description et la catégorie (un salon lié n'est pas modifié) |
+| DELETE | `/journaux/delete/{JournalID}` | Auteur ou A | Supprime le journal et ses attributions de messages ; son salon Discord est supprimé, ou seulement délié avec `supprimer_salon=false` (un salon lié n'est jamais supprimé) ; réponse `salon` : `supprime`, `introuvable`, `delie` ou `aucun` |
+| GET | `/journaux/categories` | — | Catégories des journaux `{ clé: libellé }` |
 | GET | `/journaux/list` | — | Liste (`skip`, `limit`) |
 | GET | `/journaux/read/{JournalID}` | — | Détail |
 | GET | `/journaux/user/{UserID}/list` | — | Journaux d'un utilisateur |

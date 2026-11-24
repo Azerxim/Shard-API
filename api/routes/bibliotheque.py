@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, File
 from sqlmodel import Session
 
 from ..db import schemas
-from ..services import crud, crud_livres
+from ..services import crud, crud_livres, salons_journaux
 from ..db.database import get_db
 
 # Créer un routeur pour les routes utilisateur
@@ -38,11 +38,22 @@ async def update_journal(current_user: Annotated[schemas.Users, Depends(crud.sec
     return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le journal a été mis à jour", 'journal': update}))
 
 @router.delete("/journaux/delete/{JournalID}", tags=["Journaux"])
-def delete_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], JournalID: int, db: Session = Depends(get_db)):
-    delete=crud.delete_journal(db=db, user=current_user, v_journalid=JournalID)
-    if not delete:
+def delete_journal(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], JournalID: int, supprimer_salon: bool = True, db: Session = Depends(get_db)):
+    # supprimer_salon=false : le salon Discord est seulement délié (un salon lié n'est jamais supprimé)
+    delete=crud.delete_journal(db=db, user=current_user, v_journalid=JournalID, supprimer_salon=supprimer_salon)
+    if not delete or 'erreur' in delete:
         raise HTTPException(status_code=400, detail=jsonable_encoder({'code': 400, 'text': f"Une erreur est survenue lors de la suppression du journal"}))
-    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': f"Le journal a été supprimé"}))
+    textes = {
+        "supprime": "Le journal et son salon Discord ont été supprimés",
+        "introuvable": "Le journal a été supprimé ; son salon Discord n'a pas été trouvé",
+        "delie": "Le journal a été supprimé ; son salon Discord est conservé",
+    }
+    return JSONResponse(content=jsonable_encoder({'code': 200, 'text': textes.get(delete.get("salon"), "Le journal a été supprimé"), 'salon': delete.get("salon")}))
+
+@router.get("/journaux/categories", tags=["Journaux"])
+def read_categories_journaux():
+    # Catégories des journaux : { clé: libellé } (services/salons_journaux.py)
+    return JSONResponse(content=jsonable_encoder(salons_journaux.CATEGORIES))
 
 @router.get("/journaux/list", tags=["Journaux"])
 def read_journaux(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
