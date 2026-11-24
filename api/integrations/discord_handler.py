@@ -277,16 +277,18 @@ async def delete_channel(channel_id: str) -> bool:
     return success
 
 
-async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
+async def get_channel_messages(channel_id: str, limit: int = 100, before: str | None = None) -> list | None:
     """
     Récupère les messages d'un salon Discord.
     
     Args:
         channel_id: L'ID du salon Discord
         limit: Le nombre maximum de messages à récupérer (par défaut 100)
+        before: Seulement les messages antérieurs à ce message (identifiant), pour lire le salon par pages
     
     Returns:
-        list: Liste des messages avec their metadata
+        list: Liste des messages, du plus récent au plus ancien ; None si Discord n'a pas pu être lu
+        (le salon introuvable donne une liste vide)
     """
     token = utils.PLATFORMS.get('discord', {}).get('token')
     guild_id = utils.PLATFORMS.get('discord', {}).get('guild_id')
@@ -299,10 +301,12 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
     bot = commands.Bot(command_prefix="!", intents=intents)
     
     messages = []
+    echec = False
     bot_ready = asyncio.Event()
     
     @bot.event
     async def on_ready():
+        nonlocal echec
         try:
             guild = bot.get_guild(guild_id)
             if not guild:
@@ -315,9 +319,10 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
                 return
             
             # Récupérer les messages
-            async for message in channel.history(limit=limit):
+            async for message in channel.history(limit=limit, before=discord.Object(id=int(before)) if before else None):
                 messages.append(_message_data(message))
         except Exception as e:
+            echec = True
             print(f"Erreur lors de la récupération des messages: {e}")
         finally:
             bot_ready.set()
@@ -334,6 +339,7 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
             raise ValueError("Timeout: bot Discord n'a pas pu se connecter")
 
     except Exception as e:
+        echec = True
         print(f"Erreur récupération messages Discord: {e}")
     finally:
         await bot.close()
@@ -347,7 +353,7 @@ async def get_channel_messages(channel_id: str, limit: int = 100) -> list:
                 except asyncio.CancelledError:
                     pass
     
-    return messages
+    return None if echec else messages
 
 def _message_data(message) -> dict:
     # Message Discord sérialisé pour l'API (fil des journaux, association aux personnages)

@@ -108,6 +108,7 @@ class Livre(EmptyDatesAsNone):
     published_date: datetime.datetime | None = None
     created_at: datetime.datetime | None = None
     is_public: bool | None = None
+    categorie: str | None = None
 
 class LivreContenu(BaseModel):
     id: int | None = None

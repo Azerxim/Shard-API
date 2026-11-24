@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, HTMLResponse, RedirectResponse, File
 from sqlmodel import Session
 
 from ..db import schemas
-from ..services import crud, crud_livres, salons_journaux
+from ..services import crud, crud_livres, salons_journaux, categories_livres
 from ..db.database import get_db
 
 # Créer un routeur pour les routes utilisateur
@@ -75,8 +75,10 @@ def read_journaux_by_user(UserID: int, skip: int = 0, limit: int = 100, db: Sess
     return JSONResponse(content=jsonable_encoder(journals))
 
 @router.get("/journaux/contents/{JournalID}", tags=["Journaux"])
-def read_journal_contents(JournalID: int, skip: int = 0, limit: int = 10000, db: Session = Depends(get_db)):
-    content = crud.get_journal_contents(db=db, journalID=JournalID, skip=skip, limit=limit)
+def read_journal_contents(JournalID: int, skip: int = 0, limit: int = 100, rafraichir: bool = False, db: Session = Depends(get_db)):
+    # Par pages, du plus récent au plus ancien (« Charger plus » : skip = messages déjà reçus), au plus 500 par page ;
+    # messages gardés quelques minutes par l'API, rafraichir=true relit le salon (services/messages_journaux.py)
+    content = crud.get_journal_contents(db=db, journalID=JournalID, skip=max(0, skip), limit=min(max(1, limit), 500), rafraichir=rafraichir)
     if content is None:
         func = {'code': 404, 'content': content}
     else:
@@ -112,6 +114,11 @@ def create_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_cu
         user=current_user,
         v_livre=livre
     )
+
+@router.get("/livres/categories", tags=["Livres"])
+def read_categories_livres():
+    # Catégories des livres : { clé: libellé } (services/categories_livres.py)
+    return JSONResponse(content=jsonable_encoder(categories_livres.CATEGORIES))
 
 @router.put("/livres/update/{livreID}", tags=["Livres"])
 def update_livre(current_user: Annotated[schemas.Users, Depends(crud.secu_get_current_active_user)], livreID: int, livre: schemas.Livre, db: Session = Depends(get_db)):

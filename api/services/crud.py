@@ -15,7 +15,7 @@ from ..integrations import discord_handler
 
 from ..core import utils
 from ..db import models, schemas
-from . import crud_nettoyage, salons_journaux
+from . import crud_nettoyage, salons_journaux, categories_livres, messages_journaux
 from ..db.database import get_db
 from topazdevsdk import colors
 
@@ -368,22 +368,6 @@ def get_journaux_by_user(db: Session, userID: int, skip: int = 0, limit: int = 1
     results = db.exec(statement)
     return results.all()
 
-def _channel_messages(channel_id: str, limit: int):
-    # Tests : SHARD_FAKE_JOURNAL_MESSAGES désigne un fichier JSON { "<id du salon>": [messages] } lu à la place de Discord
-    fake_file = os.environ.get("SHARD_FAKE_JOURNAL_MESSAGES")
-    if fake_file:
-        try:
-            with open(fake_file, encoding="utf-8") as file:
-                return (json.load(file).get(str(channel_id)) or [])[:limit]
-        except FileNotFoundError:
-            return []
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        return loop.run_until_complete(discord_handler.get_channel_messages(channel_id, limit=limit))
-    finally:
-        loop.close()
-
 def discord_category(category_key: str):
     """Identifiant de la catégorie platforms.discord.categories.<category_key>, ou None si absente.
     Sans catégorie configurée, le salon est créé hors catégorie."""
@@ -414,10 +398,13 @@ def announce_discord(channel_key: str, content: str | None = None, embed: dict |
     return True
 
 def get_channel_message(channel_id: str, message_id: str):
-    # Un seul message du salon (association aux personnages) ; None s'il n'existe pas. Même simulation que ci-dessus.
-    fake_file = os.environ.get("SHARD_FAKE_JOURNAL_MESSAGES")
-    if fake_file:
-        return next((message for message in _channel_messages(channel_id, limit=100000) if str(message.get("id")) == str(message_id)), None)
+    # Un seul message du salon (association aux personnages) ; None s'il n'existe pas. Lu dans le cache des messages
+    # du journal s'il y est (services/messages_journaux.py), sinon sur Discord (ou dans le fichier simulé des tests).
+    garde = messages_journaux.message_garde(channel_id, message_id)
+    if garde is not None:
+        return garde
+    if os.environ.get("SHARD_FAKE_JOURNAL_MESSAGES"):
+        return next((message for message in messages_journaux._lire_discord(channel_id, limit=100000) if str(message.get("id")) == str(message_id)), None)
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
@@ -425,46 +412,39 @@ def get_channel_message(channel_id: str, message_id: str):
     finally:
         loop.close()
 
-def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int = 10000):
+def get_journal_contents(db: Session, journalID: int, skip: int = 0, limit: int = 100, rafraichir: bool = False):
     """
-    Récupère les messages Discord associés à un journal.
-    
-    Args:
-        db: Session de la base de données
-        journalID: L'ID du journal
-        skip: Nombre de messages à sauter
-        limit: Nombre maximum de messages à récupérer
-    
+    Messages Discord d'un journal, par pages, du plus récent au plus ancien (services/messages_journaux.py : gardés
+    quelques minutes en mémoire ; rafraichir relit le salon).
+
     Returns:
-        dict: Les messages du canal Discord ou erreur
+        dict: { journal_id, journal_title, channel_id, messages, messages_count, skip, limit, plus_anciens, complet,
+        total_messages (messages lus jusqu'ici, tout le salon quand complet), lu_le, en_cache }, ou { error, message }
     """
     try:
-        # Récupérer le journal
         journal = get_journal(db, journalID)
         if not journal:
             return {"error": 404, "message": "Journal non trouvé"}
-        
-        # Vérifier que le journal a un UID Discord
         if not journal.uid:
             return {"error": 400, "message": "Ce journal n'a pas de canal Discord associé"}
-        
-        # Récupérer les messages du canal Discord
-        messages = _channel_messages(journal.uid, limit=limit + skip)
-        
-        # Appliquer skip et limit
-        paginated_messages = messages[skip:skip + limit]
-        
+
+        lecture = messages_journaux.page(journal.uid, skip=skip, limit=limit, rafraichir=rafraichir)
         return {
             "journal_id": journalID,
             "journal_title": journal.title,
             "channel_id": journal.uid,
-            "total_messages": len(messages),
-            "messages_count": len(paginated_messages),
+            "total_messages": lecture["gardes"],
+            "messages_count": len(lecture["messages"]),
             "skip": skip,
             "limit": limit,
-            "messages": paginated_messages
+            "plus_anciens": lecture["plus_anciens"],
+            "complet": lecture["complet"],
+            "lu_le": lecture["lu_le"],
+            "en_cache": lecture["en_cache"],
+            "messages": lecture["messages"],
         }
-    
+    except messages_journaux.LectureImpossible:
+        return {"error": 502, "message": "Discord n'a pas pu être lu : réessayez dans un instant"}
     except Exception as e:
         print(f"Erreur lors de la récupération des messages du journal {journalID}: {e}")
         return {"error": 500, "message": f"Erreur serveur: {str(e)}"}
@@ -559,6 +539,7 @@ def delete_journal(db: Session, user: schemas.Users, v_journalid: int, supprimer
             else:
                 salon = "delie"
 
+        messages_journaux.oublier(journal.uid)
         # Supprimer le journal de la base de données
         crud_nettoyage.supprimer_liens_journal(db, v_journalid)
         db.delete(journal)
@@ -644,6 +625,7 @@ def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
     # Rattacher le livre à une civilisation demande des droits sur celle-ci (elle en reçoit la gestion)
     if v_livre.civilisation_id:
         _check_civilisation_rights(db, user, v_livre.civilisation_id)
+    categorie = categories_livres.categorie_valide(v_livre.categorie, user)
     db_livre = models.Livres(
         user_id = user.id,
         author = v_livre.author,
@@ -655,6 +637,7 @@ def create_livre(db: Session, user: schemas.Users, v_livre: schemas.Livre):
         pages = v_livre.pages,
         language = v_livre.language,
         link = v_livre.link,
+        categorie = categorie,
         published_date = v_livre.published_date,
         created_at = dt.datetime.today()
     )
@@ -732,6 +715,8 @@ def update_livre(db: Session, user: schemas.Users, livreID: int, v_livre: schema
             db_livre.published_date = v_livre.published_date
         if v_livre.is_public is not None:
             db_livre.is_public = v_livre.is_public
+        if v_livre.categorie is not None:
+            db_livre.categorie = categories_livres.categorie_valide(v_livre.categorie, user, db_livre.categorie)
         db.add(db_livre)
         db.commit()
         db.refresh(db_livre)

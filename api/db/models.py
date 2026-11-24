@@ -87,6 +87,8 @@ class Livres(SQLModel, table=True):
     language: str | None = Field(default=None)
 
     link: str | None = Field(default=None)
+    # Catégorie (services/categories_livres.CATEGORIES) ; « officiel » réservée aux administrateurs du site
+    categorie: str | None = Field(default=None)
     # Civilisations, religions, commerces, alliances, personnages : table livresliens (ancienne colonne civilisation_id
     # reprise par database.migrate_livres_civilisation_to_liens)
 

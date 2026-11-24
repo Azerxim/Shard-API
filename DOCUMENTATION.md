@@ -328,7 +328,7 @@ Toutes les tables ont une clé `id` entière. Les dates de création sont rempli
 | Table | Contenu |
 | --- | --- |
 | `journaux` | Journal RP adossé à un salon Discord (`uid` = identifiant du salon), couverture (`cover_url`, `cover_icon`, `cover_color`), `link` (`/bibliotheque/journal/<id>`), `is_public`, `categorie` (`services/salons_journaux.CATEGORIES` ; `monde` réservée aux A), `salon_cree` (salon créé par le site, ou `false` : salon existant lié) |
-| `livres` | Livre : auteur, couverture, `pages`, `language`, `is_public` (ses civilisations et autres liens : `livresliens`) |
+| `livres` | Livre : auteur, couverture, `pages`, `language`, `is_public`, `categorie` (`services/categories_livres.CATEGORIES` ; `officiel` réservée aux A) (ses civilisations et autres liens : `livresliens`) |
 | `livresliens` | Lien d'un livre avec une civilisation, une religion, un commerce, une alliance ou un personnage : `livre_id`, `entity_type`, `entity_id` (plusieurs par livre). Remplace l'ancienne colonne `livres.civilisation_id`, reprise au démarrage par `migrate_livres_civilisation_to_liens` |
 | `livrescontenus` | Contenu d'un livre : `chapitre`, `sous_chapitre`, `ordre`, `indent`, `content`, `page_number` |
 
@@ -442,8 +442,9 @@ Les réponses n'ont pas toutes le même format : selon les routes, le statut est
 | GET | `/journaux/list` | — | Liste (`skip`, `limit`) |
 | GET | `/journaux/read/{JournalID}` | — | Détail |
 | GET | `/journaux/user/{UserID}/list` | — | Journaux d'un utilisateur |
-| GET | `/journaux/contents/{JournalID}` | — | Messages du salon Discord |
-| POST | `/livres/create` | U (F/A de la civilisation si `civilisation_id`) | Crée un livre ; `civilisation_id` crée aussitôt le lien (ignoré à la mise à jour) |
+| GET | `/journaux/contents/{JournalID}` | — | Messages du salon Discord par pages, du plus récent au plus ancien (`skip`, `limit` : 100 par défaut, 500 au plus) : `messages`, `plus_anciens`, `complet`, `lu_le` (secondes depuis la lecture sur Discord), `en_cache`. Gardés 5 minutes en mémoire (`services/messages_journaux.py`) ; `rafraichir=true` relit le salon (au plus toutes les 10 s, `SHARD_JOURNAL_RAFRAICHIR_SECONDES`) |
+| POST | `/livres/create` | U (F/A de la civilisation si `civilisation_id`) | Crée un livre ; `civilisation_id` crée aussitôt le lien (ignoré à la mise à jour) ; `categorie` (`divers` par défaut, `officiel` réservée aux A) |
+| GET | `/livres/categories` | — | Catégories des livres `{ clé: libellé }` (`services/categories_livres.py`), `officiel` en tête |
 | PUT | `/livres/update/{livreID}` | règle livre | Met à jour |
 | DELETE | `/livres/delete/{livreID}` | règle livre | Supprime, avec ses chapitres et ses liens |
 | GET | `/livres/list` | — | Liste |
