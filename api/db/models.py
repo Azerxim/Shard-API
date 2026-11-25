@@ -472,6 +472,15 @@ class ActionsSecretes(SQLModel, table=True):
     piege_moderateur_id: int | None = Field(default=None, foreign_key="users.id")
     piege_note: str | None = Field(default=None)
     piege_decision_at: dt.datetime | None = Field(default=None)
+    # Pacte secret : l'auteur (entity_*) le propose à une seconde partie (partie_*), civilisation, alliance ou commerce.
+    # Il n'entre au registre qu'une fois signé par celle-ci ; son texte est figé dès la proposition (voir crud_actions).
+    partie_type: str | None = Field(default=None)  # vide : action ordinaire
+    partie_id: int | None = Field(default=None)
+    partie_title: str | None = Field(default=None)  # nom conservé si l'entité est supprimée
+    pacte_statut: str | None = Field(default=None)  # en_attente, signe, refuse ou annule
+    pacte_reponse_at: dt.datetime | None = Field(default=None)  # signature, refus ou retrait
+    pacte_reponse_by: int | None = Field(default=None, foreign_key="users.id")
+    pacte_motif: str | None = Field(default=None)  # motif facultatif d'un refus
 
 class ActionSecreteLectures(SQLModel, table=True):
     # Lecture d'une action scellée par un administrateur ou un modérateur RP (lecture tracée)

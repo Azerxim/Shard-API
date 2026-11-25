@@ -792,6 +792,11 @@ administrateur seulement) + somme des écarts acceptés, jamais négative. Les a
 | POST | `/lire/{ActionID}` | Auteur, ou A / modérateur RP (lecture enregistrée) | Contenu d'une action scellée |
 | POST | `/create` | Joueur du personnage, F/A de la civilisation ou religion | Scelle `{ title, content, entity_type, entity_id, guerre_id?, reveal_at? }` |
 | POST | `/{ActionID}/reveler` | Auteur, ou modérateur RP avec `motif` | Révèle l'action |
+| GET | `/pactes/parties` | Connecté | Civilisations, alliances et commerces publics (et ceux qu'on dirige) : `[{ type, id, title, gere }]`, `gere` = proposer en son nom |
+| POST | `/pactes/create` | F/A de la partie qui propose (chef de file pour une alliance) | Propose `{ title, content, entity_type, entity_id, partie_type, partie_id, guerre_id?, reveal_at? }` |
+| POST | `/{ActionID}/signer` | F/A de la partie invitée, pas celui qui propose | Signe un pacte en attente : il est scellé au registre |
+| POST | `/{ActionID}/refuser` | F/A de la partie invitée | Refuse un pacte en attente, `{ motif? }` |
+| POST | `/{ActionID}/retirer` | Celui qui propose, F/A de sa partie | Retire une proposition non signée |
 | PUT | `/{ActionID}/piege` | Modérateur RP, pas l'auteur | Juge un piège révélé, déclaré au dépôt (`piege: true`) : `{ mortel, note }`, `note` obligatoire pour une blessure ; annoncé sur Discord |
 
 ### Monde — `/api/monde`
@@ -860,12 +865,20 @@ administrateur seulement) + somme des écarts acceptés, jamais négative. Les a
   visible de l'auteur aussitôt et de tous à la révélation. Être administrateur du site ne fait pas de vous l'auteur.
 - Révélation par l'auteur, par un modérateur RP (motif obligatoire, publié) ou à la date `reveal_at` fixée au dépôt
   (appliquée à la première lecture qui suit, sans tâche planifiée). Annonce Discord dans `platforms.discord.channels.actions`.
+- **Pacte secret** : entre deux parties distinctes parmi civilisations, alliances (gérées par le F/A de la civilisation
+  chef de file) et commerces (F/A, y compris du commerce dirigeant). Texte et empreinte figés à la proposition
+  (`pacte_statut` `en_attente`) ; la partie invitée signe (`signe`) ou refuse (`refuse`, motif facultatif), la partie
+  qui propose peut retirer (`annule`). Il faut deux comptes : celui qui propose ne signe pas. Non signé, le pacte est
+  absent du registre, de `/read` et du suivi des modérateurs ; il n'est jamais révélable ni révélé à date fixe. Signé,
+  il se comporte comme une action scellée ; les dirigeants des deux parties en sont auteurs et chacun peut le révéler.
+  Une date de révélation passée avant la signature empêche de signer (le pacte doit être reproposé).
 
 ### Notifications
 
 Écrites par `crud_notifications.notifier` au moment des faits, après l'enregistrement de l'action, et relevées par le
 site (cloche de la barre) toutes les minutes. Jamais adressées à celui qui agit, ni à un compte désactivé. Les
-« gestionnaires » d'une civilisation ou d'une religion sont son Fondateur et ses Admins ; ceux d'un personnage, son joueur.
+« gestionnaires » d'une civilisation ou d'une religion sont son Fondateur et ses Admins ; ceux d'un personnage, son joueur ;
+ceux d'une alliance, les gestionnaires de sa civilisation chef de file ; ceux d'un commerce, ses F/A et ceux de son dirigeant.
 
 | Type | Fait | Destinataires |
 | --- | --- | --- |
@@ -873,6 +886,8 @@ site (cloche de la barre) toutes les minutes. Jamais adressées à celui qui agi
 | `appel` | Réponse à un appel (rejoint ou décline) | Gestionnaires des belligérants engagés du camp qui appelait |
 | `invitation` | Invitation d'une alliance / demande d'une civilisation | Gestionnaires de la civilisation invitée / du chef de file |
 | `invitation` | Réponse à l'invitation ou à la demande | L'autre partie |
+| `invitation` | Pacte secret proposé | Gestionnaires de la partie invitée |
+| `decision` | Pacte signé, refusé / retiré | Celui qui propose et les gestionnaires de sa partie / gestionnaires de la partie invitée |
 | `lien` | Lien de parenté en attente | Joueur du personnage dont l'accord est attendu |
 | `lien` | Lien accepté ou refusé | Joueur qui l'avait demandé |
 | `lecture` | Lecture tracée d'une action scellée | Auteurs de l'action (déposant et gestionnaires de l'entité) |

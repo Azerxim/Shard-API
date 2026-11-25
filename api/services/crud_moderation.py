@@ -48,7 +48,8 @@ def _suivi(db: Session):
         "guerres": [crud_conflits.guerre_infos(db, guerre) for guerre in guerres],
         "fermes": [crud_fermes.ferme_infos(db, ferme) for ferme in fermes],
         # Existence seulement : le contenu se lit (et la lecture se trace) sur la page des actions secrètes
-        "actions_scellees": [crud_actions.action_publique(db, action) | {"reveal_at": action.reveal_at} for action in scellees],
+        # Un pacte proposé mais pas encore signé n'existe que pour ses deux parties
+        "actions_scellees": [crud_actions.action_publique(db, action) | {"reveal_at": action.reveal_at} for action in scellees if crud_actions.est_scellee(action)],
     }
 
 #endregion

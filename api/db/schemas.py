@@ -685,6 +685,19 @@ class ActionSecreteCreate(EmptyStringAsNone):
     reveal_at: datetime.datetime | None = None  # révélation automatique, dans le futur
     piege: bool | None = False            # piège mortel : validé ou non par un modérateur RP après la révélation
 
+class PacteCreate(EmptyStringAsNone):
+    title: str
+    content: str                          # les termes du pacte, figés dès la proposition
+    entity_type: str                      # partie qui propose : civilisation, alliance ou commerce
+    entity_id: int
+    partie_type: str                      # partie invitée à signer : civilisation, alliance ou commerce
+    partie_id: int
+    guerre_id: int | None = None
+    reveal_at: datetime.datetime | None = None
+
+class PacteRefus(EmptyStringAsNone):
+    motif: str | None = None              # facultatif, vu des deux parties seulement
+
 class PiegeDecision(EmptyStringAsNone):
     mortel: bool                          # True : le piège tue ; False : il ne fait que blesser
     note: str | None = None               # obligatoire quand le piège ne tue pas

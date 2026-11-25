@@ -14,7 +14,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, col, delete, func, select
 
 from ..db import models, schemas
-from .crud import get_members_of_civilisation, get_members_of_religion
+from .crud import _commerce_gestionnaires, get_commerce_by_id, get_members_of_civilisation, get_members_of_religion
 
 JOURS_LUES = 30
 MAX_PAR_JOUEUR = 200
@@ -23,12 +23,19 @@ MAX_PAR_JOUEUR = 200
 #region Destinataires
 
 def gestionnaires(db: Session, entity_type: str | None, entity_id: int | None) -> set[int]:
-    # Ceux qui agissent au nom de l'entité : Fondateur et Admins d'une civilisation ou d'une religion, joueur d'un personnage
+    # Ceux qui agissent au nom de l'entité : Fondateur et Admins d'une civilisation ou d'une religion, joueur d'un
+    # personnage, Fondateur et Admins de la civilisation chef de file d'une alliance, ou d'un commerce (et de son dirigeant)
     if not entity_id:
         return set()
     if entity_type == "personnage":
         personnage = db.get(models.Personnages, entity_id)
         return {personnage.user_id} if personnage and personnage.user_id else set()
+    if entity_type == "alliance":
+        chef = db.exec(select(models.AllianceMembres).where(models.AllianceMembres.alliance_id == entity_id, models.AllianceMembres.role == "Chef de file")).first()
+        return gestionnaires(db, "civilisation", chef.civilisation_id) if chef else set()
+    if entity_type == "commerce":
+        commerce = get_commerce_by_id(db, entity_id)
+        return {member.user_id for member in _commerce_gestionnaires(db, commerce) if member.role in ("Fondateur", "Admin")} if commerce else set()
     get_members = {"civilisation": get_members_of_civilisation, "religion": get_members_of_religion}.get(entity_type)
     if not get_members:
         return set()

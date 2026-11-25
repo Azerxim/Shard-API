@@ -51,6 +51,28 @@ def lire_action(current_user: CurrentUser, ActionID: int, db: Session = Depends(
 def create_action(current_user: CurrentUser, action: schemas.ActionSecreteCreate, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "L'action est scellée", **crud_actions.create_action(db, current_user, action)})
 
+@router.get("/pactes/parties")
+def read_parties_pactes(current_user: CurrentUser, db: Session = Depends(get_db)):
+    # Civilisations, alliances et commerces : au nom desquels proposer un pacte (gere), et à qui
+    return _json(crud_actions.parties_pactes(db, current_user))
+
+@router.post("/pactes/create")
+def create_pacte(current_user: CurrentUser, pacte: schemas.PacteCreate, db: Session = Depends(get_db)):
+    # Proposé à la partie invitée ; scellé au registre une fois qu'elle l'a signé
+    return _json({'code': 200, 'text': "Le pacte est proposé", **crud_actions.create_pacte(db, current_user, pacte)})
+
+@router.post("/{ActionID}/signer")
+def signer_pacte(current_user: CurrentUser, ActionID: int, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "Le pacte est signé et scellé", **crud_actions.signer_pacte(db, current_user, ActionID)})
+
+@router.post("/{ActionID}/refuser")
+def refuser_pacte(current_user: CurrentUser, ActionID: int, body: schemas.PacteRefus, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "Le pacte est refusé", **crud_actions.refuser_pacte(db, current_user, ActionID, body)})
+
+@router.post("/{ActionID}/retirer")
+def retirer_pacte(current_user: CurrentUser, ActionID: int, db: Session = Depends(get_db)):
+    return _json({'code': 200, 'text': "La proposition de pacte est retirée", **crud_actions.retirer_pacte(db, current_user, ActionID)})
+
 @router.post("/{ActionID}/reveler")
 def reveler_action(current_user: CurrentUser, ActionID: int, body: schemas.ActionSecreteRevelation, db: Session = Depends(get_db)):
     return _json({'code': 200, 'text': "L'action est révélée", **crud_actions.reveler(db, current_user, ActionID, body)})
